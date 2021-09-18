@@ -3,7 +3,7 @@
 
 require \dirname(__DIR__) . "/vendor/autoload.php";
 
-use Amp\AsyncGenerator;
+use Amp\Pipeline\AsyncGenerator;
 use Amp\ByteStream;
 use Amp\ByteStream\PipelineStream;
 use Amp\Http\Server\HttpServer;
@@ -16,7 +16,8 @@ use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Monolog\Logger;
-use function Amp\delay;
+use function Revolt\EventLoop\delay;
+use function Revolt\EventLoop\trapSignal;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
@@ -36,7 +37,7 @@ $server = new HttpServer($servers, new CallableRequestHandler(function (Request 
         "content-type" => "text/plain; charset=utf-8",
     ], new PipelineStream(new AsyncGenerator(function () {
         for ($i = 0; $i < 30; $i++) {
-            delay(100);
+            delay(0.1);
             yield "Line {$i}\r\n";
         }
     })));
@@ -45,7 +46,7 @@ $server = new HttpServer($servers, new CallableRequestHandler(function (Request 
 $server->start();
 
 // Await SIGINT or SIGTERM to be received.
-$signal = Amp\trap(\SIGINT, \SIGTERM);
+$signal = trapSignal(\SIGINT, \SIGTERM);
 
 $logger->info(\sprintf("Received signal %d, stopping HTTP server", $signal));
 

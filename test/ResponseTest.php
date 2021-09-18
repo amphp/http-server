@@ -40,13 +40,6 @@ class ResponseTest extends AsyncTestCase
         self::assertTrue(true);
     }
 
-    public function testSetBodyWithWrongType(): void
-    {
-        $response = new Response;
-        $this->expectException(\TypeError::class);
-        $response->setBody(new \stdClass);
-    }
-
     public function testCookies(): void
     {
         $request = new Response(Status::OK, [

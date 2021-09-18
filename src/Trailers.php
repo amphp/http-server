@@ -2,11 +2,9 @@
 
 namespace Amp\Http\Server;
 
+use Amp\Future;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
-use Amp\Promise;
-use function Amp\async;
-use function Amp\await;
 
 final class Trailers
 {
@@ -33,17 +31,17 @@ final class Trailers
     /** @var string[] */
     private array $fields = [];
 
-    /** @var Promise<Message> */
-    private Promise $headers;
+    /** @var Future<Message> */
+    private Future $headers;
 
     /**
-     * @param Promise<string[]|string[][]> $promise Resolved with the trailer values.
-     * @param string[]                     $fields Expected header fields. May be empty, but if provided, the array of
+     * @param Future<string[]|string[][]> $future Resolved with the trailer values.
+     * @param string[] $fields Expected header fields. May be empty, but if provided, the array of
      *     headers used to resolve the given promise must contain exactly the fields given in this array.
      *
      * @throws InvalidHeaderException If the fields list contains a disallowed field.
      */
-    public function __construct(Promise $promise, array $fields = [])
+    public function __construct(Future $future, array $fields = [])
     {
         if (!empty($fields)) {
             $this->fields = $fields = \array_map('strtolower', $fields);
@@ -55,8 +53,8 @@ final class Trailers
             }
         }
 
-        $this->headers = async(static function () use ($promise, $fields): Message {
-            return new class(await($promise), $fields) extends Message {
+        $this->headers = Future\spawn(static function () use ($future, $fields): Message {
+            return new class($future->join(), $fields) extends Message {
                 public function __construct(array $headers, array $fields)
                 {
                     $this->setHeaders($headers);
@@ -97,6 +95,6 @@ final class Trailers
      */
     public function await(): Message
     {
-        return await($this->headers);
+        return $this->headers->join();
     }
 }

@@ -114,7 +114,7 @@ interface Client
     /**
      * Gracefully close the client, responding to any pending requests before closing the connection.
      *
-     * @param int $timeout Number of milliseconds before the connection is forcefully closed.
+     * @param float $timeout Number of seconds before the connection is forcefully closed.
      */
-    public function stop(int $timeout): void;
+    public function stop(float $timeout): void;
 }

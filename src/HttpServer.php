@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server;
 
+use Amp\CompositeException;
+use Amp\Future;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\DefaultClientFactory;
@@ -9,14 +11,10 @@ use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
-use Amp\MultiReasonException;
-use Amp\Promise;
 use Amp\Socket;
 use Amp\Socket\Server as SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop\Loop;
-use function Amp\async;
-use function Amp\await;
 
 final class HttpServer
 {
@@ -32,7 +30,7 @@ final class HttpServer
         self::STOPPING => "STOPPING",
     ];
 
-    public const DEFAULT_SHUTDOWN_TIMEOUT = 3000;
+    public const DEFAULT_SHUTDOWN_TIMEOUT = 3;
 
     private int $state = self::STOPPED;
 
@@ -261,17 +259,17 @@ final class HttpServer
 
         $this->state = self::STARTING;
 
-        $promises = [];
+        $futures = [];
         foreach ($this->observers as $observer) {
-            async(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
+            $futures[] = Future\spawn(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
         }
-        [$exceptions] = await(Promise\any($promises));
+        [$exceptions] = Future\settle($futures);
 
         if (!empty($exceptions)) {
             try {
                 $this->stop(self::DEFAULT_SHUTDOWN_TIMEOUT);
             } finally {
-                throw new MultiReasonException($exceptions, "onStart observer initialization failure");
+                throw new CompositeException($exceptions, "onStart observer initialization failure");
             }
         }
 
@@ -404,25 +402,25 @@ final class HttpServer
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
 
-        $promises = [];
+        $futures = [];
         foreach ($this->observers as $observer) {
-            $promises[] = async(fn() => $observer->onStop($this));
+            $futures[] = Future\spawn(fn() => $observer->onStop($this));
         }
 
-        list($exceptions) = await(Promise\any($promises));
+        [$exceptions] = Future\settle($futures);
 
-        $promises = [];
+        $futures = [];
         foreach ($this->clients as $client) {
-            $promises[] = async(fn () => $client->stop($timeout));
+            $futures[] = Future\spawn(fn () => $client->stop($timeout));
         }
 
-        await(Promise\any($promises));
+        Future\settle($futures);
 
         \assert($this->logger->debug("Stopped") || true);
         $this->state = self::STOPPED;
 
         if (!empty($exceptions)) {
-            throw new MultiReasonException($exceptions, "onStop observer failure");
+            throw new CompositeException($exceptions, "onStop observer failure");
         }
 
         Loop::disable($this->timeoutWatcher);

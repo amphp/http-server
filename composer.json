@@ -34,6 +34,7 @@
         "amphp/byte-stream": "dev-v2-revolt",
         "amphp/hpack": "^3",
         "amphp/http": "^1.6",
+        "amphp/pipeline": "dev-master as 1.0",
         "amphp/socket": "dev-v2-revolt",
         "league/uri": "^6",
         "psr/http-message": "^1",

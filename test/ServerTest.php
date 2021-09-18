@@ -28,7 +28,7 @@ class ServerTest extends AsyncTestCase
     {
         $socket = Socket\Server::listen("tcp://127.0.0.1:0");
         $server = new HttpServer([$socket], new CallableRequestHandler(function () {
-            delay(200);
+            delay(0.2);
             return new Response(Status::NO_CONTENT);
         }), $this->createMock(PsrLogger::class));
 
@@ -39,7 +39,7 @@ class ServerTest extends AsyncTestCase
         $response = HttpClientBuilder::buildDefault()->request($request);
 
         // Ensure client already connected and sent request
-        delay(100);
+        delay(0.1);
 
         $server->stop();
 

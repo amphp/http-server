@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\PipelineStream;
 use Amp\Deferred;
+use Amp\Future;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Rfc7230;
 use Amp\Http\Server\ClientException;
@@ -14,14 +15,10 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\PipelineSource;
-use Amp\Promise;
-use Amp\Success;
-use Amp\TimeoutException;
+use Amp\Pipeline\Subject;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\async;
-use function Amp\await;
+use function Amp\Future\spawn;
 use function Amp\Http\formatDateHeader;
 
 final class Http1Driver implements HttpDriver
@@ -34,19 +31,19 @@ final class Http1Driver implements HttpDriver
 
     private PsrLogger $logger;
 
-    private ?PipelineSource $bodyEmitter = null;
+    private ?Subject $bodyEmitter = null;
 
-    private ?Promise $pendingResponse = null;
+    private ?Future $pendingResponse = null;
 
-    /** @var callable */
+    /** @var callable(Request, string):Future */
     private $onMessage;
 
-    /** @var callable */
+    /** @var callable(string):Future */
     private $write;
 
     private ErrorHandler $errorHandler;
 
-    private Promise $lastWrite;
+    private Future $lastWrite;
 
     private bool $stopping = false;
 
@@ -55,8 +52,8 @@ final class Http1Driver implements HttpDriver
         $this->options = $options;
         $this->errorHandler = $errorHandler;
         $this->logger = $logger;
-        $this->lastWrite = new Success;
-        $this->pendingResponse = new Success;
+        $this->lastWrite = Future::complete(null);
+        $this->pendingResponse = Future::complete(null);
     }
 
     /** {@inheritdoc} */
@@ -85,12 +82,12 @@ final class Http1Driver implements HttpDriver
 
         $deferred = new Deferred;
         $lastWrite = $this->lastWrite;
-        $this->lastWrite = $deferred->promise();
+        $this->lastWrite = $deferred->getFuture();
 
         try {
             $this->send($lastWrite, $response, $request);
         } finally {
-            $deferred->resolve();
+            $deferred->complete(null);
         }
     }
 
@@ -111,8 +108,8 @@ final class Http1Driver implements HttpDriver
     {
         $this->stopping = true;
 
-        await($this->pendingResponse);
-        await($this->lastWrite);
+        $this->pendingResponse->join();
+        $this->lastWrite->join();
     }
 
     private function updateTimeout(): void
@@ -123,15 +120,15 @@ final class Http1Driver implements HttpDriver
     /**
      * HTTP/1.x response writer.
      *
-     * @param Promise      $lastWrite
-     * @param Response     $response
+     * @param Future $lastWrite
+     * @param Response $response
      * @param Request|null $request
      */
-    private function send(Promise $lastWrite, Response $response, ?Request $request = null): void
+    private function send(Future $lastWrite, Response $response, ?Request $request = null): void
     {
         \assert(isset($this->client), "The driver has not been setup; call setup first");
 
-        await($lastWrite); // Prevent sending multiple responses at once.
+        $lastWrite->join(); // Prevent sending multiple responses at once.
 
         $this->updateTimeout();
 
@@ -172,7 +169,7 @@ final class Http1Driver implements HttpDriver
         $buffer .= "\r\n";
 
         if ($request !== null && $request->getMethod() === "HEAD") {
-            await(($this->write)($buffer, $shouldClose));
+            ($this->write)($buffer, $shouldClose)->join();
             return;
         }
 
@@ -181,25 +178,7 @@ final class Http1Driver implements HttpDriver
         $streamThreshold = $this->options->getStreamThreshold();
 
         try {
-            $readPromise = async(fn () => $body->read());
-
-            while (true) {
-                try {
-                    if ($buffer !== "") {
-                        $chunk = await(Promise\timeout($readPromise, 100));
-                    } else {
-                        $chunk = await($readPromise);
-                    }
-
-                    if ($chunk === null) {
-                        break;
-                    }
-
-                    $readPromise = async(fn () => $body->read()); // directly start new read
-                } catch (TimeoutException $e) {
-                    goto flush;
-                }
-
+            while (null !== $chunk = $body->read()) {
                 $length = \strlen($chunk);
 
                 if ($length === 0) {
@@ -216,17 +195,15 @@ final class Http1Driver implements HttpDriver
                     continue;
                 }
 
-                flush:
-
                 // Initially the buffer won't be empty and contains the headers.
                 // We save a separate write or the headers here.
-                $promise = ($this->write)($buffer);
+                $future = ($this->write)($buffer);
 
                 $buffer = $chunk = ""; // Don't use null here, because of the finally
 
                 $this->updateTimeout();
 
-                await($promise);
+                $future->join();
             }
 
             if ($chunked) {
@@ -242,7 +219,7 @@ final class Http1Driver implements HttpDriver
 
             if ($buffer !== "" || $shouldClose) {
                 $this->updateTimeout();
-                await(($this->write)($buffer, $shouldClose));
+                ($this->write)($buffer, $shouldClose)->join();
             }
         } catch (ClientException $exception) {
             return; // Client will be closed in finally.
@@ -410,16 +387,16 @@ final class Http1Driver implements HttpDriver
 
                         $uri = Uri\Http::createFromComponents([
                             "scheme" => $scheme,
-                            "host"   => $host,
-                            "port"   => $port,
-                            "path"   => $target,
-                            "query"  => $query,
+                            "host" => $host,
+                            "port" => $port,
+                            "path" => $target,
+                            "query" => $query,
                         ]);
                     } elseif ($target === "*") { // asterisk-form
                         $uri = Uri\Http::createFromComponents([
                             "scheme" => $scheme,
-                            "host"   => $host,
-                            "port"   => $port,
+                            "host" => $host,
+                            "port" => $port,
                         ]);
                     } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
                         $uri = Uri\Http::createFromString($target);
@@ -471,7 +448,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headerMap["expect"][0]) && \strtolower($headerMap["expect"][0]) === "100-continue") {
-                    yield async(fn () => $this->write(
+                    yield spawn(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, null, $protocol),
                         new Response(Status::CONTINUE, [])
                     ));
@@ -487,11 +464,11 @@ final class Http1Driver implements HttpDriver
                     && false !== $h2cSettings = \base64_decode(\strtr($headerMap["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    yield async(fn () => $this->write(
+                    yield spawn(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, null, $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
-                            "upgrade"    => "h2c",
+                            "upgrade" => "h2c",
                         ])
                     ));
 
@@ -532,12 +509,12 @@ final class Http1Driver implements HttpDriver
                 }
 
                 // HTTP/1.x clients only ever have a single body emitter.
-                $this->bodyEmitter = $emitter = new PipelineSource;
+                $this->bodyEmitter = $emitter = new Subject;
                 $trailerDeferred = new Deferred;
                 $maxBodySize = $this->options->getBodySizeLimit();
 
                 $body = new RequestBody(
-                    new PipelineStream($this->bodyEmitter->pipe()),
+                    new PipelineStream($this->bodyEmitter->asPipeline()),
                     function (int $bodySize) use (&$maxBodySize) {
                         if ($bodySize > $maxBodySize) {
                             $maxBodySize = $bodySize;
@@ -547,7 +524,7 @@ final class Http1Driver implements HttpDriver
 
                 try {
                     $trailers = new Trailers(
-                        $trailerDeferred->promise(),
+                        $trailerDeferred->getFuture(),
                         isset($headerMap['trailers'])
                             ? \array_map('trim', \explode(',', \implode(',', $headerMap['trailers'])))
                             : []
@@ -657,7 +634,7 @@ final class Http1Driver implements HttpDriver
                                     );
                                 }
 
-                                $trailerDeferred->resolve($trailers);
+                                $trailerDeferred->complete($trailers);
                                 $trailerDeferred = null;
                             }
 
@@ -766,7 +743,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if ($trailerDeferred !== null) {
-                    $trailerDeferred->resolve([]);
+                    $trailerDeferred->complete([]);
                     $trailerDeferred = null;
                 }
 
@@ -787,19 +764,19 @@ final class Http1Driver implements HttpDriver
             if ($this->bodyEmitter !== null) {
                 $emitter = $this->bodyEmitter;
                 $this->bodyEmitter = null;
-                $emitter->fail($exception ?? new ClientException(
-                    $this->client,
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                ));
+                $emitter->error($exception ?? new ClientException(
+                        $this->client,
+                        "Client disconnected",
+                        Status::REQUEST_TIMEOUT
+                    ));
             }
 
             if (isset($trailerDeferred)) {
-                $trailerDeferred->fail($exception ?? new ClientException(
-                    $this->client,
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                ));
+                $trailerDeferred->error($exception ?? new ClientException(
+                        $this->client,
+                        "Client disconnected",
+                        Status::REQUEST_TIMEOUT
+                    ));
                 $trailerDeferred = null;
             }
         }
@@ -810,7 +787,7 @@ final class Http1Driver implements HttpDriver
      *
      * @param ClientException $exception
      */
-    private function sendErrorResponse(ClientException $exception): Promise
+    private function sendErrorResponse(ClientException $exception): Future
     {
         $message = $exception->getMessage();
         $status = $exception->getCode() ?: Status::BAD_REQUEST;
@@ -820,15 +797,15 @@ final class Http1Driver implements HttpDriver
         $response->setHeader("connection", "close");
 
         $lastWrite = $this->lastWrite;
-        return $this->lastWrite = async(fn () => $this->send($lastWrite, $response));
+        return $this->lastWrite = spawn(fn () => $this->send($lastWrite, $response));
     }
 
     /**
      * Filters and updates response headers based on protocol and connection header from the request.
      *
      * @param Response $response
-     * @param string   $protocol   Request protocol.
-     * @param array    $connection Request connection header.
+     * @param string $protocol Request protocol.
+     * @param array $connection Request connection header.
      *
      * @return string[][] Response headers to be written.
      */

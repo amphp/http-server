@@ -2,16 +2,16 @@
 
 namespace Amp\Http\Server\Test;
 
+use Amp\Future;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\Trailers;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\Success;
 
 class TrailersTest extends AsyncTestCase
 {
     public function testMessageHasHeader(): void
     {
-        $promise = new Success(['fooHeader' => 'barValue']);
+        $promise = Future::complete(['fooHeader' => 'barValue']);
 
         $trailers = new Trailers($promise, ['fooHeader']);
         $trailers = $trailers->await();
@@ -22,7 +22,7 @@ class TrailersTest extends AsyncTestCase
 
     public function testHasHeaderReturnsFalseForEmptyArrayValue(): void
     {
-        $promise = new Success(['fooHeader' => []]);
+        $promise = Future::complete(['fooHeader' => []]);
 
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage('Trailers do not contain the expected fields');
@@ -36,7 +36,7 @@ class TrailersTest extends AsyncTestCase
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");
 
-        $trailers = new Trailers(new Success, ['content-length']);
+        $trailers = new Trailers(Future::complete(null), ['content-length']);
     }
 
     public function testDisallowedFieldsInPromiseResolution(): void
@@ -44,7 +44,7 @@ class TrailersTest extends AsyncTestCase
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");
 
-        $trailers = new Trailers(new Success(['content-length' => 0]));
+        $trailers = new Trailers(Future::complete(['content-length' => 0]));
 
         $trailers->await();
     }

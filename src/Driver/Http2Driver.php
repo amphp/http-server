@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\PipelineStream;
 use Amp\Deferred;
+use Amp\Future;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2ConnectionException;
 use Amp\Http\Http2\Http2Parser;
@@ -19,15 +20,12 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\PipelineSource;
-use Amp\Promise;
-use Amp\TimeoutException;
+use Amp\Pipeline\Subject;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop\Loop;
-use function Amp\async;
-use function Amp\await;
 use function Amp\Http\formatDateHeader;
+use function Revolt\EventLoop\defer;
 
 final class Http2Driver implements HttpDriver, Http2Processor
 {
@@ -90,7 +88,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
     /** @var Deferred[] */
     private array $trailerDeferreds = [];
 
-    /** @var PipelineSource[] */
+    /** @var Subject[] */
     private array $bodyEmitters = [];
 
     /** @var int Number of streams that may be opened. */
@@ -98,10 +96,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
     private bool $stopping = false;
 
-    /** @var callable */
+    /** @var callable(Request, string):Future */
     private $onMessage;
 
-    /** @var callable */
+    /** @var callable(string):Future */
     private $write;
 
     private int $pinged = 0;
@@ -154,12 +152,12 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
         $deferred = new Deferred;
-        $stream->pendingWrite = $deferred->promise();
+        $stream->pendingWrite = $deferred->getFuture();
 
         try {
             $this->send($id, $response, $request);
         } finally {
-            $deferred->resolve();
+            $deferred->complete(null);
         }
     }
 
@@ -226,9 +224,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 foreach ($split as $msgPart) {
                     $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
                 }
-                await($this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id));
+                $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id)->join();
             } else {
-                await($this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id));
+                $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id)->join();
             }
 
             if ($request->getMethod() === "HEAD") {
@@ -242,43 +240,18 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $body = $response->getBody();
             $streamThreshold = $this->options->getStreamThreshold();
 
-            $readPromise = async(fn () => $body->read());
-
-            while (true) {
-                try {
-                    if ($buffer !== "") {
-                        $chunk = await(Promise\timeout($readPromise, 100));
-                    } else {
-                        $chunk = await($readPromise);
-                    }
-
-                    if ($chunk === null) {
-                        break;
-                    }
-
-                    $readPromise = async(fn () => $body->read()); // directly start new read
-                } catch (TimeoutException $e) {
-                    goto flush;
-                } finally {
-                    // Stream may have been closed while waiting for body data.
-                    if (!isset($this->streams[$id])) {
-                        return;
-                    }
-                }
-
+            while (null !== $chunk = $body->read()) {
                 $buffer .= $chunk;
 
                 if (\strlen($buffer) < $streamThreshold) {
                     continue;
                 }
 
-                flush: {
-                    $promise = $this->writeData($buffer, $id);
+                $future = $this->writeData($buffer, $id);
 
-                    $buffer = $chunk = ""; // Don't use null here because of finally.
+                $buffer = $chunk = ""; // Don't use null here because of finally.
 
-                    await($promise);
-                }
+                $future->join();
             }
 
             // Stream may have been closed while waiting for body data.
@@ -290,7 +263,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
             }
 
-            await($this->writeData($buffer, $id));
+            $this->writeData($buffer, $id)->join();
 
             // Stream may have been closed while writing final body chunk.
             if (!isset($this->streams[$id])) {
@@ -313,9 +286,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
                     foreach ($split as $msgPart) {
                         $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
                     }
-                    await($this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id));
+                    $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id)->join();
                 } else {
-                    await($this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id));
+                    $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id)->join();
                 }
             }
         } catch (ClientException $exception) {
@@ -363,10 +336,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
             }
 
             $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
-            $lastId = $lastId ?? ($id ?? 0);
-            await($this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG));
+            $lastId ??= ($id ?? 0);
+            $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG)->join();
 
-            await($promises);
+            Future\all($promises);
 
             $promises = [];
             foreach ($this->streams as $id => $stream) {
@@ -379,7 +352,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 }
             }
 
-            await($promises);
+            Future\all($promises);
         } finally {
             if (!empty($this->streams)) {
                 $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
@@ -468,20 +441,20 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $stream->pendingResponse = ($this->onMessage)($request);
     }
 
-    private function ping(): Promise
+    private function ping(): Future
     {
         // no need to receive the PONG frame, that's anyway registered by the keep-alive handler
         return $this->writeFrame($this->counter++, Http2Parser::PING, Http2Parser::NO_FLAG);
     }
 
-    private function writeFrame(string $data, int $type, int $flags, int $stream = 0): Promise
+    private function writeFrame(string $data, int $type, int $flags, int $stream = 0): Future
     {
         \assert(Http2Parser::logDebugFrame('send', $type, $flags, $stream, \strlen($data)));
 
         return ($this->write)(\substr(\pack("NccN", \strlen($data), $type, $flags, $stream), 1) . $data);
     }
 
-    private function writeData(string $data, int $id): Promise
+    private function writeData(string $data, int $id): Future
     {
         \assert(isset($this->streams[$id]), "The stream was closed");
 
@@ -490,7 +463,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         return $this->writeBufferedData($id);
     }
 
-    private function writeBufferedData(int $id): Promise
+    private function writeBufferedData(int $id): Future
     {
         \assert(isset($this->streams[$id]), "The stream was closed");
 
@@ -521,9 +494,8 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $stream->buffer = "";
 
             if ($stream->deferred) {
-                $deferred = $stream->deferred;
+                $stream->deferred->complete(null);
                 $stream->deferred = null;
-                $deferred->resolve($promise);
             }
 
             return $promise;
@@ -549,7 +521,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $stream->deferred = new Deferred;
         }
 
-        return $stream->deferred->promise();
+        return $stream->deferred->getFuture();
     }
 
     private function releaseStream(int $id, ClientException $exception = null): void
@@ -559,13 +531,13 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if (isset($this->bodyEmitters[$id])) {
             $emitter = $this->bodyEmitters[$id];
             unset($this->bodyEmitters[$id]);
-            $emitter->fail($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
+            $emitter->error($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
         }
 
         if (isset($this->trailerDeferreds[$id])) {
             $deferred = $this->trailerDeferreds[$id];
             unset($this->trailerDeferreds[$id]);
-            $deferred->fail($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
+            $deferred->error($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
         }
 
         unset($this->streams[$id]);
@@ -839,7 +811,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             unset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId]);
 
             $emitter->complete();
-            $deferred->resolve($headers);
+            $deferred->complete($headers);
 
             return;
         }
@@ -930,10 +902,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         $this->trailerDeferreds[$streamId] = new Deferred;
-        $this->bodyEmitters[$streamId] = new PipelineSource;
+        $this->bodyEmitters[$streamId] = new Subject;
 
         $body = new RequestBody(
-            new PipelineStream($this->bodyEmitters[$streamId]->pipe()),
+            new PipelineStream($this->bodyEmitters[$streamId]->asPipeline()),
             function (int $bodySize) use ($streamId) {
                 if (!isset($this->streams[$streamId], $this->bodyEmitters[$streamId])) {
                     return;
@@ -978,7 +950,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         try {
             $trailers = new Trailers(
-                $this->trailerDeferreds[$streamId]->promise(),
+                $this->trailerDeferreds[$streamId]->getFuture(),
                 isset($headers['trailers'])
                     ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
                     : []
@@ -1062,11 +1034,17 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $stream->expectedLength -= $length;
         }
 
-        $promise = $this->bodyEmitters[$streamId]->emit($data);
+        $future = $this->bodyEmitters[$streamId]->emit($data);
 
         if ($stream->serverWindow <= self::MINIMUM_WINDOW) {
-            $promise->onResolve(function (?\Throwable $exception) use ($streamId): void {
-                if ($exception || !isset($this->streams[$streamId])) {
+            defer(function () use ($future, $streamId) {
+                try {
+                    $future->join();
+                } catch (\Throwable) {
+                    return;
+                }
+
+                if (!isset($this->streams[$streamId])) {
                     return;
                 }
 
@@ -1128,7 +1106,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             unset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId]);
 
             $emitter->complete();
-            $deferred->resolve([]);
+            $deferred->complete([]);
         } finally {
             if (!isset($this->streams[$streamId])) {
                 return; // Stream may have closed after resolving body emitter or trailers deferred.

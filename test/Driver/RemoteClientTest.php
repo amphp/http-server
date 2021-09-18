@@ -27,7 +27,7 @@ use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\PipelineSource;
+use Amp\Pipeline\Subject;
 use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
@@ -36,8 +36,7 @@ use Amp\Socket\ServerTlsContext;
 use League\Uri;
 use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\async;
-use function Amp\await;
+use function Amp\Future\spawn;
 use function Revolt\EventLoop\delay;
 
 class RemoteClientTest extends AsyncTestCase
@@ -147,7 +146,7 @@ class RemoteClientTest extends AsyncTestCase
 
         $socket->close();
 
-        delay(100);
+        delay(0.1);
 
         $server->stop();
     }
@@ -183,14 +182,14 @@ class RemoteClientTest extends AsyncTestCase
 
     public function testStreamRequest(): void
     {
-        $emitter = new PipelineSource;
+        $emitter = new Subject();
 
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
             Uri\Http::createFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]], // headers
-            new RequestBody(new PipelineStream($emitter->pipe())) // body
+            new RequestBody(new PipelineStream($emitter->asPipeline())) // body
         );
 
         $emitter->emit("fooBar");
@@ -356,7 +355,7 @@ class RemoteClientTest extends AsyncTestCase
 
         $emit(new Request($client, "GET", Uri\Http::createFromString("/")));
 
-        $client->stop(100);
+        $client->stop(0.1);
 
         self::assertSame(\str_repeat($bodyData, 3), $bodyWritten);
     }
@@ -392,7 +391,7 @@ class RemoteClientTest extends AsyncTestCase
             $uri = $server->getAddress();
         }
 
-        $promise = async(function () use ($server, $tls) {
+        $future = spawn(function () use ($server, $tls) {
             $socket = $server->accept();
 
             \assert($socket !== null);
@@ -404,7 +403,7 @@ class RemoteClientTest extends AsyncTestCase
             $socket->write("a");
 
             // give readWatcher a chance
-            delay(10);
+            delay(0.1);
 
             $socket->write("b");
 
@@ -435,7 +434,7 @@ class RemoteClientTest extends AsyncTestCase
             $write("d");
         }, $client);
 
-        await($promise);
+        $future->join();
 
         $client->stop(0);
     }
@@ -482,9 +481,9 @@ class RemoteClientTest extends AsyncTestCase
 
         $emit($request);
 
-        delay(5); // Tick event loop a few times to resolve promises.
+        delay(0.1); // Tick event loop a few times to resolve promises.
 
-        $client->stop(100);
+        $client->stop(0.1);
 
         return [$response, $body];
     }

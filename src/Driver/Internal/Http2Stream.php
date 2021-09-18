@@ -3,8 +3,7 @@
 namespace Amp\Http\Server\Driver\Internal;
 
 use Amp\Deferred;
-use Amp\Promise;
-use Revolt\EventLoop\Internal\Struct;
+use Amp\Future;
 
 /**
  * Used in Http2Driver.
@@ -13,8 +12,6 @@ use Revolt\EventLoop\Internal\Struct;
  */
 final class Http2Stream
 {
-    use Struct;
-
     public const OPEN = 0;
     public const RESERVED = 0b0001;
     public const REMOTE_CLOSED = 0b0010;
@@ -31,9 +28,9 @@ final class Http2Stream
 
     public int $clientWindow;
 
-    public ?Promise $pendingResponse = null;
+    public ?Future $pendingResponse = null;
 
-    public ?Promise $pendingWrite = null;
+    public ?Future $pendingWrite = null;
 
     public string $buffer = "";
 

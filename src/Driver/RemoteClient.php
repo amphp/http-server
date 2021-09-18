@@ -3,7 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Deferred;
-use Amp\Failure;
+use Amp\Future;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
@@ -12,20 +12,18 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
-use Amp\Promise;
 use Amp\Socket\ResourceSocket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
-use Amp\Success;
+use Amp\TimeoutCancellationToken;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop\Loop;
-use function Amp\async;
-use function Amp\await;
+use function Amp\Future\spawn;
 use function Revolt\EventLoop\defer;
 
 final class RemoteClient implements Client
 {
-    private const SHUTDOWN_TIMEOUT_ON_ERROR = 1000;
+    private const SHUTDOWN_TIMEOUT_ON_ERROR = 1;
 
     private static DefaultErrorHandler $defaultErrorHandler;
 
@@ -75,8 +73,6 @@ final class RemoteClient implements Client
 
     private bool $paused = false;
 
-    private \Closure $resume;
-
     /**
      * @param resource       $socket Stream socket resource.
      * @param RequestHandler $requestHandler
@@ -110,8 +106,6 @@ final class RemoteClient implements Client
 
         $this->serverAddress = SocketAddress::fromLocalResource($this->socket);
         $this->clientAddress = SocketAddress::fromPeerResource($this->socket);
-
-        $this->resume = \Closure::fromCallable([$this, 'resume']);
     }
 
     /**
@@ -139,8 +133,7 @@ final class RemoteClient implements Client
 
             $this->readWatcher = Loop::onReadable(
                 $this->socket,
-                \Closure::fromCallable([$this, 'negotiateCrypto']),
-                $driverFactory
+                fn () => $this->negotiateCrypto($driverFactory)
             );
 
             return;
@@ -261,7 +254,7 @@ final class RemoteClient implements Client
         $this->clear();
 
         if ($this->writeDeferred) {
-            $this->writeDeferred->resolve();
+            $this->writeDeferred->complete(null);
         }
 
         // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
@@ -275,7 +268,7 @@ final class RemoteClient implements Client
         }
 
         foreach ($onClose as $callback) {
-            defer($callback, $this);
+            defer(fn () => $callback($this));
         }
     }
 
@@ -283,7 +276,7 @@ final class RemoteClient implements Client
     public function onClose(callable $callback): void
     {
         if ($this->onClose === null) {
-            defer($callback, $this);
+            defer(fn () => $callback($this));
             return;
         }
 
@@ -291,7 +284,7 @@ final class RemoteClient implements Client
     }
 
     /** @inheritdoc */
-    public function stop(int $timeout): void
+    public function stop(float $timeout): void
     {
         if (!isset($this->httpDriver)) {
             $this->close();
@@ -299,7 +292,7 @@ final class RemoteClient implements Client
         }
 
         try {
-            await(Promise\timeout(async(fn () => $this->httpDriver->stop()), $timeout));
+            spawn(fn () => $this->httpDriver->stop())->join(new TimeoutCancellationToken($timeout));
         } finally {
             $this->close();
         }
@@ -322,8 +315,7 @@ final class RemoteClient implements Client
 
     private function clear(): void
     {
-        unset($this->httpDriver, $this->requestParser, $this->resume);
-
+        unset($this->httpDriver, $this->requestParser);
 
         $this->paused = true;
 
@@ -362,18 +354,16 @@ final class RemoteClient implements Client
     private function parse(?string $data = null): void
     {
         try {
-            $promise = $this->requestParser->send($data);
+            $future = $this->requestParser->send($data);
 
-            \assert($promise === null || $promise instanceof Promise);
+            \assert($future === null || $future instanceof Future);
 
-            if ($promise instanceof Promise && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
-                // Parser wants to wait until a promise completes.
+            if ($future instanceof Future && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
+                // Parser wants to wait until a future completes.
                 $this->paused = true;
                 // Resume will set $this->paused to false if called immediately.
-                $promise->onResolve($this->resume);
-                if ($this->paused) { // Avoids potential for unnecessary disable followed by enable.
-                    Loop::disable($this->readWatcher);
-                }
+                $this->resumeWhen($future);
+                Loop::disable($this->readWatcher);
             }
         } catch (\Throwable $exception) {
             // Parser *should not* throw an exception, but in case it does...
@@ -390,11 +380,9 @@ final class RemoteClient implements Client
     /**
      * Called by the onReadable watcher after the client connects until encryption is enabled.
      *
-     * @param string            $watcher
-     * @param resource          $socket
      * @param HttpDriverFactory $driverFactory
      */
-    private function negotiateCrypto(string $watcher, $socket, HttpDriverFactory $driverFactory): void
+    private function negotiateCrypto(HttpDriverFactory $driverFactory): void
     {
         if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
             Loop::cancel($this->readWatcher);
@@ -458,7 +446,7 @@ final class RemoteClient implements Client
         Loop::disable($this->writeWatcher);
         $deferred = $this->writeDeferred;
         $this->writeDeferred = null;
-        $deferred->resolve();
+        $deferred->complete(null);
     }
 
     /**
@@ -468,12 +456,12 @@ final class RemoteClient implements Client
      * @param string $data The data to write.
      * @param bool   $close If true, close the client after the given chunk of data has been written.
      *
-     * @return Promise
+     * @return Future
      */
-    private function write(string $data, bool $close = false): Promise
+    private function write(string $data, bool $close = false): Future
     {
         if ($this->status & self::CLOSED_WR) {
-            return new Failure(new ClientException($this, "Client socket closed"));
+            return Future::error(new ClientException($this, "Client socket closed"));
         }
 
         if (!$this->writeDeferred) {
@@ -481,7 +469,7 @@ final class RemoteClient implements Client
 
             if ($bytesWritten === false) {
                 $this->close();
-                return new Failure(new ClientException($this, "Client socket closed"));
+                return Future::error(new ClientException($this, "Client socket closed"));
             }
 
             if ($bytesWritten === \strlen($data)) {
@@ -489,7 +477,7 @@ final class RemoteClient implements Client
                     $this->close();
                 }
 
-                return new Success;
+                return Future::complete(null);
             }
 
             $this->writeDeferred = new Deferred;
@@ -500,12 +488,12 @@ final class RemoteClient implements Client
 
         Loop::enable($this->writeWatcher);
 
-        $promise = $this->writeDeferred->promise();
+        $promise = $this->writeDeferred->getFuture();
 
         if ($close) {
             Loop::cancel($this->readWatcher);
             $this->status |= self::CLOSED_WR;
-            $promise->onResolve([$this, "close"]);
+            defer(fn () => $promise->join() ?? $this->close());
         }
 
         return $promise;
@@ -517,9 +505,9 @@ final class RemoteClient implements Client
      * @param Request $request
      * @param string  $buffer Remaining buffer in the parser.
      *
-     * @return Promise
+     * @return Future
      */
-    private function onMessage(Request $request, string $buffer = ''): Promise
+    private function onMessage(Request $request, string $buffer = ''): Future
     {
         \assert($this->logger->debug(\sprintf(
             "%s %s HTTP/%s @ %s",
@@ -529,26 +517,29 @@ final class RemoteClient implements Client
             $this->clientAddress->toString()
         )) || true);
 
-        return async(fn () => $this->respond($request, $buffer));
+        return spawn(fn () => $this->respond($request, $buffer));
     }
 
     /**
      * Resumes the request parser after it has yielded a promise.
      *
-     * @param \Throwable|null $exception
+     * @param Future $future
      */
-    private function resume(?\Throwable $exception): void
-    {
-        if ($exception) {
-            $this->close();
-            return;
-        }
+    private function resumeWhen(Future $future): void {
+        defer(function () use ($future): void {
+            try {
+                $future->join();
+            } catch (\Throwable) {
+                $this->close();
+                return;
+            }
 
-        if (!$this->isExported && !($this->status & self::CLOSED_RDWR)) {
-            $this->paused = false;
-            Loop::enable($this->readWatcher);
-            $this->parse();
-        }
+            if (!$this->isExported && !($this->status & self::CLOSED_RDWR)) {
+                $this->paused = false;
+                Loop::enable($this->readWatcher);
+                $this->parse();
+            }
+        });
     }
 
     /**
@@ -669,11 +660,9 @@ final class RemoteClient implements Client
         $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
         $socket = new UpgradedSocket($this, $socket, $buffer);
 
-        async($upgrade, $socket, $request, $response)->onResolve(function (?\Throwable $exception) use ($request): void {
-            if (!$exception) {
-                return;
-            }
-
+        try {
+            $upgrade($socket, $request, $response);
+        } catch (\Throwable $exception) {
             $errorType = \get_class($exception);
             $this->logger->error(
                 "Unexpected {$errorType} thrown during socket upgrade, closing connection.",
@@ -681,7 +670,7 @@ final class RemoteClient implements Client
             );
 
             $this->close();
-        });
+        }
     }
 
     private function cleanTlsErrorMessage(string $message): string
