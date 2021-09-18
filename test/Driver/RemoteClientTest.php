@@ -353,6 +353,8 @@ class RemoteClientTest extends AsyncTestCase
 
         $client->start($factory);
 
+        delay(0.1); // Tick event loop a few times to resolve promises.
+
         $emit(new Request($client, "GET", Uri\Http::createFromString("/")));
 
         $client->stop(0.1);
@@ -479,6 +481,8 @@ class RemoteClientTest extends AsyncTestCase
 
         $client->start($factory);
 
+        delay(0.1); // Tick event loop a few times to resolve promises.
+
         $emit($request);
 
         delay(0.1); // Tick event loop a few times to resolve promises.
@@ -518,6 +522,8 @@ class RemoteClientTest extends AsyncTestCase
         );
 
         $client->start($factory);
+
+        delay(0.1); // Tick event loop a few times to resolve promises.
 
         return $client;
     }

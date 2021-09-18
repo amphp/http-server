@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Deferred;
 use Amp\Future;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
@@ -17,7 +16,6 @@ use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 use Amp\TimeoutCancellationToken;
 use Psr\Log\LoggerInterface as PsrLogger;
-use Revolt\EventLoop\Loop;
 use function Amp\Future\spawn;
 use function Revolt\EventLoop\defer;
 
@@ -29,22 +27,9 @@ final class RemoteClient implements Client
 
     private int $id;
 
-    /** @var resource Stream socket resource */
-    private $socket;
-
-    private SocketAddress $clientAddress;
-
-    private SocketAddress $serverAddress;
+    private ResourceSocket $socket;
 
     private ?TlsInfo $tlsInfo = null;
-
-    private \Generator $requestParser;
-
-    private string $readWatcher;
-
-    private string $writeWatcher;
-
-    private string $writeBuffer = "";
 
     private int $status = 0;
 
@@ -65,21 +50,17 @@ final class RemoteClient implements Client
 
     private PsrLogger $logger;
 
-    private ?Deferred $writeDeferred = null;
-
     private int $pendingHandlers = 0;
 
     private int $pendingResponses = 0;
 
-    private bool $paused = false;
-
     /**
-     * @param resource       $socket Stream socket resource.
+     * @param resource $socket Stream socket resource.
      * @param RequestHandler $requestHandler
-     * @param ErrorHandler   $errorHandler
-     * @param PsrLogger      $logger
-     * @param Options        $options
-     * @param TimeoutCache   $timeoutCache
+     * @param ErrorHandler $errorHandler
+     * @param PsrLogger $logger
+     * @param Options $options
+     * @param TimeoutCache $timeoutCache
      */
     public function __construct(
         $socket,
@@ -89,9 +70,9 @@ final class RemoteClient implements Client
         Options $options,
         TimeoutCache $timeoutCache
     ) {
-        \stream_set_blocking($socket, false);
+        self::$defaultErrorHandler ??= new DefaultErrorHandler;
 
-        $this->socket = $socket;
+        $this->socket = ResourceSocket::fromClientSocket($socket);
         $this->id = (int) $socket;
 
         $this->options = $options;
@@ -99,13 +80,6 @@ final class RemoteClient implements Client
         $this->logger = $logger;
         $this->requestHandler = $requestHandler;
         $this->errorHandler = $errorHandler;
-
-        if (!isset(self::$defaultErrorHandler)) {
-            self::$defaultErrorHandler = new DefaultErrorHandler;
-        }
-
-        $this->serverAddress = SocketAddress::fromLocalResource($this->socket);
-        $this->clientAddress = SocketAddress::fromPeerResource($this->socket);
     }
 
     /**
@@ -117,36 +91,75 @@ final class RemoteClient implements Client
      */
     public function start(HttpDriverFactory $driverFactory): void
     {
-        if (isset($this->readWatcher)) {
+        if (isset($this->httpDriver)) {
             throw new \Error("Client already started");
         }
 
-        $this->writeWatcher = Loop::onWritable($this->socket, \Closure::fromCallable([$this, 'onWritable']));
-        Loop::disable($this->writeWatcher);
+        defer(function () use ($driverFactory): void {
+            try {
+                $context = \stream_context_get_options($this->socket->getResource());
+                if (isset($context["ssl"])) {
+                    $this->negotiateCrypto();
+                }
 
-        $context = \stream_context_get_options($this->socket);
-        if (isset($context["ssl"])) {
-            $this->timeoutCache->update(
-                $this->id,
-                \time() + $this->options->getTlsSetupTimeout()
-            );
+                $this->httpDriver = $driverFactory->selectDriver(
+                    $this,
+                    $this->errorHandler,
+                    $this->logger,
+                    $this->options
+                );
 
-            $this->readWatcher = Loop::onReadable(
-                $this->socket,
-                fn () => $this->negotiateCrypto($driverFactory)
-            );
+                $requestParser = $this->httpDriver->setup(
+                    $this,
+                    \Closure::fromCallable([$this, 'onMessage']),
+                    \Closure::fromCallable([$this, 'write'])
+                );
 
-            return;
-        }
+                $requestParser->current(); // Advance parser to first yield for data.
 
-        $this->setup($driverFactory->selectDriver(
-            $this,
-            $this->errorHandler,
-            $this->logger,
-            $this->options
-        ));
+                while (!$this->isExported && null !== $chunk = $this->socket->read()) {
+                    $future = $requestParser->send($chunk); // Parser yields a Future or null.
+                    if ($future instanceof Future) {
+                        $future->join();
+                        $requestParser->send(null); // Signal the parser that the yielded future has completed.
+                    }
+                }
+            } catch (\Throwable $exception) {
+                \assert($this->logger->debug(\sprintf(
+                        "Exception while handling client %s: %s",
+                        $this->socket->getRemoteAddress(),
+                        $this->cleanTlsErrorMessage(\error_get_last()['message'] ?? 'unknown error')
+                    )) || true
+                );
 
-        $this->readWatcher = Loop::onReadable($this->socket, \Closure::fromCallable([$this, 'onReadable']));
+                $this->close();
+            }
+        });
+    }
+
+    /**
+     * Called by start() after the client connects if encryption is enabled.
+     */
+    private function negotiateCrypto(): void
+    {
+        $this->timeoutCache->update(
+            $this->id,
+            \time() + $this->options->getTlsSetupTimeout()
+        );
+
+        $this->socket->setupTls(new TimeoutCancellationToken($this->options->getTlsSetupTimeout()));
+
+        $this->tlsInfo = $this->socket->getTlsInfo();
+        \assert($this->tlsInfo !== null);
+
+        \assert($this->logger->debug(\sprintf(
+                "TLS negotiated with %s (%s with %s, application protocol: %s)",
+                $this->socket->getRemoteAddress()->toString(),
+                $this->tlsInfo->getVersion(),
+                $this->tlsInfo->getCipherName(),
+                $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
+            )) || true
+        );
     }
 
     /** @inheritdoc */
@@ -186,13 +199,13 @@ final class RemoteClient implements Client
     /** @inheritdoc */
     public function getRemoteAddress(): SocketAddress
     {
-        return $this->clientAddress;
+        return $this->socket->getRemoteAddress();
     }
 
     /** @inheritdoc */
     public function getLocalAddress(): SocketAddress
     {
-        return $this->serverAddress;
+        return $this->socket->getLocalAddress();
     }
 
     /** @inheritdoc */
@@ -253,18 +266,12 @@ final class RemoteClient implements Client
 
         $this->clear();
 
-        if ($this->writeDeferred) {
-            $this->writeDeferred->complete(null);
-        }
+        $this->socket->close();
 
-        // ensures a TCP FIN frame is sent even if other processes (forks) have inherited the fd
-        @\stream_socket_shutdown($this->socket, \STREAM_SHUT_RDWR);
-        @\fclose($this->socket);
-
-        if (($this->serverAddress->getHost()[0] ?? "") !== "/") { // no unix domain socket
-            \assert($this->logger->debug("Close {$this->clientAddress} #{$this->id}") || true);
+        if (($this->socket->getLocalAddress()->getHost()[0] ?? "") !== "/") { // no unix domain socket
+            \assert($this->logger->debug("Close {$this->socket->getRemoteAddress()} #{$this->id}") || true);
         } else {
-            \assert($this->logger->debug("Close connection on {$this->serverAddress} #{$this->id}") || true);
+            \assert($this->logger->debug("Close connection on {$this->socket->getLocalAddress()} #{$this->id}") || true);
         }
 
         foreach ($onClose as $callback) {
@@ -298,155 +305,10 @@ final class RemoteClient implements Client
         }
     }
 
-    /**
-     * @param HttpDriver $driver
-     */
-    private function setup(HttpDriver $driver): void
-    {
-        $this->httpDriver = $driver;
-        $this->requestParser = $this->httpDriver->setup(
-            $this,
-            \Closure::fromCallable([$this, 'onMessage']),
-            \Closure::fromCallable([$this, 'write'])
-        );
-
-        $this->requestParser->current();
-    }
-
     private function clear(): void
     {
         unset($this->httpDriver, $this->requestParser);
-
-        $this->paused = true;
-
-        if (isset($this->readWatcher)) {
-            Loop::cancel($this->readWatcher);
-        }
-
-        if (isset($this->writeWatcher)) {
-            Loop::cancel($this->writeWatcher);
-        }
-
         $this->timeoutCache->clear($this->id);
-    }
-
-    /**
-     * Called by the onReadable watcher (after encryption has been negotiated if applicable).
-     */
-    private function onReadable(): void
-    {
-        $data = @\stream_get_contents($this->socket, $this->options->getChunkSize());
-        if ($data !== false && $data !== "") {
-            $this->parse($data);
-            return;
-        }
-
-        if (!\is_resource($this->socket) || @\feof($this->socket)) {
-            $this->close();
-        }
-    }
-
-    /**
-     * Sends data to the request parser.
-     *
-     * @param string|null $data
-     */
-    private function parse(?string $data = null): void
-    {
-        try {
-            $future = $this->requestParser->send($data);
-
-            \assert($future === null || $future instanceof Future);
-
-            if ($future instanceof Future && !$this->isExported && !($this->status & self::CLOSED_RDWR)) {
-                // Parser wants to wait until a future completes.
-                $this->paused = true;
-                // Resume will set $this->paused to false if called immediately.
-                $this->resumeWhen($future);
-                Loop::disable($this->readWatcher);
-            }
-        } catch (\Throwable $exception) {
-            // Parser *should not* throw an exception, but in case it does...
-            $errorType = \get_class($exception);
-            $this->logger->critical(
-                "Unexpected {$errorType} while parsing request, closing connection.",
-                ['exception' => $exception]
-            );
-
-            $this->close();
-        }
-    }
-
-    /**
-     * Called by the onReadable watcher after the client connects until encryption is enabled.
-     *
-     * @param HttpDriverFactory $driverFactory
-     */
-    private function negotiateCrypto(HttpDriverFactory $driverFactory): void
-    {
-        if ($handshake = @\stream_socket_enable_crypto($this->socket, true)) {
-            Loop::cancel($this->readWatcher);
-
-            $this->tlsInfo = TlsInfo::fromStreamResource($this->socket);
-            \assert($this->tlsInfo !== null);
-
-            \assert($this->logger->debug(\sprintf(
-                "TLS negotiated with %s (%s with %s, application protocol: %s)",
-                $this->clientAddress->toString(),
-                $this->tlsInfo->getVersion(),
-                $this->tlsInfo->getCipherName(),
-                $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
-            )) || true);
-
-            $this->setup($driverFactory->selectDriver(
-                $this,
-                $this->errorHandler,
-                $this->logger,
-                $this->options
-            ));
-
-            $this->readWatcher = Loop::onReadable($this->socket, \Closure::fromCallable([$this, 'onReadable']));
-            return;
-        }
-
-        if ($handshake === false) {
-            \assert($this->logger->debug(\sprintf(
-                "TLS handshake error with %s: %s",
-                $this->clientAddress,
-                $this->cleanTlsErrorMessage(\error_get_last()['message'] ?? 'unknown error')
-            )) || true);
-
-            $this->close();
-        }
-    }
-
-    /**
-     * Called by the onWritable watcher.
-     */
-    private function onWritable(): void
-    {
-        $bytesWritten = @\fwrite($this->socket, $this->writeBuffer);
-
-        if ($bytesWritten === false) {
-            $this->close();
-            return;
-        }
-
-        if ($bytesWritten === 0) {
-            return;
-        }
-
-        if ($bytesWritten !== \strlen($this->writeBuffer)) {
-            $this->writeBuffer = \substr($this->writeBuffer, $bytesWritten);
-            return;
-        }
-
-        $this->writeBuffer = "";
-
-        Loop::disable($this->writeWatcher);
-        $deferred = $this->writeDeferred;
-        $this->writeDeferred = null;
-        $deferred->complete(null);
     }
 
     /**
@@ -454,7 +316,7 @@ final class RemoteClient implements Client
      * once the client write buffer has emptied.
      *
      * @param string $data The data to write.
-     * @param bool   $close If true, close the client after the given chunk of data has been written.
+     * @param bool $close If true, close the client after the given chunk of data has been written.
      *
      * @return Future
      */
@@ -464,89 +326,40 @@ final class RemoteClient implements Client
             return Future::error(new ClientException($this, "Client socket closed"));
         }
 
-        if (!$this->writeDeferred) {
-            $bytesWritten = @\fwrite($this->socket, $data);
-
-            if ($bytesWritten === false) {
-                $this->close();
-                return Future::error(new ClientException($this, "Client socket closed"));
-            }
-
-            if ($bytesWritten === \strlen($data)) {
-                if ($close) {
-                    $this->close();
-                }
-
-                return Future::complete(null);
-            }
-
-            $this->writeDeferred = new Deferred;
-            $data = \substr($data, $bytesWritten);
-        }
-
-        $this->writeBuffer .= $data;
-
-        Loop::enable($this->writeWatcher);
-
-        $promise = $this->writeDeferred->getFuture();
-
         if ($close) {
-            Loop::cancel($this->readWatcher);
             $this->status |= self::CLOSED_WR;
-            defer(fn () => $promise->join() ?? $this->close());
+            return $this->socket->end($data);
         }
 
-        return $promise;
+        return $this->socket->write($data);
     }
 
     /**
      * Invoked by the HTTP parser when a request is parsed.
      *
      * @param Request $request
-     * @param string  $buffer Remaining buffer in the parser.
+     * @param string $buffer Remaining buffer in the parser.
      *
      * @return Future
      */
     private function onMessage(Request $request, string $buffer = ''): Future
     {
         \assert($this->logger->debug(\sprintf(
-            "%s %s HTTP/%s @ %s",
-            $request->getMethod(),
-            $request->getUri(),
-            $request->getProtocolVersion(),
-            $this->clientAddress->toString()
-        )) || true);
+                "%s %s HTTP/%s @ %s",
+                $request->getMethod(),
+                $request->getUri(),
+                $request->getProtocolVersion(),
+                $this->socket->getRemoteAddress()->toString()
+            )) || true);
 
         return spawn(fn () => $this->respond($request, $buffer));
-    }
-
-    /**
-     * Resumes the request parser after it has yielded a promise.
-     *
-     * @param Future $future
-     */
-    private function resumeWhen(Future $future): void {
-        defer(function () use ($future): void {
-            try {
-                $future->join();
-            } catch (\Throwable) {
-                $this->close();
-                return;
-            }
-
-            if (!$this->isExported && !($this->status & self::CLOSED_RDWR)) {
-                $this->paused = false;
-                Loop::enable($this->readWatcher);
-                $this->parse();
-            }
-        });
     }
 
     /**
      * Respond to a parsed request.
      *
      * @param Request $request
-     * @param string  $buffer
+     * @param string $buffer
      */
     private function respond(Request $request, string $buffer): void
     {
@@ -643,9 +456,9 @@ final class RemoteClient implements Client
      * Invokes the export function on Response with the socket upgraded from the HTTP server.
      *
      * @param callable $upgrade
-     * @param Request  $request
+     * @param Request $request
      * @param Response $response
-     * @param string   $buffer Remaining buffer read from the socket.
+     * @param string $buffer Remaining buffer read from the socket.
      */
     private function export(callable $upgrade, Request $request, Response $response, string $buffer): void
     {
@@ -655,10 +468,9 @@ final class RemoteClient implements Client
 
         $this->clear();
 
-        \assert($this->logger->debug("Upgrade {$this->clientAddress} #{$this->id}") || true);
+        \assert($this->logger->debug("Upgrade {$this->socket->getRemoteAddress()} #{$this->id}") || true);
 
-        $socket = ResourceSocket::fromServerSocket($this->socket, $this->options->getChunkSize());
-        $socket = new UpgradedSocket($this, $socket, $buffer);
+        $socket = new UpgradedSocket($this, $this->socket, $buffer);
 
         try {
             $upgrade($socket, $request, $response);

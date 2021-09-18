@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\CancellationToken;
+use Amp\Future;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\ResourceSocket;
 use Amp\Socket\SocketAddress;
@@ -50,14 +51,14 @@ final class UpgradedSocket implements EncryptableSocket
         $this->close();
     }
 
-    public function write(string $data): void
+    public function write(string $data): Future
     {
-        $this->socket->write($data);
+        return $this->socket->write($data);
     }
 
-    public function end(string $finalData = ""): void
+    public function end(string $finalData = ""): Future
     {
-        $this->socket->end($finalData);
+        return $this->socket->end($finalData);
     }
 
     public function reference(): void

@@ -111,7 +111,7 @@ final class HttpServer
 
         $this->requestHandler = $requestHandler;
 
-        $this->timeoutWatcher = Loop::repeat(1000, \Closure::fromCallable([$this, 'checkClientTimeouts']));
+        $this->timeoutWatcher = Loop::repeat(1, \Closure::fromCallable([$this, 'checkClientTimeouts']));
         Loop::disable($this->timeoutWatcher);
 
         $this->observers = new \SplObjectStorage;

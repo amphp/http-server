@@ -191,19 +191,13 @@ final class Http1Driver implements HttpDriver
 
                 $buffer .= $chunk;
 
+                $this->updateTimeout();
+
                 if (\strlen($buffer) < $streamThreshold) {
                     continue;
                 }
 
-                // Initially the buffer won't be empty and contains the headers.
-                // We save a separate write or the headers here.
-                $future = ($this->write)($buffer);
-
-                $buffer = $chunk = ""; // Don't use null here, because of the finally
-
-                $this->updateTimeout();
-
-                $future->join();
+                ($this->write)($buffer)->join();
             }
 
             if ($chunked) {
@@ -221,7 +215,7 @@ final class Http1Driver implements HttpDriver
                 $this->updateTimeout();
                 ($this->write)($buffer, $shouldClose)->join();
             }
-        } catch (ClientException $exception) {
+        } catch (ClientException) {
             return; // Client will be closed in finally.
         } finally {
             if ($chunk !== null) {
@@ -253,7 +247,7 @@ final class Http1Driver implements HttpDriver
                 do {
                     if ($this->stopping) {
                         // Yielding an unresolved promise prevents further data from being read.
-                        yield (new Deferred)->promise();
+                        yield (new Deferred)->getFuture();
                     }
 
                     $buffer = \ltrim($buffer, "\r\n");
