@@ -37,15 +37,11 @@ final class HttpServer
 
     private Options $options;
 
-    private RequestHandler $requestHandler;
-
     private ErrorHandler $errorHandler;
 
     private ClientFactory $clientFactory;
 
     private HttpDriverFactory $driverFactory;
-
-    private PsrLogger $logger;
 
     private \SplObjectStorage $observers;
 
@@ -70,17 +66,20 @@ final class HttpServer
     /**
      * @param SocketServer[] $servers
      * @param RequestHandler $requestHandler
-     * @param PsrLogger      $logger
-     * @param Options|null   $options Null creates an Options object with all default options.
-     *
-     * @throws \Error
-     * @throws \TypeError If $servers contains anything other than instances of `Amp\Socket\Server`.
+     * @param PsrLogger $logger
+     * @param Options|null $options Null creates an Options object with all default options.
+     * @param ErrorHandler|null $errorHandler
+     * @param HttpDriverFactory|null $driverFactory
+     * @param ClientFactory|null $clientFactory
      */
     public function __construct(
         array $servers,
-        RequestHandler $requestHandler,
-        PsrLogger $logger,
-        Options $options = null
+        private RequestHandler $requestHandler,
+        private PsrLogger $logger,
+        ?Options $options = null,
+        ?ErrorHandler $errorHandler = null,
+        ?HttpDriverFactory $driverFactory = null,
+        ?ClientFactory $clientFactory = null,
     ) {
         foreach ($servers as $server) {
             if (!$server instanceof SocketServer) {
@@ -94,9 +93,7 @@ final class HttpServer
             throw new \Error("Argument 1 can't be an empty array");
         }
 
-        $this->logger = $logger;
         $this->options = $options ?? new Options;
-        $this->clientFactory = new DefaultClientFactory;
         $this->timeoutCache = new TimeoutCache;
 
         if ($this->options->isCompressionEnabled()) {
@@ -106,11 +103,9 @@ final class HttpServer
                     "Either activate the zlib extension or disable compression in the server's options."
                 );
             } else {
-                $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
+                $this->requestHandler = Middleware\stack($this->requestHandler, new CompressionMiddleware);
             }
         }
-
-        $this->requestHandler = $requestHandler;
 
         $this->timeoutWatcher = Loop::repeat(1, \Closure::fromCallable([$this, 'checkClientTimeouts']));
         Loop::disable($this->timeoutWatcher);
@@ -118,8 +113,9 @@ final class HttpServer
         $this->observers = new \SplObjectStorage;
         $this->observers->attach(new Internal\PerformanceRecommender);
 
-        $this->errorHandler = new DefaultErrorHandler;
-        $this->driverFactory = new DefaultHttpDriverFactory;
+        $this->clientFactory = $clientFactory ?? new DefaultClientFactory;
+        $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
+        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory;
     }
 
     public function __destruct()

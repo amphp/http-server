@@ -238,7 +238,7 @@ class RemoteClientTest extends AsyncTestCase
                     "OPTIONS", // method
                     Uri\Http::createFromString("http://localhost:80"), // URI
                     ["host" => ["localhost"]], // headers
-                    null // body
+                    '' // body
                 ),
                 Status::NO_CONTENT,
             ],
@@ -270,7 +270,7 @@ class RemoteClientTest extends AsyncTestCase
             "OPTIONS", // method
             Uri\Http::createFromString("http://localhost:80"), // URI
             ["host" => ["localhost"]], // headers
-            null // body
+            '' // body
         );
 
         /** @var Response $response */

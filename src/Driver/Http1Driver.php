@@ -443,7 +443,7 @@ final class Http1Driver implements HttpDriver
 
                 if (isset($headerMap["expect"][0]) && \strtolower($headerMap["expect"][0]) === "100-continue") {
                     yield spawn(fn () => $this->write(
-                        new Request($this->client, $method, $uri, $headerMap, null, $protocol),
+                        new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::CONTINUE, [])
                     ));
                 }
@@ -459,7 +459,7 @@ final class Http1Driver implements HttpDriver
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
                     yield spawn(fn () => $this->write(
-                        new Request($this->client, $method, $uri, $headerMap, null, $protocol),
+                        new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
                             "upgrade" => "h2c",
@@ -489,7 +489,7 @@ final class Http1Driver implements HttpDriver
                 $this->updateTimeout();
 
                 if (!($isChunked || $contentLength)) {
-                    $request = new Request($this->client, $method, $uri, [], null, $protocol);
+                    $request = new Request($this->client, $method, $uri, [], '', $protocol);
                     foreach ($headers as [$key, $value]) {
                         $request->addHeader($key, $value);
                     }

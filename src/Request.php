@@ -11,48 +11,35 @@ use Psr\Http\Message\UriInterface as PsrUri;
 
 final class Request extends Message
 {
-    private Client $client;
-
-    private string $method;
-
-    private PsrUri $uri;
-
-    private string $protocol;
-
     private ?RequestBody $body = null;
 
     /** @var RequestCookie[] */
     private array $cookies = [];
 
-    /** @var mixed[] */
+    /** @var array<string, mixed> */
     private array $attributes = [];
 
     private ?Trailers $trailers = null;
 
     /**
-     * @param Client                              $client The client sending the request.
-     * @param string                              $method HTTP request method.
-     * @param PsrUri                              $uri The full URI being requested, including host, port, and protocol.
-     * @param string[]|string[][]                 $headers An array of strings or an array of string arrays.
-     * @param RequestBody|InputStream|string|null $body
-     * @param string                              $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
-     * @param Trailers|null                       $trailers Trailers if request has trailers, or null otherwise.
+     * @param Client $client The client sending the request.
+     * @param string $method HTTP request method.
+     * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
+     * @param string[]|string[][] $headers An array of strings or an array of string arrays.
+     * @param RequestBody|InputStream|string $body
+     * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
+     * @param Trailers|null $trailers Trailers if request has trailers, or null otherwise.
      */
     public function __construct(
-        Client $client,
-        string $method,
-        PsrUri $uri,
+        private Client $client,
+        private string $method,
+        private PsrUri $uri,
         array $headers = [],
-        RequestBody|InputStream|string|null $body = null,
-        string $protocol = "1.1",
+        RequestBody|InputStream|string $body = '',
+        private string $protocol = "1.1",
         ?Trailers $trailers = null
     ) {
-        $this->client = $client;
-        $this->method = $method;
-        $this->uri = $uri;
-        $this->protocol = $protocol;
-
-        if ($body !== null) {
+        if ($body !== '') {
             $this->setBody($body);
         }
 
@@ -212,7 +199,7 @@ final class Request extends Message
     /**
      * Retrieve the request body.
      *
-     * @return \Amp\Http\Server\RequestBody
+     * @return RequestBody
      */
     public function getBody(): RequestBody
     {
@@ -227,43 +214,27 @@ final class Request extends Message
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Using an InputStream or Body instance will remove the Content-Length header.
      *
-     * @param RequestBody|InputStream|string|null $stringOrStream
+     * @param RequestBody|InputStream|string $stringOrStream
      *
      * @throws \Error
      * @throws \TypeError
      */
-    public function setBody($stringOrStream): void
+    public function setBody(RequestBody|InputStream|string $stringOrStream): void
     {
+        if ($stringOrStream instanceof InputStream) {
+            $stringOrStream = new RequestBody($stringOrStream);
+        }
+
         if ($stringOrStream instanceof RequestBody) {
             $this->body = $stringOrStream;
             $this->removeHeader("content-length");
             return;
         }
 
-        if ($stringOrStream instanceof InputStream) {
-            $this->body = new RequestBody($stringOrStream);
-            $this->removeHeader("content-length");
-            return;
-        }
+        $this->body = new RequestBody(new InMemoryStream($stringOrStream));
 
-        try {
-            // Use method with string type declaration, so we don't need to implement our own check.
-            $this->setBodyFromString($stringOrStream ?? "");
-        } catch (\TypeError $e) {
-            // Provide a better error message in case of a failure.
-            throw new \TypeError(\sprintf(
-                "The request body must a string, null, or an instance of %s",
-                InputStream::class
-            ));
-        }
-    }
-
-    private function setBodyFromString(string $body): void
-    {
-        $this->body = new RequestBody(new InMemoryStream($body));
-
-        if ($length = \strlen($body)) {
-            $this->setHeader("content-length", (string) \strlen($body));
+        if ($length = \strlen($stringOrStream)) {
+            $this->setHeader("content-length", (string) $length);
         } elseif (!\in_array($this->method, ["GET", "HEAD", "OPTIONS", "TRACE"])) {
             $this->setHeader("content-length", "0");
         } else {
@@ -347,7 +318,8 @@ final class Request extends Message
     }
 
     /**
-     * @return mixed[] An array of all request attributes in the request's mutable local storage, indexed by name.
+     * @return array<string, mixed> An array of all request attributes in the request's mutable local storage,
+     * indexed by name.
      */
     public function getAttributes(): array
     {
@@ -383,7 +355,7 @@ final class Request extends Message
      *
      * @throws MissingAttributeError If an attribute with the given name does not exist.
      */
-    public function getAttribute(string $name)
+    public function getAttribute(string $name): mixed
     {
         if (!$this->hasAttribute($name)) {
             throw new MissingAttributeError("The requested attribute '{$name}' does not exist");
@@ -408,7 +380,7 @@ final class Request extends Message
      * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
      * @param mixed $value Value of the attribute, might be any value.
      */
-    public function setAttribute(string $name, $value): void
+    public function setAttribute(string $name, mixed $value): void
     {
         $this->attributes[$name] = $value;
     }

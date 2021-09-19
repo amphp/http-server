@@ -658,10 +658,11 @@ class Http1DriverTest extends HttpDriverTest
      */
     public function testUpgradeBodySizeContentLength(string $data, string $payload): void
     {
-        $resultEmitter = function (Request $req) use (&$request) {
+        $onMessage = function (Request $req) use (&$request, $payload): Future {
             $body = $req->getBody();
-            $body->increaseSizeLimit(26);
+            $body->increaseSizeLimit(\strlen($payload));
             $request = $req;
+            return Future::complete(null);
         };
 
         $driver = new Http1Driver(
@@ -672,7 +673,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
-            $resultEmitter,
+            $onMessage,
             $this->createCallback(0)
         );
 
@@ -909,25 +910,25 @@ class Http1DriverTest extends HttpDriverTest
     {
         $data = [
             [
-                new Request($this->createClientMock(), "HEAD", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "HEAD", Uri\Http::createFromString('/')),
                 new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=\d{2}\r\ndate: .* GMT\r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/')),
                 new Response(Status::OK, [], new InMemoryStream, new Trailers(Future::complete(['test' => 'value']), ['test'])),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/')),
                 new Response(Status::OK, ["content-length" => 0], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
+                new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0'),
                 new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: .* GMT\r\n\r\n",
                 true,
@@ -968,7 +969,7 @@ class Http1DriverTest extends HttpDriverTest
         );
 
         $emitter = new Subject;
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0');
         Future\spawn(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         delay(0.1);

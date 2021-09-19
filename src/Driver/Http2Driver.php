@@ -405,7 +405,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
         $this->remoteStreamId = \max($id, $this->remoteStreamId);
 
-        $request = new Request($this->client, "GET", $pushUri, $headers, null, "2");
+        $request = new Request($this->client, "GET", $pushUri, $headers, "", "2");
 
         $this->streams[$id] = $stream = new Http2Stream(
             0, // No data will be incoming on this stream.
@@ -891,7 +891,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 $method,
                 $uri,
                 $headers,
-                null,
+                "",
                 "2"
             );
 

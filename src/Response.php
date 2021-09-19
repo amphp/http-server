@@ -35,17 +35,17 @@ final class Response extends Message
     private ?Trailers $trailers = null;
 
     /**
-     * @param int                     $code Status code.
-     * @param string[]|string[][]     $headers
-     * @param InputStream|string|null $stringOrStream
-     * @param Trailers|null           $trailers
+     * @param int $code Status code.
+     * @param string[]|string[][] $headers
+     * @param InputStream|string $stringOrStream
+     * @param Trailers|null $trailers
      *
      * @throws \Error If one of the arguments is invalid.
      */
     public function __construct(
         int $code = Status::OK,
         array $headers = [],
-        InputStream|string|null $stringOrStream = null,
+        InputStream|string $stringOrStream = '',
         ?Trailers $trailers = null
     ) {
         $this->status = $this->validateStatusCode($code);
@@ -83,11 +83,11 @@ final class Response extends Message
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Setting a stream will remove the Content-Length header.
      *
-     * @param InputStream|string|null $stringOrStream
+     * @param InputStream|string $stringOrStream
      *
      * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
      */
-    public function setBody(InputStream|string|null $stringOrStream): void
+    public function setBody(InputStream|string $stringOrStream): void
     {
         if ($stringOrStream instanceof InputStream) {
             $this->body = $stringOrStream;
@@ -95,19 +95,8 @@ final class Response extends Message
             return;
         }
 
-        try {
-            // Use method with string type declaration, so we don't need to implement our own check.
-            $this->setBodyFromString($stringOrStream ?? "");
-        } catch (\TypeError $e) {
-            // Provide a better error message in case of a failure.
-            throw new \TypeError("The response body must be a string, null, or instance of " . InputStream::class);
-        }
-    }
-
-    private function setBodyFromString(string $body): void
-    {
-        $this->body = new InMemoryStream($body);
-        $this->setHeader("content-length", (string) \strlen($body));
+        $this->body = new InMemoryStream($stringOrStream);
+        $this->setHeader("content-length", (string) \strlen($stringOrStream));
     }
 
     /**
@@ -132,7 +121,7 @@ final class Response extends Message
     /**
      * Sets the named header to the given value.
      *
-     * @param string          $name
+     * @param string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -153,7 +142,7 @@ final class Response extends Message
     /**
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
-     * @param string          $name
+     * @param string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -209,7 +198,7 @@ final class Response extends Message
      * Sets the response status code and reason phrase. Use null for the reason phrase to use the default phrase
      * associated with the status code.
      *
-     * @param int         $code 100 - 599
+     * @param int $code 100 - 599
      * @param string|null $reason
      */
     public function setStatus(int $code, string $reason = null): void

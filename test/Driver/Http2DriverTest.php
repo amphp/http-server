@@ -287,7 +287,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(Http2Parser::PREFACE);
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
 
         $body = "foo";
         $trailers = new Trailers(Future::complete(["expires" => "date"]), ["expires"]);
@@ -353,7 +353,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(Http2Parser::PREFACE);
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
 
         $emitter = new Subject;
         defer(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
@@ -779,7 +779,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertTrue($invoked);
 
         // Note that Request object is not actually used in this test.
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
+        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
         $driver->write($request, new Response(Status::OK, [
             "content-length" => "0",
         ]));
