@@ -12,6 +12,7 @@ use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
+use Amp\Socket\ResourceSocket;
 use Amp\Socket\Server as SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop\Loop;
@@ -307,7 +308,7 @@ final class HttpServer
         }
 
         $client = $this->clientFactory->createClient(
-            $socket,
+            ResourceSocket::fromServerSocket($socket),
             $this->requestHandler,
             $this->errorHandler,
             $this->logger,

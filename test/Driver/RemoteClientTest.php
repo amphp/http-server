@@ -343,7 +343,7 @@ class RemoteClientTest extends AsyncTestCase
         [$server, $client] = Socket\createPair();
 
         $client = new RemoteClient(
-            $client->getResource(),
+            $client,
             $requestHandler,
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
@@ -471,7 +471,7 @@ class RemoteClientTest extends AsyncTestCase
         [$server, $client] = Socket\createPair();
 
         $client = new RemoteClient(
-            $client->getResource(),
+            $client,
             new CallableRequestHandler($requestHandler),
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
@@ -513,7 +513,7 @@ class RemoteClientTest extends AsyncTestCase
             ->withDebugMode();
 
         $client = new RemoteClient(
-            $socket,
+            Socket\ResourceSocket::fromServerSocket($socket),
             $this->createMock(RequestHandler::class),
             $this->createMock(ErrorHandler::class),
             $this->createMock(PsrLogger::class),

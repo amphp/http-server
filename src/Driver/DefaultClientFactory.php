@@ -5,12 +5,13 @@ namespace Amp\Http\Server\Driver;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\RequestHandler;
+use Amp\Socket\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 final class DefaultClientFactory implements ClientFactory
 {
     public function createClient(
-        $socket,
+        Socket $socket,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,

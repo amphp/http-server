@@ -11,7 +11,7 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
-use Amp\Socket\ResourceSocket;
+use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 use Amp\TimeoutCancellationToken;
@@ -25,9 +25,9 @@ final class RemoteClient implements Client
 
     private static DefaultErrorHandler $defaultErrorHandler;
 
-    private int $id;
+    private static $nextId = 0;
 
-    private ResourceSocket $socket;
+    private int $id;
 
     private ?TlsInfo $tlsInfo = null;
 
@@ -35,27 +35,17 @@ final class RemoteClient implements Client
 
     private bool $isExported = false;
 
-    private Options $options;
-
     private HttpDriver $httpDriver;
-
-    private RequestHandler $requestHandler;
-
-    private ErrorHandler $errorHandler;
 
     /** @var callable[]|null */
     private ?array $onClose = [];
-
-    private TimeoutCache $timeoutCache;
-
-    private PsrLogger $logger;
 
     private int $pendingHandlers = 0;
 
     private int $pendingResponses = 0;
 
     /**
-     * @param resource $socket Stream socket resource.
+     * @param Socket $socket
      * @param RequestHandler $requestHandler
      * @param ErrorHandler $errorHandler
      * @param PsrLogger $logger
@@ -63,23 +53,15 @@ final class RemoteClient implements Client
      * @param TimeoutCache $timeoutCache
      */
     public function __construct(
-        $socket,
-        RequestHandler $requestHandler,
-        ErrorHandler $errorHandler,
-        PsrLogger $logger,
-        Options $options,
-        TimeoutCache $timeoutCache
+        private Socket $socket,
+        private RequestHandler $requestHandler,
+        private ErrorHandler $errorHandler,
+        private PsrLogger $logger,
+        private Options $options,
+        private TimeoutCache $timeoutCache
     ) {
         self::$defaultErrorHandler ??= new DefaultErrorHandler;
-
-        $this->socket = ResourceSocket::fromClientSocket($socket);
-        $this->id = (int) $socket;
-
-        $this->options = $options;
-        $this->timeoutCache = $timeoutCache;
-        $this->logger = $logger;
-        $this->requestHandler = $requestHandler;
-        $this->errorHandler = $errorHandler;
+        $this->id = self::$nextId++;
     }
 
     /**

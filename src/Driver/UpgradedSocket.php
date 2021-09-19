@@ -5,25 +5,24 @@ namespace Amp\Http\Server\Driver;
 use Amp\CancellationToken;
 use Amp\Future;
 use Amp\Socket\EncryptableSocket;
-use Amp\Socket\ResourceSocket;
+use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 
 final class UpgradedSocket implements EncryptableSocket
 {
-    private Client $client;
-
-    private ResourceSocket $socket;
-
     private ?string $buffer;
 
     /**
-     * @param Client         $client
-     * @param ResourceSocket $socket
-     * @param string         $buffer Remaining buffer previously read from the socket.
+     * @param Client $client
+     * @param Socket $socket
+     * @param string $buffer Remaining buffer previously read from the socket.
      */
-    public function __construct(Client $client, ResourceSocket $socket, string $buffer)
-    {
+    public function __construct(
+        private Client $client,
+        private Socket $socket,
+        string $buffer
+    ) {
         $this->client = $client;
         $this->socket = $socket;
         $this->buffer = $buffer !== '' ? $buffer : null;

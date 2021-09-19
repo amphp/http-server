@@ -5,22 +5,23 @@ namespace Amp\Http\Server\Driver;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\RequestHandler;
+use Amp\Socket\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 interface ClientFactory
 {
     /**
-     * @param resource       $socket Stream socket resource.
+     * @param Socket $socket
      * @param RequestHandler $requestHandler
-     * @param ErrorHandler   $errorHandler
-     * @param PsrLogger      $logger
-     * @param Options        $options
-     * @param TimeoutCache   $timeoutCache
+     * @param ErrorHandler $errorHandler
+     * @param PsrLogger $logger
+     * @param Options $options
+     * @param TimeoutCache $timeoutCache
      *
      * @return Client
      */
     public function createClient(
-        $socket,
+        Socket $socket,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
