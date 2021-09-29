@@ -37,7 +37,7 @@
         "amphp/socket": "^1",
         "league/uri": "^6",
         "psr/http-message": "^1",
-        "psr/log": "^1",
+        "psr/log": "^1|^2|^3",
         "cash/lrucache": "^1"
     },
     "require-dev": {
