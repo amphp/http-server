@@ -16,8 +16,9 @@ use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 use Amp\TimeoutCancellationToken;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\Future\spawn;
-use function Revolt\EventLoop\defer;
+use Revolt\EventLoop;
+use function Amp\coroutine;
+use function Revolt\launch;
 
 final class RemoteClient implements Client
 {
@@ -77,7 +78,7 @@ final class RemoteClient implements Client
             throw new \Error("Client already started");
         }
 
-        defer(function () use ($driverFactory): void {
+        launch(function () use ($driverFactory): void {
             try {
                 $context = \stream_context_get_options($this->socket->getResource());
                 if (isset($context["ssl"])) {
@@ -102,7 +103,7 @@ final class RemoteClient implements Client
                 while (!$this->isExported && null !== $chunk = $this->socket->read()) {
                     $future = $requestParser->send($chunk); // Parser yields a Future or null.
                     if ($future instanceof Future) {
-                        $future->join();
+                        $future->await();
                         $requestParser->send(null); // Signal the parser that the yielded future has completed.
                     }
                 }
@@ -250,17 +251,17 @@ final class RemoteClient implements Client
 
         $this->socket->close();
 
-        \assert(function (): bool {
+        \assert((function (): bool {
             if (($this->socket->getLocalAddress()->getHost()[0] ?? "") !== "/") { // no unix domain socket
                 $this->logger->debug("Close {$this->socket->getRemoteAddress()} #{$this->id}");
             } else {
                 $this->logger->debug("Close connection on {$this->socket->getLocalAddress()} #{$this->id}");
             }
             return true;
-        });
+        })());
 
         foreach ($onClose as $callback) {
-            defer(fn () => $callback($this));
+            EventLoop::defer(fn () => $callback($this));
         }
     }
 
@@ -268,7 +269,7 @@ final class RemoteClient implements Client
     public function onClose(callable $callback): void
     {
         if ($this->onClose === null) {
-            defer(fn () => $callback($this));
+            EventLoop::defer(fn () => $callback($this));
             return;
         }
 
@@ -284,7 +285,7 @@ final class RemoteClient implements Client
         }
 
         try {
-            spawn(fn () => $this->httpDriver->stop())->join(new TimeoutCancellationToken($timeout));
+            coroutine(fn () => $this->httpDriver->stop())->await(new TimeoutCancellationToken($timeout));
         } finally {
             $this->close();
         }
@@ -337,7 +338,7 @@ final class RemoteClient implements Client
                 $this->socket->getRemoteAddress()->toString()
             )) || true);
 
-        return spawn(fn () => $this->respond($request, $buffer));
+        return coroutine(fn () => $this->respond($request, $buffer));
     }
 
     /**

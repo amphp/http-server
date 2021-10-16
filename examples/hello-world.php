@@ -13,7 +13,7 @@ use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Monolog\Logger;
-use function Revolt\EventLoop\trapSignal;
+use function Amp\trapSignal;
 
 // Run this script, then visit http://localhost:1337/ or https://localhost:1338/ in your browser.
 
@@ -43,7 +43,7 @@ $server = new HttpServer($servers, new CallableRequestHandler(static function (R
 $server->start();
 
 // Await SIGINT or SIGTERM to be received.
-$signal = trapSignal(\SIGINT, \SIGTERM);
+$signal = trapSignal([\SIGINT, \SIGTERM]);
 
 $logger->info(\sprintf("Received signal %d, stopping HTTP server", $signal));
 

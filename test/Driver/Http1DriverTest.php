@@ -21,8 +21,9 @@ use Amp\Http\Status;
 use Amp\Pipeline\Subject;
 use League\Uri;
 use Psr\Log\NullLogger;
-use function Revolt\EventLoop\defer;
-use function Revolt\EventLoop\delay;
+use function Amp\coroutine;
+use function Amp\delay;
+use function Revolt\launch;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -735,7 +736,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertInstanceOf(Request::class, $request);
 
-        defer(function () use (&$body, $request): void {
+        launch(function () use (&$body, $request): void {
             $body = $request->getBody()->buffer();
         });
 
@@ -746,7 +747,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertSame($results[0], $body);
 
-        defer(fn () => $driver->write($request, new Response));
+        launch(fn () => $driver->write($request, new Response));
         $request = null;
         $body = null;
 
@@ -757,7 +758,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertInstanceOf(Request::class, $request);
 
-        defer(function () use (&$body, $request): void {
+        launch(function () use (&$body, $request): void {
             $body = $request->getBody()->buffer();
         });
 
@@ -769,7 +770,7 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($results[1], $body);
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
-        Future\spawn(fn () => $driver->write($request, new Response));
+        coroutine(fn () => $driver->write($request, new Response));
         $request = null;
         $body = null;
 
@@ -786,7 +787,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertInstanceOf(Request::class, $request);
 
-        defer(function () use (&$body, $request): void {
+        launch(function () use (&$body, $request): void {
             $body = $request->getBody()->buffer();
         });
 
@@ -798,7 +799,7 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($results[0], $body);
 
         $request = new Request($this->createClientMock(), "POST", Uri\Http::createFromString("/"));
-        Future\spawn(fn () => $driver->write($request, new Response));
+        coroutine(fn () => $driver->write($request, new Response));
         $request = null;
 
         self::assertSame(3, $responses);
@@ -856,10 +857,10 @@ class Http1DriverTest extends HttpDriverTest
         $response = new Response(Status::OK, $headers, new PipelineStream($emitter->asPipeline()));
         $response->push("/foo");
 
-        Future\spawn(fn () => $driver->write($request, $response));
+        coroutine(fn () => $driver->write($request, $response));
 
         foreach (\str_split($data) as $c) {
-            $emitter->emit($c);
+            $emitter->emit($c)->ignore();
         }
         $emitter->complete();
 
@@ -970,11 +971,11 @@ class Http1DriverTest extends HttpDriverTest
 
         $emitter = new Subject;
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0');
-        Future\spawn(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        coroutine(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         delay(0.1);
 
-        $emitter->emit("foo");
+        $emitter->emit("foo")->ignore();
         self::assertNull($invoked);
         $emitter->complete();
 

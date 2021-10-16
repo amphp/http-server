@@ -5,6 +5,7 @@ namespace Amp\Http\Server;
 use Amp\Future;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
+use function Amp\coroutine;
 
 final class Trailers
 {
@@ -53,8 +54,8 @@ final class Trailers
             }
         }
 
-        $this->headers = Future\spawn(static function () use ($future, $fields): Message {
-            return new class($future->join(), $fields) extends Message {
+        $this->headers = coroutine(static function () use ($future, $fields): Message {
+            return new class($future->await(), $fields) extends Message {
                 public function __construct(array $headers, array $fields)
                 {
                     $this->setHeaders($headers);
@@ -80,6 +81,9 @@ final class Trailers
                 }
             };
         });
+
+        // Future may fail due to client disconnect or error, but we don't want to force awaiting.
+        $this->headers->ignore();
     }
 
     /**
@@ -95,6 +99,6 @@ final class Trailers
      */
     public function await(): Message
     {
-        return $this->headers->join();
+        return $this->headers->await();
     }
 }

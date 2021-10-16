@@ -19,9 +19,10 @@ use Amp\PHPUnit\AsyncTestCase;
 use Amp\Pipeline\Subject;
 use League\Uri;
 use Psr\Log\NullLogger;
+use function Amp\coroutine;
+use function Amp\delay;
 use function Amp\Http\formatDateHeader;
-use function Revolt\EventLoop\defer;
-use function Revolt\EventLoop\delay;
+use function Revolt\launch;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -293,7 +294,7 @@ class Http2DriverTest extends HttpDriverTest
         $trailers = new Trailers(Future::complete(["expires" => "date"]), ["expires"]);
 
         $emitter = new Subject;
-        defer(fn () => $driver->write($request, new Response(Status::OK, [
+        launch(fn () => $driver->write($request, new Response(Status::OK, [
             "content-length" => \strlen($body),
         ], new PipelineStream($emitter->asPipeline()), $trailers)));
 
@@ -356,7 +357,7 @@ class Http2DriverTest extends HttpDriverTest
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
 
         $emitter = new Subject;
-        defer(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        launch(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         $emitter->emit("foo");
         $emitter->error(new \Exception);
@@ -437,7 +438,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $emitter = new Subject;
-        defer(fn () => $driver->write($request, new Response(
+        launch(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new PipelineStream($emitter->asPipeline())
@@ -457,7 +458,7 @@ class Http2DriverTest extends HttpDriverTest
             1,
         ], \array_pop($driver->frames));
 
-        $emitter->emit(\str_repeat("_", 66002));
+        $emitter->emit(\str_repeat("_", 66002))->ignore();
         $emitter->complete();
 
         delay(0.1);
@@ -522,7 +523,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $emitter = new Subject;
-        defer(fn () => $driver->write($request, new Response(
+        launch(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new PipelineStream($emitter->asPipeline())
@@ -542,7 +543,7 @@ class Http2DriverTest extends HttpDriverTest
             3,
         ], \array_pop($driver->frames));
 
-        $emitter->emit("**");
+        $emitter->emit("**")->ignore();
 
         delay(0.1); // Allow loop to tick for defer to execute in driver.
 
@@ -553,7 +554,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertEquals("**", $data);
         self::assertEquals(3, $stream);
 
-        $emitter->emit("*");
+        $emitter->emit("*")->ignore();
         self::assertCount(0, $driver->frames); // global window too small
 
         $parser->send(self::packFrame(\pack("N", 1), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG));
@@ -606,9 +607,9 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $emitter = new Subject;
-        $writer = Future\spawn(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        $writer = coroutine(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
-        $emitter->emit("{data}");
+        $emitter->emit("{data}")->ignore();
 
         $parser->send(self::packFrame(
             \pack("N", Http2Parser::REFUSED_STREAM),
@@ -617,9 +618,9 @@ class Http2DriverTest extends HttpDriverTest
             1
         ));
 
-        $emitter->emit("{data}");
+        $emitter->emit("{data}")->ignore();
 
-        $writer->join(); // Will throw if the writer is not complete.
+        $writer->await(); // Will throw if the writer is not complete.
     }
 
     public function testPush(): void

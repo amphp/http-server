@@ -8,7 +8,7 @@ use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Message;
 use Amp\Http\Status;
 use League\Uri;
-use function Revolt\EventLoop\defer;
+use Revolt\EventLoop;
 
 final class Response extends Message
 {
@@ -65,7 +65,7 @@ final class Response extends Message
     public function __destruct()
     {
         foreach ($this->onDispose as $callable) {
-            defer($callable);
+            EventLoop::defer($callable);
         }
     }
 

@@ -36,8 +36,8 @@ use Amp\Socket\ServerTlsContext;
 use League\Uri;
 use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\Future\spawn;
-use function Revolt\EventLoop\delay;
+use function Amp\coroutine;
+use function Amp\delay;
 
 class RemoteClientTest extends AsyncTestCase
 {
@@ -192,8 +192,8 @@ class RemoteClientTest extends AsyncTestCase
             new RequestBody(new PipelineStream($emitter->asPipeline())) // body
         );
 
-        $emitter->emit("fooBar");
-        $emitter->emit("BUZZ!");
+        $emitter->emit("fooBar")->ignore();
+        $emitter->emit("BUZZ!")->ignore();
         $emitter->complete();
 
         /** @var Response $response */
@@ -393,7 +393,7 @@ class RemoteClientTest extends AsyncTestCase
             $uri = $server->getAddress();
         }
 
-        $future = spawn(function () use ($server, $tls) {
+        $future = coroutine(function () use ($server, $tls) {
             $socket = $server->accept();
 
             \assert($socket !== null);
@@ -436,7 +436,7 @@ class RemoteClientTest extends AsyncTestCase
             $write("d");
         }, $client);
 
-        $future->join();
+        $future->await();
 
         $client->stop(0);
     }

@@ -15,7 +15,8 @@ use Amp\Socket;
 use Amp\Socket\ResourceSocket;
 use Amp\Socket\Server as SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
-use Revolt\EventLoop\Loop;
+use Revolt\EventLoop;
+use function Amp\coroutine;
 
 final class HttpServer
 {
@@ -107,8 +108,8 @@ final class HttpServer
             }
         }
 
-        $this->timeoutWatcher = Loop::repeat(1, \Closure::fromCallable([$this, 'checkClientTimeouts']));
-        Loop::disable($this->timeoutWatcher);
+        $this->timeoutWatcher = EventLoop::repeat(1, \Closure::fromCallable([$this, 'checkClientTimeouts']));
+        EventLoop::disable($this->timeoutWatcher);
 
         $this->observers = new \SplObjectStorage;
         $this->observers->attach(new Internal\PerformanceRecommender);
@@ -121,7 +122,7 @@ final class HttpServer
     public function __destruct()
     {
         if ($this->timeoutWatcher) {
-            Loop::cancel($this->timeoutWatcher);
+            EventLoop::cancel($this->timeoutWatcher);
         }
     }
 
@@ -258,7 +259,7 @@ final class HttpServer
 
         $futures = [];
         foreach ($this->observers as $observer) {
-            $futures[] = Future\spawn(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
+            $futures[] = coroutine(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
         }
         [$exceptions] = Future\settle($futures);
 
@@ -290,11 +291,11 @@ final class HttpServer
                 }
             }
 
-            $this->acceptWatcherIds[$serverName] = Loop::onReadable($server, $onAcceptable);
+            $this->acceptWatcherIds[$serverName] = EventLoop::onReadable($server, $onAcceptable);
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
         }
 
-        Loop::enable($this->timeoutWatcher);
+        EventLoop::enable($this->timeoutWatcher);
     }
 
     private function onAcceptable(string $watcherId, $server): void
@@ -324,7 +325,7 @@ final class HttpServer
             $this->clientsPerIP[$net] = 0;
         }
 
-        $client->onClose(function (Client $client) use ($net) {
+        $client->onClose(function (Client $client) use ($net): void {
             unset($this->clients[$client->getId()]);
 
             if (--$this->clientsPerIP[$net] === 0) {
@@ -394,21 +395,21 @@ final class HttpServer
         $this->state = self::STOPPING;
 
         foreach ($this->acceptWatcherIds as $watcherId) {
-            Loop::cancel($watcherId);
+            EventLoop::cancel($watcherId);
         }
         $this->boundServers = [];
         $this->acceptWatcherIds = [];
 
         $futures = [];
         foreach ($this->observers as $observer) {
-            $futures[] = Future\spawn(fn() => $observer->onStop($this));
+            $futures[] = coroutine(fn() => $observer->onStop($this));
         }
 
         [$exceptions] = Future\settle($futures);
 
         $futures = [];
         foreach ($this->clients as $client) {
-            $futures[] = Future\spawn(fn () => $client->stop($timeout));
+            $futures[] = coroutine(fn () => $client->stop($timeout));
         }
 
         Future\settle($futures);
@@ -420,7 +421,7 @@ final class HttpServer
             throw new CompositeException($exceptions, "onStop observer failure");
         }
 
-        Loop::disable($this->timeoutWatcher);
+        EventLoop::disable($this->timeoutWatcher);
     }
 
     private function checkClientTimeouts(): void

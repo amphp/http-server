@@ -8,7 +8,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\PHPUnit\LoopCaughtException;
 use Amp\PHPUnit\TestException;
-use function Revolt\EventLoop\delay;
+use function Amp\delay;
 
 class ResponseTest extends AsyncTestCase
 {

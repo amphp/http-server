@@ -30,21 +30,21 @@
     ],
     "require": {
         "php": ">=8",
-        "amphp/amp": "dev-v3-revolt",
-        "amphp/byte-stream": "dev-v2-revolt",
+        "amphp/amp": "v3.x-dev",
+        "amphp/byte-stream": "v2.x-dev",
         "amphp/hpack": "^3",
         "amphp/http": "^1.6",
-        "amphp/pipeline": "dev-master as 1.0",
-        "amphp/socket": "dev-v2-revolt",
+        "amphp/pipeline": "v1.x-dev",
+        "amphp/socket": "v2.x-dev",
         "league/uri": "^6",
         "psr/http-message": "^1",
         "psr/log": "^1",
         "cash/lrucache": "^1"
     },
     "require-dev": {
-        "amphp/phpunit-util": "dev-v2-revolt",
-        "amphp/http-client": "dev-v5-revolt",
-        "amphp/log": "dev-v2-revolt",
+        "amphp/phpunit-util": "v2.x-dev",
+        "amphp/http-client": "v5.x-dev",
+        "amphp/log": "v2.x-dev",
         "amphp/php-cs-fixer-config": "dev-master",
         "league/uri-components": "^2",
         "monolog/monolog": "^2 || ^1.23",
@@ -52,16 +52,6 @@
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "git@github.com:revolt-php/event-loop.git"
-        },
-        {
-            "type": "vcs",
-            "url": "git@github.com:revolt-php/future.git"
-        }
-    ],
     "suggest": {
         "ext-zlib": "Allows GZip compression of response bodies"
     },

@@ -11,7 +11,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Revolt\EventLoop\delay;
+use function Amp\delay;
 
 class ServerTest extends AsyncTestCase
 {

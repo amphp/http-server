@@ -18,7 +18,7 @@ use Amp\Http\Status;
 use Amp\Pipeline\Subject;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\Future\spawn;
+use function Amp\coroutine;
 use function Amp\Http\formatDateHeader;
 
 final class Http1Driver implements HttpDriver
@@ -108,8 +108,8 @@ final class Http1Driver implements HttpDriver
     {
         $this->stopping = true;
 
-        $this->pendingResponse->join();
-        $this->lastWrite->join();
+        $this->pendingResponse->await();
+        $this->lastWrite->await();
     }
 
     private function updateTimeout(): void
@@ -128,7 +128,7 @@ final class Http1Driver implements HttpDriver
     {
         \assert(isset($this->client), "The driver has not been setup; call setup first");
 
-        $lastWrite->join(); // Prevent sending multiple responses at once.
+        $lastWrite->await(); // Prevent sending multiple responses at once.
 
         $this->updateTimeout();
 
@@ -169,7 +169,7 @@ final class Http1Driver implements HttpDriver
         $buffer .= "\r\n";
 
         if ($request !== null && $request->getMethod() === "HEAD") {
-            ($this->write)($buffer, $shouldClose)->join();
+            ($this->write)($buffer, $shouldClose)->await();
             return;
         }
 
@@ -197,7 +197,7 @@ final class Http1Driver implements HttpDriver
                     continue;
                 }
 
-                ($this->write)($buffer)->join();
+                ($this->write)($buffer)->await();
             }
 
             if ($chunked) {
@@ -213,7 +213,7 @@ final class Http1Driver implements HttpDriver
 
             if ($buffer !== "" || $shouldClose) {
                 $this->updateTimeout();
-                ($this->write)($buffer, $shouldClose)->join();
+                ($this->write)($buffer, $shouldClose)->await();
             }
         } catch (ClientException) {
             return; // Client will be closed in finally.
@@ -442,7 +442,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headerMap["expect"][0]) && \strtolower($headerMap["expect"][0]) === "100-continue") {
-                    yield spawn(fn () => $this->write(
+                    yield coroutine(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::CONTINUE, [])
                     ));
@@ -458,7 +458,7 @@ final class Http1Driver implements HttpDriver
                     && false !== $h2cSettings = \base64_decode(\strtr($headerMap["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    yield spawn(fn () => $this->write(
+                    yield coroutine(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
@@ -791,7 +791,7 @@ final class Http1Driver implements HttpDriver
         $response->setHeader("connection", "close");
 
         $lastWrite = $this->lastWrite;
-        return $this->lastWrite = spawn(fn () => $this->send($lastWrite, $response));
+        return $this->lastWrite = coroutine(fn () => $this->send($lastWrite, $response));
     }
 
     /**
