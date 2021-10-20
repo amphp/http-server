@@ -25,7 +25,6 @@ use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\Http\formatDateHeader;
-use function Revolt\launch;
 
 final class Http2Driver implements HttpDriver, Http2Processor
 {
@@ -1038,7 +1037,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $future->ignore();
 
         if ($stream->serverWindow <= self::MINIMUM_WINDOW) {
-            launch(function () use ($future, $stream, $streamId): void {
+            EventLoop::queue(function () use ($future, $stream, $streamId): void {
                 try {
                     $future->await();
                 } catch (\Throwable) {

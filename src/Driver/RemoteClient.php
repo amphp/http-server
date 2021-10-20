@@ -18,7 +18,6 @@ use Amp\TimeoutCancellationToken;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\coroutine;
-use function Revolt\launch;
 
 final class RemoteClient implements Client
 {
@@ -78,7 +77,7 @@ final class RemoteClient implements Client
             throw new \Error("Client already started");
         }
 
-        launch(function () use ($driverFactory): void {
+        EventLoop::queue(function () use ($driverFactory): void {
             try {
                 $context = \stream_context_get_options($this->socket->getResource());
                 if (isset($context["ssl"])) {

@@ -21,9 +21,9 @@ use Amp\Http\Status;
 use Amp\Pipeline\Subject;
 use League\Uri;
 use Psr\Log\NullLogger;
+use Revolt\EventLoop;
 use function Amp\coroutine;
 use function Amp\delay;
-use function Revolt\launch;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -736,7 +736,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertInstanceOf(Request::class, $request);
 
-        launch(function () use (&$body, $request): void {
+        EventLoop::queue(function () use (&$body, $request): void {
             $body = $request->getBody()->buffer();
         });
 
@@ -747,7 +747,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertSame($results[0], $body);
 
-        launch(fn () => $driver->write($request, new Response));
+        EventLoop::queue(fn () => $driver->write($request, new Response));
         $request = null;
         $body = null;
 
@@ -758,7 +758,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertInstanceOf(Request::class, $request);
 
-        launch(function () use (&$body, $request): void {
+        EventLoop::queue(function () use (&$body, $request): void {
             $body = $request->getBody()->buffer();
         });
 
@@ -787,7 +787,7 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertInstanceOf(Request::class, $request);
 
-        launch(function () use (&$body, $request): void {
+        EventLoop::queue(function () use (&$body, $request): void {
             $body = $request->getBody()->buffer();
         });
 

@@ -19,10 +19,10 @@ use Amp\PHPUnit\AsyncTestCase;
 use Amp\Pipeline\Subject;
 use League\Uri;
 use Psr\Log\NullLogger;
+use Revolt\EventLoop;
 use function Amp\coroutine;
 use function Amp\delay;
 use function Amp\Http\formatDateHeader;
-use function Revolt\launch;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -294,7 +294,7 @@ class Http2DriverTest extends HttpDriverTest
         $trailers = new Trailers(Future::complete(["expires" => "date"]), ["expires"]);
 
         $emitter = new Subject;
-        launch(fn () => $driver->write($request, new Response(Status::OK, [
+        EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [
             "content-length" => \strlen($body),
         ], new PipelineStream($emitter->asPipeline()), $trailers)));
 
@@ -357,7 +357,7 @@ class Http2DriverTest extends HttpDriverTest
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
 
         $emitter = new Subject;
-        launch(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         $emitter->emit("foo");
         $emitter->error(new \Exception);
@@ -438,7 +438,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $emitter = new Subject;
-        launch(fn () => $driver->write($request, new Response(
+        EventLoop::queue(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new PipelineStream($emitter->asPipeline())
@@ -523,7 +523,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $emitter = new Subject;
-        launch(fn () => $driver->write($request, new Response(
+        EventLoop::queue(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new PipelineStream($emitter->asPipeline())
