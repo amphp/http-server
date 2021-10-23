@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Middleware;
 
-use Amp\AsyncGenerator;
+use Amp\Pipeline\AsyncGenerator;
 use Amp\ByteStream\PipelineStream;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
