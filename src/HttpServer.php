@@ -336,7 +336,7 @@ final class HttpServer
         });
 
         if ($this->clientCount++ === $this->options->getConnectionLimit()) {
-            \assert($this->logger->debug("Client denied: too many existing connections") || true);
+            $this->logger->warning("Client denied: too many existing connections");
             $client->close();
             return;
         }
@@ -350,17 +350,13 @@ final class HttpServer
             && $ip !== "::1" && \strncmp($ip, "127.", 4) !== 0 && $client->getLocalAddress()->getPort() !== null
             && \strncmp(\inet_pton($ip), '\0\0\0\0\0\0\0\0\0\0\xff\xff\7f', 31)
         ) {
-            \assert((function () use ($ip) {
-                $packedIp = @\inet_pton($ip);
+            $packedIp = @\inet_pton($ip);
 
-                if (isset($packedIp[4])) {
-                    $ip .= "/56";
-                }
+            if (isset($packedIp[4])) {
+                $ip .= "/56";
+            }
 
-                $this->logger->debug("Client denied: too many existing connections from {$ip}");
-
-                return true;
-            })());
+            $this->logger->warning("Client denied: too many existing connections from {$ip}");
 
             $client->close();
             return;
