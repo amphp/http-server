@@ -198,6 +198,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 ($this->write)($buffer)->await();
+                $buffer = "";
             }
 
             if ($chunked) {
