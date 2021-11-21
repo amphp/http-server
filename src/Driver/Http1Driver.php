@@ -15,10 +15,10 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Pipeline\Subject;
+use Amp\Pipeline\Emitter;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\coroutine;
+use function Amp\launch;
 use function Amp\Http\formatDateHeader;
 
 final class Http1Driver implements HttpDriver
@@ -31,9 +31,9 @@ final class Http1Driver implements HttpDriver
 
     private PsrLogger $logger;
 
-    private ?Subject $bodyEmitter = null;
+    private ?Emitter $bodyEmitter = null;
 
-    private ?Future $pendingResponse = null;
+    private Future $pendingResponse;
 
     /** @var callable(Request, string):Future */
     private $onMessage;
@@ -52,8 +52,8 @@ final class Http1Driver implements HttpDriver
         $this->options = $options;
         $this->errorHandler = $errorHandler;
         $this->logger = $logger;
-        $this->lastWrite = Future::complete(null);
-        $this->pendingResponse = Future::complete(null);
+        $this->lastWrite = Future::complete();
+        $this->pendingResponse = Future::complete();
     }
 
     /** {@inheritdoc} */
@@ -443,7 +443,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headerMap["expect"][0]) && \strtolower($headerMap["expect"][0]) === "100-continue") {
-                    yield coroutine(fn () => $this->write(
+                    yield launch(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::CONTINUE, [])
                     ));
@@ -459,7 +459,7 @@ final class Http1Driver implements HttpDriver
                     && false !== $h2cSettings = \base64_decode(\strtr($headerMap["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    yield coroutine(fn () => $this->write(
+                    yield launch(fn () => $this->write(
                         new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
@@ -504,7 +504,7 @@ final class Http1Driver implements HttpDriver
                 }
 
                 // HTTP/1.x clients only ever have a single body emitter.
-                $this->bodyEmitter = $emitter = new Subject;
+                $this->bodyEmitter = $emitter = new Emitter;
                 $trailerDeferred = new Deferred;
                 $maxBodySize = $this->options->getBodySizeLimit();
 
@@ -546,8 +546,9 @@ final class Http1Driver implements HttpDriver
                 $trailers = null;
                 $body = "";
 
+                $bodySize = 0;
+
                 if ($isChunked) {
-                    $bodySize = 0;
                     while (true) {
                         while (false === ($lineEndPos = \strpos($buffer, "\r\n"))) {
                             if (\strlen($buffer) > 10) {
@@ -710,7 +711,6 @@ final class Http1Driver implements HttpDriver
                         yield $emitter->emit($body);
                     }
                 } else {
-                    $bodySize = 0;
                     $bodyBufferSize = \strlen($buffer);
 
                     // Note that $maxBodySize may change while looping.
@@ -792,7 +792,7 @@ final class Http1Driver implements HttpDriver
         $response->setHeader("connection", "close");
 
         $lastWrite = $this->lastWrite;
-        return $this->lastWrite = coroutine(fn () => $this->send($lastWrite, $response));
+        return $this->lastWrite = launch(fn () => $this->send($lastWrite, $response));
     }
 
     /**

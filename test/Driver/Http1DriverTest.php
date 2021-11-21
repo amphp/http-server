@@ -18,12 +18,12 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Pipeline\Subject;
+use Amp\Pipeline\Emitter;
 use League\Uri;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
-use function Amp\coroutine;
 use function Amp\delay;
+use function Amp\launch;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -35,7 +35,7 @@ class Http1DriverTest extends HttpDriverTest
         $written = "";
         $writer = function (string $data) use (&$written): Future {
             $written .= $data;
-            return Future::complete(null);
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -68,7 +68,7 @@ class Http1DriverTest extends HttpDriverTest
         $written = "";
         $writer = function (string $data) use (&$written): Future {
             $written .= $data;
-            return Future::complete(null);
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -105,7 +105,7 @@ class Http1DriverTest extends HttpDriverTest
     {
         $resultEmitter = function (Request $req) use (&$request): Future {
             $request = $req;
-            return Future::complete(null);
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -142,8 +142,9 @@ class Http1DriverTest extends HttpDriverTest
      */
     public function testIncrementalRequestParse(string $msg, array $expectations): void
     {
-        $resultEmitter = function (Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request): Future {
             $request = $req;
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -192,8 +193,9 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n" .
             $originalBody;
 
-        $resultEmitter = function (Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request): Future {
             $request = $req;
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -254,8 +256,9 @@ class Http1DriverTest extends HttpDriverTest
 
         $expectedBody = "woot!test";
 
-        $resultEmitter = function (Request $req) use (&$request) {
+        $resultEmitter = function (Request $req) use (&$request): Future {
             $request = $req;
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -663,7 +666,7 @@ class Http1DriverTest extends HttpDriverTest
             $body = $req->getBody();
             $body->increaseSizeLimit(\strlen($payload));
             $request = $req;
-            return Future::complete(null);
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -715,7 +718,7 @@ class Http1DriverTest extends HttpDriverTest
         $resultEmitter = function (Request $req) use (&$request, &$responses): Future {
             $responses++;
             $request = $req;
-            return Future::complete(null);
+            return Future::complete();
         };
 
         $driver = new Http1Driver(
@@ -727,7 +730,7 @@ class Http1DriverTest extends HttpDriverTest
         $parser = $driver->setup(
             $this->createClientMock(),
             $resultEmitter,
-            fn () => Future::complete(null),
+            fn () => Future::complete(),
         );
 
         $parser->send($payloads[0] . $payloads[1]); // Send first two payloads simultaneously.
@@ -770,7 +773,7 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($results[1], $body);
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
-        coroutine(fn () => $driver->write($request, new Response));
+        launch(fn () => $driver->write($request, new Response));
         $request = null;
         $body = null;
 
@@ -799,7 +802,7 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($results[0], $body);
 
         $request = new Request($this->createClientMock(), "POST", Uri\Http::createFromString("/"));
-        coroutine(fn () => $driver->write($request, new Response));
+        launch(fn () => $driver->write($request, new Response));
         $request = null;
 
         self::assertSame(3, $responses);
@@ -847,17 +850,17 @@ class Http1DriverTest extends HttpDriverTest
             function (string $data, bool $close = false) use (&$buffer, &$fin) {
                 $buffer .= $data;
                 $fin = $close;
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
-        $emitter = new Subject;
+        $emitter = new Emitter;
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("http://test.local"));
         $response = new Response(Status::OK, $headers, new PipelineStream($emitter->asPipeline()));
         $response->push("/foo");
 
-        coroutine(fn () => $driver->write($request, $response));
+        launch(fn () => $driver->write($request, $response));
 
         foreach (\str_split($data) as $c) {
             $emitter->emit($c)->ignore();
@@ -897,7 +900,7 @@ class Http1DriverTest extends HttpDriverTest
                     $closed = true;
                 }
 
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
@@ -965,13 +968,13 @@ class Http1DriverTest extends HttpDriverTest
                     $invoked = true;
                 }
 
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
-        $emitter = new Subject;
+        $emitter = new Emitter;
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0');
-        coroutine(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        launch(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         delay(0.1);
 
@@ -1027,7 +1030,7 @@ class Http1DriverTest extends HttpDriverTest
             function (string $data) use (&$expected): Future {
                 $write = \array_shift($expected);
                 $this->assertSame($write, \substr($data, 0, \strlen($write)));
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
@@ -1064,7 +1067,7 @@ class Http1DriverTest extends HttpDriverTest
 
                 $this->assertSame($expected, $data);
 
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
@@ -1083,12 +1086,13 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
-            function (Request $req) use (&$request) {
+            function (Request $req) use (&$request): Future {
                 $request = $req;
+                return Future::complete();
             },
             function (string $data) use (&$received) {
                 $received .= $data;
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
@@ -1121,8 +1125,9 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
-            function (Request $req) use (&$request) {
+            function (Request $req) use (&$request): Future {
                 $request = $req;
+                return Future::complete();
             },
             $this->createCallback(0)
         );

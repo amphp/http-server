@@ -16,7 +16,7 @@ use Amp\Socket\ResourceSocket;
 use Amp\Socket\Server as SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
-use function Amp\coroutine;
+use function Amp\launch;
 
 final class HttpServer
 {
@@ -259,7 +259,7 @@ final class HttpServer
 
         $futures = [];
         foreach ($this->observers as $observer) {
-            $futures[] = coroutine(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
+            $futures[] = launch(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
         }
         [$exceptions] = Future\settle($futures);
 
@@ -398,14 +398,14 @@ final class HttpServer
 
         $futures = [];
         foreach ($this->observers as $observer) {
-            $futures[] = coroutine(fn() => $observer->onStop($this));
+            $futures[] = launch(fn() => $observer->onStop($this));
         }
 
         [$exceptions] = Future\settle($futures);
 
         $futures = [];
         foreach ($this->clients as $client) {
-            $futures[] = coroutine(fn () => $client->stop($timeout));
+            $futures[] = launch(fn () => $client->stop($timeout));
         }
 
         Future\settle($futures);

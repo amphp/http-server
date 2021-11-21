@@ -16,7 +16,7 @@ use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Amp\TimeoutCancellationToken;
 use Monolog\Logger;
-use function Amp\coroutine;
+use function Amp\launch;
 use function Amp\trapSignal;
 
 // Used for testing against h2spec (https://github.com/summerwind/h2spec)
@@ -40,7 +40,7 @@ $logger->pushHandler($logHandler);
 $server = new HttpServer($servers, new CallableRequestHandler(static function (Request $request) {
     try {
         // Buffer entire body, but timeout after 100ms.
-        $body = coroutine(fn () => $request->getBody()->buffer())->await(new TimeoutCancellationToken(0.1));
+        $body = launch(fn () => $request->getBody()->buffer())->await(new TimeoutCancellationToken(0.1));
     } catch (ClientException) {
         // Ignore failure to read body due to RST_STREAM frames.
     } catch (CancelledException) {

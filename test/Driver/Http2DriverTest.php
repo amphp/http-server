@@ -16,13 +16,13 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\Pipeline\Subject;
+use Amp\Pipeline\Emitter;
 use League\Uri;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
-use function Amp\coroutine;
 use function Amp\delay;
 use function Amp\Http\formatDateHeader;
+use function Amp\launch;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -239,7 +239,7 @@ class Http2DriverTest extends HttpDriverTest
 
                     $this->frames[] = [$data, $type, $flags, $stream];
 
-                    return Future::complete(null);
+                    return Future::complete();
                 });
             }
 
@@ -281,7 +281,7 @@ class Http2DriverTest extends HttpDriverTest
                 // HTTP/2 shall only reset streams, not abort the connection
                 $this->assertFalse($close);
                 $buffer .= $data;
-                return Future::complete(null);
+                return Future::complete();
             },
             "" // Simulate upgrade request.
         );
@@ -293,7 +293,7 @@ class Http2DriverTest extends HttpDriverTest
         $body = "foo";
         $trailers = new Trailers(Future::complete(["expires" => "date"]), ["expires"]);
 
-        $emitter = new Subject;
+        $emitter = new Emitter;
         EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [
             "content-length" => \strlen($body),
         ], new PipelineStream($emitter->asPipeline()), $trailers)));
@@ -347,7 +347,7 @@ class Http2DriverTest extends HttpDriverTest
                 // HTTP/2 shall only reset streams, not abort the connection
                 $this->assertFalse($close);
                 $buffer .= $data;
-                return Future::complete(null);
+                return Future::complete();
             },
             "" // Simulate upgrade request.
         );
@@ -356,7 +356,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
 
-        $emitter = new Subject;
+        $emitter = new Emitter;
         EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         $emitter->emit("foo");
@@ -437,7 +437,7 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
         self::assertInstanceOf(Request::class, $request);
 
-        $emitter = new Subject;
+        $emitter = new Emitter;
         EventLoop::queue(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
@@ -522,7 +522,7 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
         self::assertInstanceOf(Request::class, $request);
 
-        $emitter = new Subject;
+        $emitter = new Emitter;
         EventLoop::queue(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
@@ -588,9 +588,9 @@ class Http2DriverTest extends HttpDriverTest
             $this->createClientMock(),
             function (Request $read) use (&$request): Future {
                 $request = $read;
-                return Future::complete(null);
+                return Future::complete();
             },
-            fn () => Future::complete(null),
+            fn () => Future::complete(),
         );
 
         $parser->send(Http2Parser::PREFACE);
@@ -606,8 +606,8 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
         self::assertInstanceOf(Request::class, $request);
 
-        $emitter = new Subject;
-        $writer = coroutine(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        $emitter = new Emitter;
+        $writer = launch(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         $emitter->emit("{data}")->ignore();
 
@@ -633,9 +633,9 @@ class Http2DriverTest extends HttpDriverTest
             $this->createClientMock(),
             function (Request $read) use (&$requests) {
                 $requests[] = $read;
-                return Future::complete(null);
+                return Future::complete();
             },
-            fn () => Future::complete(null),
+            fn () => Future::complete(),
         );
 
         $parser->send(Http2Parser::PREFACE);
@@ -685,7 +685,7 @@ class Http2DriverTest extends HttpDriverTest
             $this->createCallback(0),
             function (string $data) use (&$lastWrite): Future {
                 $lastWrite = $data;
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
@@ -720,7 +720,7 @@ class Http2DriverTest extends HttpDriverTest
             $this->createCallback(1),
             function (string $data) use (&$lastWrite): Future {
                 $lastWrite = $data;
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 
@@ -754,7 +754,7 @@ class Http2DriverTest extends HttpDriverTest
             $this->createClientMock(),
             function () use (&$invoked) {
                 $invoked = true;
-                return Future::complete(null);
+                return Future::complete();
             },
             function (string $data): Future {
                 $type = \ord($data[3]);
@@ -763,7 +763,7 @@ class Http2DriverTest extends HttpDriverTest
                     AsyncTestCase::fail("RST_STREAM or GOAWAY frame received");
                 }
 
-                return Future::complete(null);
+                return Future::complete();
             }
         );
 

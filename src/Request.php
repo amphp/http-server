@@ -26,7 +26,7 @@ final class Request extends Message
      * @param string $method HTTP request method.
      * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
      * @param string[]|string[][] $headers An array of strings or an array of string arrays.
-     * @param RequestBody|InputStream|string $body
+     * @param InputStream|string $body
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      * @param Trailers|null $trailers Trailers if request has trailers, or null otherwise.
      */
@@ -35,7 +35,7 @@ final class Request extends Message
         private string $method,
         private PsrUri $uri,
         array $headers = [],
-        RequestBody|InputStream|string $body = '',
+        InputStream|string $body = '',
         private string $protocol = "1.1",
         ?Trailers $trailers = null
     ) {
@@ -214,26 +214,22 @@ final class Request extends Message
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Using an InputStream or Body instance will remove the Content-Length header.
      *
-     * @param RequestBody|InputStream|string $stringOrStream
+     * @param InputStream|string $body
      *
      * @throws \Error
      * @throws \TypeError
      */
-    public function setBody(RequestBody|InputStream|string $stringOrStream): void
+    public function setBody(InputStream|string $body): void
     {
-        if ($stringOrStream instanceof InputStream) {
-            $stringOrStream = new RequestBody($stringOrStream);
-        }
-
-        if ($stringOrStream instanceof RequestBody) {
-            $this->body = $stringOrStream;
+        if ($body instanceof InputStream) {
+            $this->body = $body instanceof RequestBody ? $body : new RequestBody($body);
             $this->removeHeader("content-length");
             return;
         }
 
-        $this->body = new RequestBody(new InMemoryStream($stringOrStream));
+        $this->body = new RequestBody(new InMemoryStream($body));
 
-        if ($length = \strlen($stringOrStream)) {
+        if ($length = \strlen($body)) {
             $this->setHeader("content-length", (string) $length);
         } elseif (!\in_array($this->method, ["GET", "HEAD", "OPTIONS", "TRACE"])) {
             $this->setHeader("content-length", "0");

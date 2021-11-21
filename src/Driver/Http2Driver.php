@@ -20,7 +20,7 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Pipeline\Subject;
+use Amp\Pipeline\Emitter;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -87,7 +87,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
     /** @var Deferred[] */
     private array $trailerDeferreds = [];
 
-    /** @var Subject[] */
+    /** @var Emitter[] */
     private array $bodyEmitters = [];
 
     /** @var int Number of streams that may be opened. */
@@ -901,7 +901,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         $this->trailerDeferreds[$streamId] = new Deferred;
-        $this->bodyEmitters[$streamId] = new Subject;
+        $this->bodyEmitters[$streamId] = new Emitter;
 
         $body = new RequestBody(
             new PipelineStream($this->bodyEmitters[$streamId]->asPipeline()),

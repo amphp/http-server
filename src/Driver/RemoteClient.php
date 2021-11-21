@@ -17,7 +17,7 @@ use Amp\Socket\TlsInfo;
 use Amp\TimeoutCancellationToken;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
-use function Amp\coroutine;
+use function Amp\launch;
 
 final class RemoteClient implements Client
 {
@@ -284,7 +284,7 @@ final class RemoteClient implements Client
         }
 
         try {
-            coroutine(fn () => $this->httpDriver->stop())->await(new TimeoutCancellationToken($timeout));
+            launch(fn () => $this->httpDriver->stop())->await(new TimeoutCancellationToken($timeout));
         } finally {
             $this->close();
         }
@@ -337,7 +337,7 @@ final class RemoteClient implements Client
                 $this->socket->getRemoteAddress()->toString()
             )) || true);
 
-        return coroutine(fn () => $this->respond($request, $buffer));
+        return launch(fn () => $this->respond($request, $buffer));
     }
 
     /**

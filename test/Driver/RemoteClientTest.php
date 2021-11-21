@@ -27,7 +27,7 @@ use Amp\Http\Server\RequestHandler\CallableRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\Pipeline\Subject;
+use Amp\Pipeline\Emitter;
 use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
@@ -36,8 +36,8 @@ use Amp\Socket\ServerTlsContext;
 use League\Uri;
 use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\coroutine;
 use function Amp\delay;
+use function Amp\launch;
 
 class RemoteClientTest extends AsyncTestCase
 {
@@ -182,7 +182,7 @@ class RemoteClientTest extends AsyncTestCase
 
     public function testStreamRequest(): void
     {
-        $emitter = new Subject();
+        $emitter = new Emitter();
 
         $request = new Request(
             $this->createMock(Client::class),
@@ -393,7 +393,7 @@ class RemoteClientTest extends AsyncTestCase
             $uri = $server->getAddress();
         }
 
-        $future = coroutine(function () use ($server, $tls) {
+        $future = launch(function () use ($server, $tls) {
             $socket = $server->accept();
 
             \assert($socket !== null);
