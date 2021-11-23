@@ -23,12 +23,10 @@ final class UpgradedSocket implements EncryptableSocket
         private Socket $socket,
         string $buffer
     ) {
-        $this->client = $client;
-        $this->socket = $socket;
         $this->buffer = $buffer !== '' ? $buffer : null;
     }
 
-    public function read(): ?string
+    public function read(?CancellationToken $token = null): ?string
     {
         if ($this->buffer !== null) {
             $buffer = $this->buffer;
@@ -36,7 +34,7 @@ final class UpgradedSocket implements EncryptableSocket
             return $buffer;
         }
 
-        return $this->socket->read();
+        return $this->socket->read($token);
     }
 
     public function close(): void
