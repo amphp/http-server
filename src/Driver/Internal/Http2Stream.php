@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
-use Amp\Deferred;
+use Amp\DeferredFuture;
 use Amp\Future;
 
 /**
@@ -36,7 +36,7 @@ final class Http2Stream
 
     public int $state;
 
-    public ?Deferred $deferred = null;
+    public ?DeferredFuture $deferred = null;
 
     /** @var int Integer between 1 and 256 */
     public int $weight = 0;

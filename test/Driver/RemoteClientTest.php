@@ -3,9 +3,9 @@
 namespace Amp\Http\Server\Test\Driver;
 
 use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\InputStream;
+use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\PipelineStream;
-use Amp\CancellationToken;
+use Amp\Cancellation;
 use Amp\Http\Client\Connection\DefaultConnectionFactory;
 use Amp\Http\Client\Connection\UnlimitedConnectionPool;
 use Amp\Http\Client\HttpClientBuilder;
@@ -37,7 +37,7 @@ use League\Uri;
 use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\delay;
-use function Amp\launch;
+use function Amp\async;
 
 class RemoteClientTest extends AsyncTestCase
 {
@@ -94,7 +94,7 @@ class RemoteClientTest extends AsyncTestCase
             public function connect(
                 string $uri,
                 ?ConnectContext $context = null,
-                ?CancellationToken $token = null
+                ?Cancellation $token = null
             ): Socket\EncryptableSocket {
                 $context = (new Socket\ConnectContext)
                     ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
@@ -328,7 +328,7 @@ class RemoteClientTest extends AsyncTestCase
         $options = (new Options)
             ->withDebugMode();
 
-        $body = $this->createMock(InputStream::class);
+        $body = $this->createMock(ReadableStream::class);
         $body->expects(self::exactly(3))
             ->method("read")
             ->willReturn($bodyData);
@@ -393,7 +393,7 @@ class RemoteClientTest extends AsyncTestCase
             $uri = $server->getAddress();
         }
 
-        $future = launch(function () use ($server, $tls) {
+        $future = async(function () use ($server, $tls) {
             $socket = $server->accept();
 
             \assert($socket !== null);

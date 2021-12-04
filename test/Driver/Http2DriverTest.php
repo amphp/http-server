@@ -22,7 +22,7 @@ use Psr\Log\NullLogger;
 use Revolt\EventLoop;
 use function Amp\delay;
 use function Amp\Http\formatDateHeader;
-use function Amp\launch;
+use function Amp\async;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -607,7 +607,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $emitter = new Emitter;
-        $writer = launch(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        $writer = async(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         $emitter->emit("{data}")->ignore();
 

@@ -3,7 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\PipelineStream;
-use Amp\Deferred;
+use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2ConnectionException;
@@ -84,7 +84,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
     /** @var int[] Map of URLs pushed on this connection. */
     private array $pushCache = [];
 
-    /** @var Deferred[] */
+    /** @var DeferredFuture[] */
     private array $trailerDeferreds = [];
 
     /** @var Emitter[] */
@@ -150,7 +150,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
-        $deferred = new Deferred;
+        $deferred = new DeferredFuture;
         $stream->pendingWrite = $deferred->getFuture();
 
         try {
@@ -517,7 +517,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         if ($stream->deferred === null) {
-            $stream->deferred = new Deferred;
+            $stream->deferred = new DeferredFuture;
         }
 
         return $stream->deferred->getFuture();
@@ -900,7 +900,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             return;
         }
 
-        $this->trailerDeferreds[$streamId] = new Deferred;
+        $this->trailerDeferreds[$streamId] = new DeferredFuture;
         $this->bodyEmitters[$streamId] = new Emitter;
 
         $body = new RequestBody(

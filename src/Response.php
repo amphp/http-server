@@ -3,7 +3,7 @@
 namespace Amp\Http\Server;
 
 use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\InputStream;
+use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Message;
 use Amp\Http\Status;
@@ -12,7 +12,7 @@ use Revolt\EventLoop;
 
 final class Response extends Message
 {
-    private InputStream $body;
+    private ReadableStream $body;
 
     /** @var int HTTP status code. */
     private int $status;
@@ -37,7 +37,7 @@ final class Response extends Message
     /**
      * @param int $code Status code.
      * @param string[]|string[][] $headers
-     * @param InputStream|string $stringOrStream
+     * @param ReadableStream|string $stringOrStream
      * @param Trailers|null $trailers
      *
      * @throws \Error If one of the arguments is invalid.
@@ -45,7 +45,7 @@ final class Response extends Message
     public function __construct(
         int $code = Status::OK,
         array $headers = [],
-        InputStream|string $stringOrStream = '',
+        ReadableStream|string $stringOrStream = '',
         ?Trailers $trailers = null
     ) {
         $this->status = $this->validateStatusCode($code);
@@ -72,9 +72,9 @@ final class Response extends Message
     /**
      * Returns the stream for the message body.
      *
-     * @return InputStream
+     * @return ReadableStream
      */
-    public function getBody(): InputStream
+    public function getBody(): ReadableStream
     {
         return $this->body;
     }
@@ -83,13 +83,13 @@ final class Response extends Message
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Setting a stream will remove the Content-Length header.
      *
-     * @param InputStream|string $stringOrStream
+     * @param ReadableStream|string $stringOrStream
      *
-     * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\InputStream
+     * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\ReadableStream
      */
-    public function setBody(InputStream|string $stringOrStream): void
+    public function setBody(ReadableStream|string $stringOrStream): void
     {
-        if ($stringOrStream instanceof InputStream) {
+        if ($stringOrStream instanceof ReadableStream) {
             $this->body = $stringOrStream;
             $this->removeHeader("content-length");
             return;

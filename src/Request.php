@@ -3,7 +3,7 @@
 namespace Amp\Http\Server;
 
 use Amp\ByteStream\InMemoryStream;
-use Amp\ByteStream\InputStream;
+use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
@@ -26,7 +26,7 @@ final class Request extends Message
      * @param string $method HTTP request method.
      * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
      * @param string[]|string[][] $headers An array of strings or an array of string arrays.
-     * @param InputStream|string $body
+     * @param ReadableStream|string $body
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      * @param Trailers|null $trailers Trailers if request has trailers, or null otherwise.
      */
@@ -35,7 +35,7 @@ final class Request extends Message
         private string $method,
         private PsrUri $uri,
         array $headers = [],
-        InputStream|string $body = '',
+        ReadableStream|string $body = '',
         private string $protocol = "1.1",
         ?Trailers $trailers = null
     ) {
@@ -212,16 +212,16 @@ final class Request extends Message
 
     /**
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
-     * to the length of the given string. Using an InputStream or Body instance will remove the Content-Length header.
+     * to the length of the given string. Using an ReadableStream or Body instance will remove the Content-Length header.
      *
-     * @param InputStream|string $body
+     * @param ReadableStream|string $body
      *
      * @throws \Error
      * @throws \TypeError
      */
-    public function setBody(InputStream|string $body): void
+    public function setBody(ReadableStream|string $body): void
     {
-        if ($body instanceof InputStream) {
+        if ($body instanceof ReadableStream) {
             $this->body = $body instanceof RequestBody ? $body : new RequestBody($body);
             $this->removeHeader("content-length");
             return;

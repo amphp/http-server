@@ -5,7 +5,7 @@ namespace Amp\Http\Server;
 use Amp\Future;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Message;
-use function Amp\launch;
+use function Amp\async;
 
 final class Trailers
 {
@@ -54,7 +54,7 @@ final class Trailers
             }
         }
 
-        $this->headers = launch(static function () use ($future, $fields): Message {
+        $this->headers = async(static function () use ($future, $fields): Message {
             return new class($future->await(), $fields) extends Message {
                 public function __construct(array $headers, array $fields)
                 {

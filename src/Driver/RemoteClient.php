@@ -14,10 +14,10 @@ use Amp\Http\Status;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
-use Amp\TimeoutCancellationToken;
+use Amp\TimeoutCancellation;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
-use function Amp\launch;
+use function Amp\async;
 
 final class RemoteClient implements Client
 {
@@ -129,7 +129,7 @@ final class RemoteClient implements Client
             \time() + $this->options->getTlsSetupTimeout()
         );
 
-        $this->socket->setupTls(new TimeoutCancellationToken($this->options->getTlsSetupTimeout()));
+        $this->socket->setupTls(new TimeoutCancellation($this->options->getTlsSetupTimeout()));
 
         $this->tlsInfo = $this->socket->getTlsInfo();
         \assert($this->tlsInfo !== null);
@@ -284,7 +284,7 @@ final class RemoteClient implements Client
         }
 
         try {
-            launch(fn () => $this->httpDriver->stop())->await(new TimeoutCancellationToken($timeout));
+            async(fn () => $this->httpDriver->stop())->await(new TimeoutCancellation($timeout));
         } finally {
             $this->close();
         }
@@ -337,7 +337,7 @@ final class RemoteClient implements Client
                 $this->socket->getRemoteAddress()->toString()
             )) || true);
 
-        return launch(fn () => $this->respond($request, $buffer));
+        return async(fn () => $this->respond($request, $buffer));
     }
 
     /**

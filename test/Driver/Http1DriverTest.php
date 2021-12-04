@@ -23,7 +23,7 @@ use League\Uri;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
 use function Amp\delay;
-use function Amp\launch;
+use function Amp\async;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -773,7 +773,7 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($results[1], $body);
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
-        launch(fn () => $driver->write($request, new Response));
+        async(fn () => $driver->write($request, new Response));
         $request = null;
         $body = null;
 
@@ -802,7 +802,7 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($results[0], $body);
 
         $request = new Request($this->createClientMock(), "POST", Uri\Http::createFromString("/"));
-        launch(fn () => $driver->write($request, new Response));
+        async(fn () => $driver->write($request, new Response));
         $request = null;
 
         self::assertSame(3, $responses);
@@ -860,7 +860,7 @@ class Http1DriverTest extends HttpDriverTest
         $response = new Response(Status::OK, $headers, new PipelineStream($emitter->asPipeline()));
         $response->push("/foo");
 
-        launch(fn () => $driver->write($request, $response));
+        async(fn () => $driver->write($request, $response));
 
         foreach (\str_split($data) as $c) {
             $emitter->emit($c)->ignore();
@@ -974,7 +974,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $emitter = new Emitter;
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0');
-        launch(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        async(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
 
         delay(0.1);
 

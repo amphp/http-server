@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\CancellationToken;
+use Amp\Cancellation;
 use Amp\Future;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\Socket;
@@ -26,7 +26,7 @@ final class UpgradedSocket implements EncryptableSocket
         $this->buffer = $buffer !== '' ? $buffer : null;
     }
 
-    public function read(?CancellationToken $token = null): ?string
+    public function read(?Cancellation $token = null): ?string
     {
         if ($this->buffer !== null) {
             $buffer = $this->buffer;
@@ -88,12 +88,12 @@ final class UpgradedSocket implements EncryptableSocket
         return $this->socket->getResource();
     }
 
-    public function setupTls(?CancellationToken $token = null): void
+    public function setupTls(?Cancellation $token = null): void
     {
         $this->socket->setupTls($token);
     }
 
-    public function shutdownTls(?CancellationToken $token = null): void
+    public function shutdownTls(?Cancellation $token = null): void
     {
         $this->socket->shutdownTls();
     }
