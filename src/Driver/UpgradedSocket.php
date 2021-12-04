@@ -107,4 +107,12 @@ final class UpgradedSocket implements EncryptableSocket
     {
         return $this->socket->getTlsInfo();
     }
+
+    public function isReadable(): bool {
+        return $this->socket->isReadable();
+    }
+
+    public function isWritable(): bool {
+        return $this->socket->isWritable();
+    }
 }
