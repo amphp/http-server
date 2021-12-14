@@ -115,6 +115,7 @@ final class RemoteClient implements Client
         TimeoutCache $timeoutCache
     ) {
         \stream_set_blocking($socket, false);
+        \stream_set_read_buffer($socket, 0);
 
         $this->socket = $socket;
         $this->id = (int) $socket;
@@ -393,6 +394,11 @@ final class RemoteClient implements Client
                 if ($this->paused) { // Avoids potential for unnecessary disable followed by enable.
                     Loop::disable($this->readWatcher);
                 }
+            }
+
+            if (!$this->paused) {
+                // Trigger this again manually as there may be buffered data that will not trigger the watcher again.
+                $this->onReadable();
             }
         } catch (\Throwable $exception) {
             // Parser *should not* throw an exception, but in case it does...

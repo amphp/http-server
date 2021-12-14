@@ -47,32 +47,44 @@ class RemoteClientTest extends AsyncTestCase
 {
     public function startServer(callable $handler): \Generator
     {
-        if (!$server = @\stream_socket_server("tcp://127.0.0.1:*", $errno, $errstr)) {
-            $this->markTestSkipped("Couldn't get a free port from the local ephemeral port range");
-        }
-        $address = \stream_socket_get_name($server, $wantPeer = false);
-        \fclose($server);
-
         $handler = new CallableRequestHandler($handler);
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
         $servers = [
-            Socket\Server::listen(
-                $address,
+            $socket = Socket\Server::listen(
+                'tcp://127.0.0.1:0',
                 (new Socket\BindContext())->withTlsContext($tlsContext)
             ),
         ];
 
-        $options = (new Options)->withDebugMode();
+        $options = (new Options)
+            ->withDebugMode()
+            ->withBodySizeLimit(\PHP_INT_MAX);
         $server = new HttpServer($servers, $handler, $this->createMock(PsrLogger::class), $options);
 
         yield $server->start();
-        return [$address, $server];
+        return [$socket->getAddress()->getPort(), $server];
+    }
+
+    private function createConnector(): Socket\Connector
+    {
+        return new class implements Socket\Connector {
+            public function connect(
+                string $uri,
+                ?ConnectContext $context = null,
+                ?CancellationToken $token = null
+            ): Promise {
+                $context = (new Socket\ConnectContext)
+                    ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
+
+                return (new Socket\DnsConnector)->connect($uri, $context, $token);
+            }
+        };
     }
 
     public function testTrivialHttpRequest(): \Generator
     {
-        [$address, $server] = yield from $this->startServer(function (Request $req) {
+        [$port, $server] = yield from $this->startServer(function (Request $req) {
             $this->assertEquals("GET", $req->getMethod());
             $this->assertEquals("/uri", $req->getUri()->getPath());
             $query = Query::createFromUri($req->getUri());
@@ -93,24 +105,10 @@ class RemoteClientTest extends AsyncTestCase
             return $res;
         });
 
-        $connector = new class implements Socket\Connector {
-            public function connect(
-                string $uri,
-                ?ConnectContext $context = null,
-                ?CancellationToken $token = null
-            ): Promise {
-                $context = (new Socket\ConnectContext)
-                    ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
-
-                return (new Socket\DnsConnector)->connect($uri, $context, $token);
-            }
-        };
-
         $client = (new HttpClientBuilder)
-            ->usingPool(new UnlimitedConnectionPool(new DefaultConnectionFactory($connector)))
+            ->usingPool(new UnlimitedConnectionPool(new DefaultConnectionFactory($this->createConnector())))
             ->build();
 
-        $port = \parse_url($address, PHP_URL_PORT);
         $request = new ClientRequest("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET");
         $request->setHeader("custom", "header");
         $promise = $client->request($request);
@@ -125,9 +123,35 @@ class RemoteClientTest extends AsyncTestCase
         $server->stop();
     }
 
+    public function testLargeBodyPost(): \Generator
+    {
+        [$port, $server] = yield from $this->startServer(function (Request $req) {
+            $this->assertEquals("POST", $req->getMethod());
+            $this->assertEquals("/large-body", $req->getUri()->getPath());
+            $body = yield $req->getBody()->buffer();
+            return new Response(Status::OK, [], 'Received ' . \strlen($body) . ' bytes');
+        });
+
+        $client = (new HttpClientBuilder)
+            ->usingPool(new UnlimitedConnectionPool(new DefaultConnectionFactory($this->createConnector())))
+            ->build();
+
+        $length = 2 ** 20;
+        $request = new ClientRequest("https://localhost:$port/large-body", "POST", \str_repeat("*", $length));
+        $promise = $client->request($request);
+
+        /** @var \Amp\Http\Client\Response $res */
+        $res = yield $promise;
+        $this->assertEquals(200, $res->getStatus());
+        $body = yield $res->getBody()->buffer();
+        $this->assertEquals('Received ' . $length . ' bytes', $body);
+
+        $server->stop();
+    }
+
     public function testClientDisconnect(): \Generator
     {
-        [$address, $server] = yield from $this->startServer(function (Request $req) use (&$server) {
+        [$port, $server] = yield from $this->startServer(function (Request $req) use (&$server) {
             $this->assertEquals("POST", $req->getMethod());
             $this->assertEquals("/", $req->getUri()->getPath());
             $this->assertEquals([], $req->getAttributes());
@@ -139,7 +163,6 @@ class RemoteClientTest extends AsyncTestCase
             return new Response(Status::OK, [], $data);
         });
 
-        $port = \parse_url($address, PHP_URL_PORT);
         $context = (new Socket\ConnectContext)
             ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
 
@@ -219,6 +242,68 @@ class RemoteClientTest extends AsyncTestCase
 
         $this->assertSame("fooBarBUZZ!", $body);
     }
+
+//    public function testLargeBody(): void
+//    {
+//        $driver = $this->createMock(HttpDriver::class);
+//
+//        $driver->expects($this->once())
+//            ->method("setup")
+//            ->willReturnCallback(static function (Client $client, callable $emitter) use (&$emit) {
+//                $emit = $emitter;
+//                yield;
+//            });
+//
+//        $driver->method("write")
+//            ->willReturnCallback(coroutine(function (Request $request, Response $written) use (&$response, &$body) {
+//                $response = $written;
+//                $body = "";
+//                while (null !== $part = yield $response->getBody()->read()) {
+//                    $body .= $part;
+//                }
+//            }));
+//
+//        $factory = $this->createMock(HttpDriverFactory::class);
+//        $factory->method('selectDriver')
+//            ->willReturn($driver);
+//
+//        $options = (new Options)
+//            ->withDebugMode();
+//
+//        $sockets = Socket\createPair();
+//
+//
+//        $emitter = new Emitter;
+//
+//        $request = new Request(
+//            $this->createMock(Client::class),
+//            "GET", // method
+//            Uri\Http::createFromString("http://localhost:80/foo"), // URI
+//            ["host" => ["localhost"]], // headers
+//            new RequestBody(new IteratorStream($emitter->iterate())) // body
+//        );
+//
+//        $emitter->emit("fooBar");
+//        $emitter->emit("BUZZ!");
+//        $emitter->complete();
+//
+//        /** @var Response $response */
+//        [$response, $body] = $this->tryRequest($request, function (Request $req) {
+//            $buffer = "";
+//            while (null !== $chunk = yield $req->getBody()->read()) {
+//                $buffer .= $chunk;
+//            }
+//            return new Response(Status::OK, [], $buffer);
+//        });
+//
+//        $this->assertInstanceOf(Response::class, $response);
+//
+//        $status = Status::OK;
+//        $this->assertSame($status, $response->getStatus());
+//        $this->assertSame(Status::getReason($status), $response->getReason());
+//
+//        $this->assertSame("fooBarBUZZ!", $body);
+//    }
 
     /**
      * @dataProvider providePreRequestHandlerRequests
@@ -346,8 +431,10 @@ class RemoteClientTest extends AsyncTestCase
             ->method("handleRequest")
             ->willReturn(new Success($response));
 
+        $sockets = Socket\createPair();
+
         $client = new RemoteClient(
-            \fopen("php://memory", "w"),
+            $sockets[0]->getResource(),
             $requestHandler,
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
@@ -468,8 +555,10 @@ class RemoteClientTest extends AsyncTestCase
         $options = (new Options)
             ->withDebugMode();
 
+        $sockets = Socket\createPair();
+
         $client = new RemoteClient(
-            \fopen("php://memory", "w"),
+            $sockets[0]->getResource(),
             new CallableRequestHandler($requestHandler),
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
