@@ -23,10 +23,10 @@ $context = (new Socket\BindContext)
         ->withTlsContext((new Socket\ServerTlsContext)->withDefaultCertificate($cert));
 
 $servers = [
-        Socket\Server::listen("0.0.0.0:1337"),
-        Socket\Server::listen("[::]:1337"),
-        Socket\Server::listen("0.0.0.0:1338", $context),
-        Socket\Server::listen("[::]:1338", $context),
+        Socket\listen("0.0.0.0:1337"),
+        Socket\listen("[::]:1337"),
+        Socket\listen("0.0.0.0:1338", $context),
+        Socket\listen("[::]:1338", $context),
 ];
 
 $logHandler = new StreamHandler(ByteStream\getStdout());

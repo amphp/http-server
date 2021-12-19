@@ -2,7 +2,8 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\PipelineStream;
+use Amp\ByteStream\IterableStream;
+use Amp\ByteStream\ReadableResourceStream;
 use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\HPack;
@@ -904,7 +905,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $this->bodyEmitters[$streamId] = new Emitter;
 
         $body = new RequestBody(
-            new PipelineStream($this->bodyEmitters[$streamId]->asPipeline()),
+            new IterableStream($this->bodyEmitters[$streamId]->pipe()),
             function (int $bodySize) use ($streamId) {
                 if (!isset($this->streams[$streamId], $this->bodyEmitters[$streamId])) {
                     return;

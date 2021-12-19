@@ -2,7 +2,8 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\PipelineStream;
+use Amp\ByteStream\IterableStream;
+use Amp\ByteStream\ReadableResourceStream;
 use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\InvalidHeaderException;
@@ -509,7 +510,7 @@ final class Http1Driver implements HttpDriver
                 $maxBodySize = $this->options->getBodySizeLimit();
 
                 $body = new RequestBody(
-                    new PipelineStream($this->bodyEmitter->asPipeline()),
+                    new IterableStream($emitter->pipe()),
                     function (int $bodySize) use (&$maxBodySize) {
                         if ($bodySize > $maxBodySize) {
                             $maxBodySize = $bodySize;

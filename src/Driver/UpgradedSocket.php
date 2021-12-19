@@ -3,7 +3,6 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Cancellation;
-use Amp\Future;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
@@ -26,15 +25,19 @@ final class UpgradedSocket implements EncryptableSocket
         $this->buffer = $buffer !== '' ? $buffer : null;
     }
 
-    public function read(?Cancellation $token = null): ?string
+    public function read(?Cancellation $token = null, ?int $limit = null): ?string
     {
         if ($this->buffer !== null) {
             $buffer = $this->buffer;
             $this->buffer = null;
+            if($limit !== null && strlen($buffer) > $limit) {
+                $this->buffer = substr($buffer, $limit);
+                return substr($buffer, 0, $limit);
+            }
             return $buffer;
         }
 
-        return $this->socket->read($token);
+        return $this->socket->read($token, $limit);
     }
 
     public function close(): void
@@ -48,14 +51,14 @@ final class UpgradedSocket implements EncryptableSocket
         $this->close();
     }
 
-    public function write(string $data): Future
+    public function write(string $data): void
     {
-        return $this->socket->write($data);
+        $this->socket->write($data);
     }
 
-    public function end(string $finalData = ""): Future
+    public function end(): void
     {
-        return $this->socket->end($finalData);
+        $this->socket->end();
     }
 
     public function reference(): void

@@ -2,9 +2,9 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
-use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\IterableStream;
+use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableStream;
-use Amp\ByteStream\PipelineStream;
 use Amp\Cancellation;
 use Amp\Http\Client\Connection\DefaultConnectionFactory;
 use Amp\Http\Client\Connection\UnlimitedConnectionPool;
@@ -54,7 +54,7 @@ class RemoteClientTest extends AsyncTestCase
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
         $servers = [
-            Socket\Server::listen(
+            Socket\listen(
                 $address,
                 (new Socket\BindContext())->withTlsContext($tlsContext)
             ),
@@ -80,7 +80,7 @@ class RemoteClientTest extends AsyncTestCase
             $this->assertEquals(["header"], $req->getHeaderArray("custom"));
 
             $data = \str_repeat("*", 100000);
-            $stream = new InMemoryStream("data/" . $data . "/data");
+            $stream = new ReadableBuffer("data/" . $data . "/data");
 
             $res = new Response(Status::OK, [], $stream);
 
@@ -90,7 +90,7 @@ class RemoteClientTest extends AsyncTestCase
             return $res;
         });
 
-        $connector = new class implements Socket\Connector {
+        $connector = new class implements Socket\SocketConnector {
             public function connect(
                 string $uri,
                 ?ConnectContext $context = null,
@@ -99,7 +99,7 @@ class RemoteClientTest extends AsyncTestCase
                 $context = (new Socket\ConnectContext)
                     ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
 
-                return (new Socket\DnsConnector)->connect($uri, $context, $token);
+                return (new Socket\DnsSocketConnector())->connect($uri, $context, $token);
             }
         };
 
@@ -189,7 +189,7 @@ class RemoteClientTest extends AsyncTestCase
             "GET", // method
             Uri\Http::createFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]], // headers
-            new RequestBody(new PipelineStream($emitter->asPipeline())) // body
+            new RequestBody(new IterableStream($emitter->pipe())) // body
         );
 
         $emitter->emit("fooBar")->ignore();
@@ -340,7 +340,7 @@ class RemoteClientTest extends AsyncTestCase
             ->method("handleRequest")
             ->willReturn($response);
 
-        [$server, $client] = Socket\createPair();
+        [$server, $client] = Socket\createSocketPair();
 
         $client = new RemoteClient(
             $client,
@@ -387,9 +387,9 @@ class RemoteClientTest extends AsyncTestCase
         if ($unixSocket) {
             $uri = \tempnam(\sys_get_temp_dir(), "aerys.") . ".sock";
             $uri = "unix://" . $uri;
-            $server = Socket\Server::listen($uri, $bindContext);
+            $server = Socket\listen($uri, $bindContext);
         } else {
-            $server = Socket\Server::listen("tcp://127.0.0.1:0", $bindContext);
+            $server = Socket\listen("tcp://127.0.0.1:0", $bindContext);
             $uri = $server->getAddress();
         }
 
@@ -468,7 +468,7 @@ class RemoteClientTest extends AsyncTestCase
         $options = (new Options)
             ->withDebugMode();
 
-        [$server, $client] = Socket\createPair();
+        [$server, $client] = Socket\createSocketPair();
 
         $client = new RemoteClient(
             $client,

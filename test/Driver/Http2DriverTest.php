@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
-use Amp\ByteStream\PipelineStream;
+use Amp\ByteStream\IterableStream;
 use Amp\Future;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
@@ -296,7 +296,7 @@ class Http2DriverTest extends HttpDriverTest
         $emitter = new Emitter;
         EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [
             "content-length" => \strlen($body),
-        ], new PipelineStream($emitter->asPipeline()), $trailers)));
+        ], new IterableStream($emitter->pipe()), $trailers)));
 
         $emitter->emit($body);
         $emitter->complete();
@@ -357,7 +357,7 @@ class Http2DriverTest extends HttpDriverTest
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
 
         $emitter = new Emitter;
-        EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [], new IterableStream($emitter->pipe()))));
 
         $emitter->emit("foo");
         $emitter->error(new \Exception);
@@ -441,7 +441,7 @@ class Http2DriverTest extends HttpDriverTest
         EventLoop::queue(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
-            new PipelineStream($emitter->asPipeline())
+            new IterableStream($emitter->pipe())
         )));
 
         delay(0);
@@ -526,7 +526,7 @@ class Http2DriverTest extends HttpDriverTest
         EventLoop::queue(fn () => $driver->write($request, new Response(
             Status::OK,
             ["content-type" => "text/html; charset=utf-8"],
-            new PipelineStream($emitter->asPipeline())
+            new IterableStream($emitter->pipe())
         )));
 
         delay(0.1);
@@ -607,7 +607,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $emitter = new Emitter;
-        $writer = async(fn () => $driver->write($request, new Response(Status::OK, [], new PipelineStream($emitter->asPipeline()))));
+        $writer = async(fn () => $driver->write($request, new Response(Status::OK, [], new IterableStream($emitter->pipe()))));
 
         $emitter->emit("{data}")->ignore();
 

@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server;
 
-use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Message;
@@ -95,7 +95,7 @@ final class Response extends Message
             return;
         }
 
-        $this->body = new InMemoryStream($stringOrStream);
+        $this->body = new ReadableBuffer($stringOrStream);
         $this->setHeader("content-length", (string) \strlen($stringOrStream));
     }
 

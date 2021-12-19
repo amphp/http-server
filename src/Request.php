@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server;
 
-use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Message;
@@ -204,7 +204,7 @@ final class Request extends Message
     public function getBody(): RequestBody
     {
         if ($this->body === null) {
-            $this->body = new RequestBody(new InMemoryStream);
+            $this->body = new RequestBody(new ReadableBuffer());
         }
 
         return $this->body;
@@ -227,7 +227,7 @@ final class Request extends Message
             return;
         }
 
-        $this->body = new RequestBody(new InMemoryStream($body));
+        $this->body = new RequestBody(new ReadableBuffer($body));
 
         if ($length = \strlen($body)) {
             $this->setHeader("content-length", (string) $length);
