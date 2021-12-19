@@ -18,8 +18,8 @@ use function Amp\trapSignal;
 // Run this script, then visit http://localhost:1337/ in your browser.
 
 $servers = [
-    Socket\Server::listen("0.0.0.0:1337"),
-    Socket\Server::listen("[::]:1337"),
+    Socket\listen("0.0.0.0:1337"),
+    Socket\listen("[::]:1337"),
 ];
 
 $logHandler = new StreamHandler(ByteStream\getStdout());

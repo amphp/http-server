@@ -3,9 +3,8 @@
 
 require \dirname(__DIR__) . "/vendor/autoload.php";
 
-use Amp\Pipeline\AsyncGenerator;
 use Amp\ByteStream;
-use Amp\ByteStream\PipelineStream;
+use Amp\ByteStream\IterableStream;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -22,8 +21,8 @@ use function Amp\trapSignal;
 // Run this script, then visit http://localhost:1337/ in your browser.
 
 $servers = [
-    Socket\Server::listen("0.0.0.0:1337"),
-    Socket\Server::listen("[::]:1337"),
+    Socket\listen("0.0.0.0:1337"),
+    Socket\listen("[::]:1337"),
 ];
 
 $logHandler = new StreamHandler(ByteStream\getStdout());
@@ -35,12 +34,12 @@ $server = new HttpServer($servers, new CallableRequestHandler(function (Request 
     // We stream the response here, one line every 100 ms.
     return new Response(Status::OK, [
         "content-type" => "text/plain; charset=utf-8",
-    ], new PipelineStream(new AsyncGenerator(function () {
+    ], new IterableStream((function () {
         for ($i = 0; $i < 30; $i++) {
             delay(0.1);
             yield "Line {$i}\r\n";
         }
-    })));
+    })()));
 }), $logger, (new Options)->withoutCompression());
 
 $server->start();

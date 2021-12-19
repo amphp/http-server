@@ -313,10 +313,12 @@ final class RemoteClient implements Client
 
         if ($close) {
             $this->status |= self::CLOSED_WR;
-            return $this->socket->end($data);
+            $this->socket->end($data);
+            return Future::complete();
         }
 
-        return $this->socket->write($data);
+        $this->socket->write($data);
+        return Future::complete();
     }
 
     /**

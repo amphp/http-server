@@ -26,7 +26,7 @@ class ServerTest extends AsyncTestCase
 
     public function testShutdownWaitsOnUnfinishedResponses(): void
     {
-        $socket = Socket\Server::listen("tcp://127.0.0.1:0");
+        $socket = Socket\listen("tcp://127.0.0.1:0");
         $server = new HttpServer([$socket], new CallableRequestHandler(function () {
             delay(0.2);
             return new Response(Status::NO_CONTENT);

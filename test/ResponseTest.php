@@ -8,6 +8,7 @@ use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\PHPUnit\LoopCaughtException;
 use Amp\PHPUnit\TestException;
+use Amp\PHPUnit\UnhandledException;
 use function Amp\delay;
 
 class ResponseTest extends AsyncTestCase
@@ -21,7 +22,7 @@ class ResponseTest extends AsyncTestCase
 
     public function testDisposeThrowing(): void
     {
-        $this->expectException(LoopCaughtException::class);
+        $this->expectException(UnhandledException::class);
 
         $response = new Response;
         $response->onDispose(function () {

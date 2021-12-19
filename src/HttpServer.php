@@ -13,7 +13,7 @@ use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
 use Amp\Socket\ResourceSocket;
-use Amp\Socket\Server as SocketServer;
+use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
@@ -267,6 +267,7 @@ final class HttpServer
             try {
                 $this->stop(self::DEFAULT_SHUTDOWN_TIMEOUT);
             } finally {
+                var_dump($exceptions);
                 throw new CompositeException($exceptions, "onStart observer initialization failure");
             }
         }

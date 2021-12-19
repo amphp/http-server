@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Test;
 
-use Amp\ByteStream\InMemoryStream;
+use Amp\ByteStream\ReadableBuffer;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\MissingAttributeError;
@@ -135,9 +135,9 @@ class RequestTest extends AsyncTestCase
         self::assertSame('0', $request->getHeader('content-length'));
 
         // A stream being set MUST remove the content length header
-        $request->setBody(new InMemoryStream('foobar'));
+        $request->setBody(new ReadableBuffer('foobar'));
         self::assertFalse($request->hasHeader('content-length'));
-        $request->setBody(new InMemoryStream('foo'));
+        $request->setBody(new ReadableBuffer('foo'));
         self::assertFalse($request->hasHeader('content-length'));
 
         $request = new Request($client, 'GET', Http::createFromString('/'));
