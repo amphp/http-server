@@ -267,7 +267,6 @@ final class HttpServer
             try {
                 $this->stop(self::DEFAULT_SHUTDOWN_TIMEOUT);
             } finally {
-                var_dump($exceptions);
                 throw new CompositeException($exceptions, "onStart observer initialization failure");
             }
         }

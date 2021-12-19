@@ -56,9 +56,9 @@ final class UpgradedSocket implements EncryptableSocket
         $this->socket->write($data);
     }
 
-    public function end(string $finalData = ""): void
+    public function end(): void
     {
-        $this->socket->end($finalData);
+        $this->socket->end();
     }
 
     public function reference(): void
