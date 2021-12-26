@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\ByteStream\AsyncWriter;
 use Amp\Future;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
@@ -44,6 +45,8 @@ final class RemoteClient implements Client
 
     private int $pendingResponses = 0;
 
+    private AsyncWriter $writer;
+
     /**
      * @param Socket $socket
      * @param RequestHandler $requestHandler
@@ -62,6 +65,8 @@ final class RemoteClient implements Client
     ) {
         self::$defaultErrorHandler ??= new DefaultErrorHandler;
         $this->id = self::$nextId++;
+
+        $this->writer = new AsyncWriter($socket);
     }
 
     /**
@@ -311,15 +316,14 @@ final class RemoteClient implements Client
             return Future::error(new ClientException($this, "Client socket closed"));
         }
 
+        $future = $this->writer->write($data);
+
         if ($close) {
             $this->status |= self::CLOSED_WR;
-            $this->socket->write($data);
-            $this->socket->end();
-            return Future::complete();
+            return $future->finally(fn () => $this->socket->close());
         }
 
-        $this->socket->write($data);
-        return Future::complete();
+        return $future;
     }
 
     /**
