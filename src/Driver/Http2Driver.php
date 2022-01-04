@@ -449,7 +449,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
     {
         \assert(Http2Parser::logDebugFrame('send', $type, $flags, $stream, \strlen($data)));
 
-        return ($this->write)(\substr(\pack("NccN", \strlen($data), $type, $flags, $stream), 1) . $data);
+        return ($this->write)(\pack("NcN", (\strlen($data) << 8) | ($type & 0xff), $flags, $stream) . $data);
     }
 
     private function writeData(string $data, int $id): Future
