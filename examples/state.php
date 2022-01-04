@@ -6,7 +6,7 @@ require \dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
@@ -27,7 +27,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new CallableRequestHandler(function (Request $request): Response {
+$server = new HttpServer($servers, new ClosureRequestHandler(function (Request $request): Response {
     static $counter = 0;
 
     // We can keep state between requests, but if you're using multiple server processes,

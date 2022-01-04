@@ -38,7 +38,7 @@ final class RemoteClient implements Client
 
     private HttpDriver $httpDriver;
 
-    /** @var callable[]|null */
+    /** @var \Closure[]|null */
     private ?array $onClose = [];
 
     private int $pendingHandlers = 0;
@@ -251,19 +251,19 @@ final class RemoteClient implements Client
             return true;
         })());
 
-        foreach ($onClose as $callback) {
-            EventLoop::defer(fn () => $callback($this));
+        foreach ($onClose as $closure) {
+            EventLoop::queue(fn () => $closure($this));
         }
     }
 
-    public function onClose(\Closure $callback): void
+    public function onClose(\Closure $onClose): void
     {
         if ($this->onClose === null) {
-            EventLoop::defer(fn () => $callback($this));
+            EventLoop::queue(fn () => $onClose($this));
             return;
         }
 
-        $this->onClose[] = $callback;
+        $this->onClose[] = $onClose;
     }
 
     public function stop(float $timeout): void

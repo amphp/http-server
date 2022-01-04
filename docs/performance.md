@@ -13,7 +13,7 @@ But that performance will decrease drastically with inefficient applications.
 The server has the nice advantage of classes and handlers being always loaded, so there's no time lost with compilation and initialization.
 
 A common trap is to begin operating on big data with simple string operations, requiring many inefficient big copies.
-Instead, streaming should be used where possible for larger request and response bodies. 
+Instead, streaming should be used where possible for larger request and response bodies.
 
 The problem really is CPU cost.
 Inefficient I/O management (as long as it is non-blocking!) is just delaying individual requests.
@@ -46,7 +46,7 @@ Instead of setting the generic body limit high, you should consider increasing t
 ```php
 <?php
 
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
@@ -54,9 +54,9 @@ use Amp\Http\Status;
 use Amp\ByteStream;
 use Amp\File;
 
-$handler = new CallableRequestHandler(function (Request $request) {
+$handler = new ClosureRequestHandler(function (Request $request) {
     $path = "test.txt";
-    
+
     try {
         /** @var File\Handle $file */
         $file = yield File\open($path, "w+");
@@ -71,7 +71,7 @@ $handler = new CallableRequestHandler(function (Request $request) {
         if ($e->getCode() === Status::PAYLOAD_TOO_LARGE) {
             return new Response(Status::PAYLOAD_TOO_LARGE, [], "Too big, aborting.");
         }
-        
+
         if (isset($file)) {
             // explicit close to avoid issues when unlink()'ing
             yield $file->close();

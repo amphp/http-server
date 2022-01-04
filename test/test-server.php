@@ -8,7 +8,7 @@ use Amp\CancelledException;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
@@ -37,7 +37,7 @@ $logHandler->setLevel(Logger::INFO);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new CallableRequestHandler(static function (Request $request) {
+$server = new HttpServer($servers, new ClosureRequestHandler(static function (Request $request) {
     try {
         // Buffer entire body, but timeout after 100ms.
         $body = async(fn () => $request->getBody()->buffer())->await(new TimeoutCancellation(0.1));

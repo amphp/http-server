@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\Future;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 
@@ -21,22 +22,21 @@ interface HttpDriver
      * resolves. Yielding null indicates the parser needs more data. NULL will be sent to the generator upon promise
      * resolution. The generator MUST yield only null or a promise.
      *
-     * @param Client       $client       The client associated with the data being sent to the returned generator.
-     * @param callable     $onMessage    Invoked with an instance of Request when the returned parser has parsed a
-     *                                   request. Returns a promise that is resolved once the response has been
-     *                                   generated and writing the response to the client initiated (but not
-     *                                   necessarily complete).
-     * @param callable     $write        Invoked with raw data to be written to the client connection. Returns a
-     *                                   promise that is resolved when the data has been successfully written.
+     * @param Client $client The client associated with the data being sent to the returned generator.
+     * @param Closure(Request):void $onMessage Invoked with an instance of Request when the returned parser has parsed
+     * a request. Returns a {@see Future} that is resolved once the response has been generated and writing the response
+     * to the client initiated (but not necessarily complete).
+     * @param Closure(string):Future $write Invoked with raw data to be written to the client connection. Returns a
+     * {@see Future} that is resolved when the data has been successfully written.
      *
      * @return \Generator Request parser.
      */
-    public function setup(Client $client, callable $onMessage, callable $write): \Generator;
+    public function setup(Client $client, \Closure $onMessage, \Closure $write): \Generator;
 
     /**
      * Write the given response to the client using the write callback provided to `setup()`.
      *
-     * @param Request  $request
+     * @param Request $request
      * @param Response $response
      */
     public function write(Request $request, Response $response): void;

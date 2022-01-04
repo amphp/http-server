@@ -6,7 +6,7 @@ require \dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
@@ -34,7 +34,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new CallableRequestHandler(static function (Request $request): Response {
+$server = new HttpServer($servers, new ClosureRequestHandler(static function (Request $request): Response {
     return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8",
     ], "Hello, World!");

@@ -23,7 +23,7 @@ use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\RequestHandler;
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
@@ -50,7 +50,7 @@ class RemoteClientTest extends AsyncTestCase
         $address = \stream_socket_get_name($server, $wantPeer = false);
         \fclose($server);
 
-        $handler = new CallableRequestHandler($handler);
+        $handler = new ClosureRequestHandler($handler);
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
         $servers = [
@@ -472,7 +472,7 @@ class RemoteClientTest extends AsyncTestCase
 
         $client = new RemoteClient(
             $client,
-            new CallableRequestHandler($requestHandler),
+            new ClosureRequestHandler($requestHandler),
             new DefaultErrorHandler,
             $this->createMock(PsrLogger::class),
             $options,

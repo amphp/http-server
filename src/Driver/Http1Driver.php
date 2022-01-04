@@ -57,7 +57,7 @@ final class Http1Driver implements HttpDriver
         $this->pendingResponse = Future::complete();
     }
 
-    public function setup(Client $client, callable $onMessage, callable $write): \Generator
+    public function setup(Client $client, \Closure $onMessage, \Closure $write): \Generator
     {
         \assert(!isset($this->client), "The driver has already been setup");
 

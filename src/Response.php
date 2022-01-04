@@ -26,10 +26,10 @@ final class Response extends Message
     /** @var Push[] */
     private array $push = [];
 
-    /** @var callable|null */
-    private $upgrade = null;
+    /** @var \Closure|null */
+    private ?\Closure $upgrade = null;
 
-    /** @var callable[] */
+    /** @var \Closure[] */
     private array $onDispose = [];
 
     private ?Trailers $trailers = null;
@@ -64,8 +64,8 @@ final class Response extends Message
 
     public function __destruct()
     {
-        foreach ($this->onDispose as $callable) {
-            EventLoop::defer($callable);
+        foreach ($this->onDispose as $onDispose) {
+            EventLoop::queue($onDispose);
         }
     }
 
@@ -366,11 +366,11 @@ final class Response extends Message
      * response to 101 (Switching Protocols) and removes any trailers. The callback may be removed by changing the
      * response status to any value other than 101.
      *
-     * @param callable $upgrade Callback invoked once the response has been written to the client. The callback is given
-     *                          three parameters: an instance of Driver\UpgradedSocket, the original Request object,
-     *                          and this Response object.
+     * @param Closure(Driver\UpgradedSocket, Request, Response):void $upgrade Callback invoked once the response has
+     * been written to the client. The callback is given three parameters: an instance of {@see Driver\UpgradedSocket},
+     * the original {@see Request} object, and this {@see Response} object.
      */
-    public function upgrade(callable $upgrade): void
+    public function upgrade(\Closure $upgrade): void
     {
         $this->upgrade = $upgrade;
         $this->status = Status::SWITCHING_PROTOCOLS;
@@ -393,9 +393,9 @@ final class Response extends Message
      * Registers a function that is invoked when the Response is discarded. A response is discarded either once it has
      * been written to the client or if it gets replaced in a middleware chain.
      *
-     * @param callable $onDispose
+     * @param Closure():void $onDispose
      */
-    public function onDispose(callable $onDispose): void
+    public function onDispose(\Closure $onDispose): void
     {
         $this->onDispose[] = $onDispose;
     }

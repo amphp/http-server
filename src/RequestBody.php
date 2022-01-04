@@ -17,9 +17,9 @@ final class RequestBody extends Payload
 
     /**
      * @param ReadableStream   $stream
-     * @param callable|null $upgradeSize Callback used to increase the maximum size of the body.
+     * @param null|Closure(int):void $upgradeSize Closure used to increase the maximum size of the body.
      */
-    public function __construct(ReadableStream $stream, ?callable $upgradeSize = null)
+    public function __construct(ReadableStream $stream, ?\Closure $upgradeSize = null)
     {
         parent::__construct($stream);
         $this->upgradeSize = $upgradeSize;

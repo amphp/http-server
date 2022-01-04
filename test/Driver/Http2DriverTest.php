@@ -209,7 +209,7 @@ class Http2DriverTest extends HttpDriverTest
         return $return;
     }
 
-    public function setupDriver(callable $onMessage = null, Options $options = null): array
+    public function setupDriver(\Closure $onMessage = null, Options $options = null): array
     {
         $driver = new class($options ?? new Options) implements HttpDriver {
             public array $frames = [];
@@ -221,7 +221,7 @@ class Http2DriverTest extends HttpDriverTest
                 $this->driver = new Http2Driver($options, new NullLogger);
             }
 
-            public function setup(Client $client, callable $onMessage, callable $write): \Generator
+            public function setup(Client $client, \Closure $onMessage, \Closure $write): \Generator
             {
                 return $this->driver->setup($client, $onMessage, function ($data) use ($write) {
                     $type = \ord($data[3]);

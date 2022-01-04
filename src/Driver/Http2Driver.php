@@ -124,7 +124,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
      *
      * @return \Generator
      */
-    public function setup(Client $client, callable $onMessage, callable $write, ?string $settings = null): \Generator
+    public function setup(Client $client, \Closure $onMessage, \Closure $write, ?string $settings = null): \Generator
     {
         \assert(!isset($this->client), "The driver has already been setup");
 

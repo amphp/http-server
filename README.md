@@ -40,7 +40,7 @@ composer require amphp/http-server
 ```php
 <?php
 
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
@@ -56,7 +56,7 @@ Amp\Loop::run(function () {
         Server::listen("[::]:1337"),
     ];
 
-    $server = new HttpServer($sockets, new CallableRequestHandler(function (Request $request) {
+    $server = new HttpServer($sockets, new ClosureRequestHandler(function (Request $request) {
         return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8"
         ], "Hello, World!");

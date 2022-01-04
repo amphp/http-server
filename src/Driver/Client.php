@@ -102,9 +102,9 @@ interface Client
     /**
      * Attaches a callback invoked with this client closes. The callback is passed this object as the first parameter.
      *
-     * @param callable $callback
+     * @param Closure(Client):void $onClose
      */
-    public function onClose(callable $callback): void;
+    public function onClose(\Closure $onClose): void;
 
     /**
      * Forcefully closes the client connection.

@@ -6,7 +6,7 @@ use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
-use Amp\Http\Server\RequestHandler\CallableRequestHandler;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
@@ -19,7 +19,7 @@ class StackTest extends AsyncTestCase
     {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
 
-        $stack = stack(new CallableRequestHandler(function (Request $request) {
+        $stack = stack(new ClosureRequestHandler(function (Request $request) {
             $response = new Response(Status::OK, [], "OK");
             $response->setHeader("stack", $request->getAttribute(StackTest::class));
 
@@ -31,7 +31,7 @@ class StackTest extends AsyncTestCase
 
                 return $requestHandler->handleRequest($request);
             }
-        }, new Middleware\CallableMiddleware(function (Request $request, RequestHandler $requestHandler) {
+        }, new Middleware\ClosureMiddleware(function (Request $request, RequestHandler $requestHandler) {
             $request->setAttribute(StackTest::class, $request->getAttribute(StackTest::class) . "b");
 
             return $requestHandler->handleRequest($request);

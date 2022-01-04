@@ -24,9 +24,9 @@ Thus there are [libraries built on top of Amp](https://amphp.org/packages) provi
 ```php
 // Here's a bad example, DO NOT do something like that!
 
-$handler = new CallableRequestHandler(function () {
+$handler = new ClosureRequestHandler(function () {
     sleep(5); // Equivalent to a blocking I/O function with a 5 second timeout
-    
+
     return new Response;
 });
 
