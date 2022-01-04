@@ -25,19 +25,20 @@ final class UpgradedSocket implements EncryptableSocket
         $this->buffer = $buffer !== '' ? $buffer : null;
     }
 
-    public function read(?Cancellation $token = null, ?int $limit = null): ?string
+    public function read(?Cancellation $cancellation = null, ?int $limit = null): ?string
     {
         if ($this->buffer !== null) {
             $buffer = $this->buffer;
             $this->buffer = null;
-            if($limit !== null && strlen($buffer) > $limit) {
-                $this->buffer = substr($buffer, $limit);
-                return substr($buffer, 0, $limit);
+            if($limit !== null && \strlen($buffer) > $limit) {
+                $this->buffer = \substr($buffer, $limit);
+                return \substr($buffer, 0, $limit);
             }
+
             return $buffer;
         }
 
-        return $this->socket->read($token, $limit);
+        return $this->socket->read($cancellation, $limit);
     }
 
     public function close(): void

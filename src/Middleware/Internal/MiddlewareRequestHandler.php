@@ -29,13 +29,11 @@ final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
         $this->next = $requestHandler;
     }
 
-    /** {@inheritdoc} */
     public function handleRequest(Request $request): Response
     {
         return $this->middleware->handleRequest($request, $this->next);
     }
 
-    /** @inheritdoc */
     public function onStart(HttpServer $server): void
     {
         if ($this->middleware instanceof ServerObserver) {
@@ -47,7 +45,6 @@ final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
         }
     }
 
-    /** @inheritdoc */
     public function onStop(HttpServer $server): void
     {
         if ($this->middleware instanceof ServerObserver) {

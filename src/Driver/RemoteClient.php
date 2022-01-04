@@ -26,7 +26,7 @@ final class RemoteClient implements Client
 
     private static DefaultErrorHandler $defaultErrorHandler;
 
-    private static $nextId = 0;
+    private static int $nextId = 0;
 
     private int $id;
 
@@ -149,19 +149,16 @@ final class RemoteClient implements Client
         );
     }
 
-    /** @inheritdoc */
     public function getOptions(): Options
     {
         return $this->options;
     }
 
-    /** @inheritdoc */
     public function getPendingResponseCount(): int
     {
         return $this->pendingResponses;
     }
 
-    /** @inheritdoc */
     public function getPendingRequestCount(): int
     {
         if (!isset($this->httpDriver)) {
@@ -171,55 +168,46 @@ final class RemoteClient implements Client
         return $this->httpDriver->getPendingRequestCount();
     }
 
-    /** @inheritdoc */
     public function isWaitingOnResponse(): bool
     {
         return isset($this->httpDriver) && $this->pendingHandlers > $this->httpDriver->getPendingRequestCount();
     }
 
-    /** @inheritdoc */
     public function getId(): int
     {
         return $this->id;
     }
 
-    /** @inheritdoc */
     public function getRemoteAddress(): SocketAddress
     {
         return $this->socket->getRemoteAddress();
     }
 
-    /** @inheritdoc */
     public function getLocalAddress(): SocketAddress
     {
         return $this->socket->getLocalAddress();
     }
 
-    /** @inheritdoc */
     public function isUnix(): bool
     {
         return $this->getRemoteAddress()->getPort() === null;
     }
 
-    /** @inheritdoc */
     public function isEncrypted(): bool
     {
         return $this->tlsInfo !== null;
     }
 
-    /** @inheritdoc */
     public function getTlsInfo(): ?TlsInfo
     {
         return $this->tlsInfo;
     }
 
-    /** @inheritdoc */
     public function isExported(): bool
     {
         return $this->isExported;
     }
 
-    /** @inheritdoc */
     public function getStatus(): int
     {
         return $this->status;
@@ -239,7 +227,6 @@ final class RemoteClient implements Client
         $this->timeoutCache->update($this->id, $expiresAt);
     }
 
-    /** @inheritdoc */
     public function close(): void
     {
         if ($this->onClose === null) {
@@ -269,8 +256,7 @@ final class RemoteClient implements Client
         }
     }
 
-    /** @inheritdoc */
-    public function onClose(callable $callback): void
+    public function onClose(\Closure $callback): void
     {
         if ($this->onClose === null) {
             EventLoop::defer(fn () => $callback($this));
@@ -280,7 +266,6 @@ final class RemoteClient implements Client
         $this->onClose[] = $callback;
     }
 
-    /** @inheritdoc */
     public function stop(float $timeout): void
     {
         if (!isset($this->httpDriver)) {

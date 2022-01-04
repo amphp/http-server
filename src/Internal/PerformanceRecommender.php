@@ -7,7 +7,6 @@ use Amp\Http\Server\ServerObserver;
 
 final class PerformanceRecommender implements ServerObserver
 {
-    /** @inheritdoc */
     public function onStart(HttpServer $server): void
     {
         $logger = $server->getLogger();
@@ -35,7 +34,6 @@ final class PerformanceRecommender implements ServerObserver
         }
     }
 
-    /** @inheritdoc */
     public function onStop(HttpServer $server): void
     {
     }

@@ -57,7 +57,6 @@ final class Http1Driver implements HttpDriver
         $this->pendingResponse = Future::complete();
     }
 
-    /** {@inheritdoc} */
     public function setup(Client $client, callable $onMessage, callable $write): \Generator
     {
         \assert(!isset($this->client), "The driver has already been setup");
@@ -70,8 +69,6 @@ final class Http1Driver implements HttpDriver
     }
 
     /**
-     * {@inheritdoc}
-     *
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
     public function write(Request $request, Response $response): void

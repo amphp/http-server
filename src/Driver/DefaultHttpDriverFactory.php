@@ -8,7 +8,6 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 final class DefaultHttpDriverFactory implements HttpDriverFactory
 {
-    /** {@inheritdoc} */
     public function selectDriver(
         Client $client,
         ErrorHandler $errorHandler,
@@ -22,7 +21,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         return new Http1Driver($options, $errorHandler, $logger);
     }
 
-    /** {@inheritdoc} */
     public function getApplicationLayerProtocols(): array
     {
         return ["h2", "http/1.1"];

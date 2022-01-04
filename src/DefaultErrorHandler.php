@@ -12,7 +12,6 @@ final class DefaultErrorHandler implements ErrorHandler
     /** @var string[] */
     private array $cache = [];
 
-    /** {@inheritdoc} */
     public function handleError(int $statusCode, ?string $reason = null, ?Request $request = null): Response
     {
         static $errorHtml;

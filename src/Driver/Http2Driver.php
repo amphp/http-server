@@ -3,7 +3,6 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\IterableStream;
-use Amp\ByteStream\ReadableResourceStream;
 use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\HPack;
@@ -157,11 +156,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
         try {
             $this->send($id, $response, $request);
         } finally {
-            $deferred->complete(null);
+            $deferred->complete();
         }
     }
 
-    /** @inheritdoc */
     public function stop(): void
     {
         $this->shutdown();
@@ -324,14 +322,14 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $this->stopping = true;
 
         try {
-            $promises = [];
+            $futures = [];
             foreach ($this->streams as $id => $stream) {
                 if ($lastId && $id > $lastId) {
                     break;
                 }
 
                 if ($stream->pendingResponse) {
-                    $promises[] = $stream->pendingResponse;
+                    $futures[] = $stream->pendingResponse;
                 }
             }
 
@@ -339,20 +337,20 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $lastId ??= ($id ?? 0);
             $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG)->await();
 
-            Future\all($promises);
+            Future\all($futures);
 
-            $promises = [];
+            $futures = [];
             foreach ($this->streams as $id => $stream) {
                 if ($lastId && $id > $lastId) {
                     break;
                 }
 
                 if ($stream->pendingWrite) {
-                    $promises[] = $stream->pendingWrite;
+                    $futures[] = $stream->pendingWrite;
                 }
             }
 
-            Future\all($promises);
+            Future\all($futures);
         } finally {
             if (!empty($this->streams)) {
                 $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
@@ -485,20 +483,20 @@ final class Http2Driver implements HttpDriver, Http2Processor
             }
 
             if ($stream->state & Http2Stream::LOCAL_CLOSED) {
-                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::END_STREAM, $id);
+                $future = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::END_STREAM, $id);
             } else {
-                $promise = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
+                $future = $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
             }
 
             $stream->clientWindow -= $length;
             $stream->buffer = "";
 
             if ($stream->deferred) {
-                $stream->deferred->complete(null);
+                $stream->deferred->complete();
                 $stream->deferred = null;
             }
 
-            return $promise;
+            return $future;
         }
 
         if ($delta > 0) {
