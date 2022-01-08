@@ -37,7 +37,7 @@ final class Response extends Message
     /**
      * @param int $code Status code.
      * @param string[]|string[][] $headers
-     * @param ReadableStream|string $stringOrStream
+     * @param ReadableStream|string $body
      * @param Trailers|null $trailers
      *
      * @throws \Error If one of the arguments is invalid.
@@ -45,13 +45,13 @@ final class Response extends Message
     public function __construct(
         int $code = Status::OK,
         array $headers = [],
-        ReadableStream|string $stringOrStream = '',
+        ReadableStream|string $body = '',
         ?Trailers $trailers = null
     ) {
         $this->status = $this->validateStatusCode($code);
         $this->reason = Status::getReason($this->status);
 
-        $this->setBody($stringOrStream);
+        $this->setBody($body);
 
         if (!empty($headers)) {
             $this->setHeaders($headers);
@@ -83,20 +83,18 @@ final class Response extends Message
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Setting a stream will remove the Content-Length header.
      *
-     * @param ReadableStream|string $stringOrStream
-     *
-     * @throws \TypeError If the body given is not a string or instance of \Amp\ByteStream\ReadableStream
+     * @param ReadableStream|string $body
      */
-    public function setBody(ReadableStream|string $stringOrStream): void
+    public function setBody(ReadableStream|string $body): void
     {
-        if ($stringOrStream instanceof ReadableStream) {
-            $this->body = $stringOrStream;
+        if ($body instanceof ReadableStream) {
+            $this->body = $body;
             $this->removeHeader("content-length");
             return;
         }
 
-        $this->body = new ReadableBuffer($stringOrStream);
-        $this->setHeader("content-length", (string) \strlen($stringOrStream));
+        $this->body = new ReadableBuffer($body);
+        $this->setHeader("content-length", (string) \strlen($body));
     }
 
     /**
