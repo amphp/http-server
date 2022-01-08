@@ -45,8 +45,6 @@ final class RemoteClient implements Client
 
     private int $pendingResponses = 0;
 
-    private AsyncWriter $writer;
-
     /**
      * @param Socket $socket
      * @param RequestHandler $requestHandler
@@ -292,23 +290,19 @@ final class RemoteClient implements Client
      *
      * @param string $data The data to write.
      * @param bool $close If true, close the client after the given chunk of data has been written.
-     *
-     * @return Future
      */
-    private function write(string $data, bool $close = false): Future
+    private function write(string $data, bool $close = false): void
     {
         if ($this->status & self::CLOSED_WR) {
-            return Future::error(new ClientException($this, "Client socket closed"));
+            throw new ClientException($this, "Client socket closed");
         }
 
-        $future = $this->writer->write($data);
+        $this->socket->write($data);
 
         if ($close) {
             $this->status |= self::CLOSED_WR;
-            return $future->finally(fn () => $this->socket->close());
+            $this->socket->end();
         }
-
-        return $future;
     }
 
     /**

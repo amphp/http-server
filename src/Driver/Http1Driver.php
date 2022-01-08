@@ -85,7 +85,7 @@ final class Http1Driver implements HttpDriver
         try {
             $this->send($lastWrite, $response, $request);
         } finally {
-            $deferred->complete(null);
+            $deferred->complete();
         }
     }
 
@@ -167,7 +167,7 @@ final class Http1Driver implements HttpDriver
         $buffer .= "\r\n";
 
         if ($request !== null && $request->getMethod() === "HEAD") {
-            ($this->write)($buffer, $shouldClose)->await();
+            ($this->write)($buffer, $shouldClose);
             return;
         }
 
@@ -195,7 +195,7 @@ final class Http1Driver implements HttpDriver
                     continue;
                 }
 
-                ($this->write)($buffer)->await();
+                ($this->write)($buffer);
                 $buffer = "";
             }
 
@@ -212,7 +212,7 @@ final class Http1Driver implements HttpDriver
 
             if ($buffer !== "" || $shouldClose) {
                 $this->updateTimeout();
-                ($this->write)($buffer, $shouldClose)->await();
+                ($this->write)($buffer, $shouldClose);
             }
         } catch (ClientException) {
             return; // Client will be closed in finally.
