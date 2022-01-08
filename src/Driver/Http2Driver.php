@@ -215,15 +215,17 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $headers = $this->encodeHeaders($headers);
 
             if (\strlen($headers) > $this->maxFrameSize) {
+                // Header frames must be sent as one contiguous block without frames from any other stream being
+                // interleaved between due to HPack. See https://datatracker.ietf.org/doc/html/rfc7540#section-4.3
                 $split = \str_split($headers, $this->maxFrameSize);
                 $headers = \array_shift($split);
-                async(fn () => $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id));
+                async(fn () => $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id))->ignore();
 
                 $headers = \array_pop($split);
                 foreach ($split as $msgPart) {
-                    async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id));
+                    async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id))->ignore();
                 }
-                $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
+                async(fn () => $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id))->await();
             } else {
                 $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
             }
@@ -277,13 +279,13 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 if (\strlen($headers) > $this->maxFrameSize) {
                     $split = \str_split($headers, $this->maxFrameSize);
                     $headers = \array_shift($split);
-                    async(fn () => $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id));
+                    async(fn () => $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG, $id))->ignore();
 
                     $headers = \array_pop($split);
                     foreach ($split as $msgPart) {
-                        async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id));
+                        async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id))->ignore();
                     }
-                    $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
+                    async(fn () => $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id))->await();
                 } else {
                     $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
                 }
@@ -424,13 +426,13 @@ final class Http2Driver implements HttpDriver, Http2Processor
         if (\strlen($headers) >= $this->maxFrameSize) {
             $split = \str_split($headers, $this->maxFrameSize);
             $headers = \array_shift($split);
-            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::NO_FLAG, $streamId);
+            async(fn () => $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::NO_FLAG, $streamId))->ignore();
 
             $headers = \array_pop($split);
             foreach ($split as $msgPart) {
-                $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id);
+                async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG, $id))->ignore();
             }
-            $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id);
+            async(fn () => $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS, $id))->await();
         } else {
             $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
         }
