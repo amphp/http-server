@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\AsyncWriter;
 use Amp\Future;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
@@ -63,8 +62,6 @@ final class RemoteClient implements Client
     ) {
         self::$defaultErrorHandler ??= new DefaultErrorHandler;
         $this->id = self::$nextId++;
-
-        $this->writer = new AsyncWriter($socket);
     }
 
     /**
