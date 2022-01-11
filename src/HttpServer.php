@@ -263,15 +263,16 @@ final class HttpServer
         }
         [$exceptions] = Future\settle($futures);
 
+        $this->state = self::STARTED;
+
         if (!empty($exceptions)) {
             try {
-                $this->stop(self::DEFAULT_SHUTDOWN_TIMEOUT);
+                $this->stop();
             } finally {
                 throw new CompositeException($exceptions, "onStart observer initialization failure");
             }
         }
 
-        $this->state = self::STARTED;
         \assert($this->logger->debug("Started") || true);
 
         $protocols = $this->driverFactory->getApplicationLayerProtocols();
