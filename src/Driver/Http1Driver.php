@@ -811,7 +811,6 @@ final class Http1Driver implements HttpDriver
             return $headers;
         }
 
-        $headers["link"] = [];
         foreach ($response->getPushes() as $push) {
             $headers["link"][] = "<{$push->getUri()}>; rel=preload";
         }
