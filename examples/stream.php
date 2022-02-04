@@ -4,7 +4,7 @@
 require \dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
-use Amp\ByteStream\IterableStream;
+use Amp\ByteStream\ReadableIterableStream;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -34,7 +34,7 @@ $server = new HttpServer($servers, new ClosureRequestHandler(function (Request $
     // We stream the response here, one line every 100 ms.
     return new Response(Status::OK, [
         "content-type" => "text/plain; charset=utf-8",
-    ], new IterableStream((function () {
+    ], new ReadableIterableStream((function () {
         for ($i = 0; $i < 30; $i++) {
             delay(0.1);
             yield "Line {$i}\r\n";

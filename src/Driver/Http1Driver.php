@@ -2,8 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\IterableStream;
-use Amp\ByteStream\ReadableResourceStream;
+use Amp\ByteStream\ReadableIterableStream;
 use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\InvalidHeaderException;
@@ -16,7 +15,7 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Pipeline\Emitter;
+use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\async;
@@ -32,7 +31,7 @@ final class Http1Driver implements HttpDriver
 
     private PsrLogger $logger;
 
-    private ?Emitter $bodyEmitter = null;
+    private ?Queue $bodyQueue = null;
 
     private Future $pendingResponse;
 
@@ -91,7 +90,7 @@ final class Http1Driver implements HttpDriver
 
     public function getPendingRequestCount(): int
     {
-        if ($this->bodyEmitter) {
+        if ($this->bodyQueue) {
             return 1;
         }
 
@@ -502,12 +501,12 @@ final class Http1Driver implements HttpDriver
                 }
 
                 // HTTP/1.x clients only ever have a single body emitter.
-                $this->bodyEmitter = $emitter = new Emitter;
+                $this->bodyQueue = $queue = new Queue();
                 $trailerDeferred = new DeferredFuture;
                 $maxBodySize = $this->options->getBodySizeLimit();
 
                 $body = new RequestBody(
-                    new IterableStream($emitter->pipe()),
+                    new ReadableIterableStream($queue->pipe()),
                     function (int $bodySize) use (&$maxBodySize) {
                         if ($bodySize > $maxBodySize) {
                             $maxBodySize = $bodySize;
@@ -645,7 +644,7 @@ final class Http1Driver implements HttpDriver
                                 while ($bodyBufferSize < $remaining) {
                                     if ($bodyBufferSize) {
                                         $this->updateTimeout();
-                                        yield $emitter->emit($body);
+                                        yield $queue->pushAsync($body);
                                         $body = "";
                                         $bodySize += $bodyBufferSize;
                                         $remaining -= $bodyBufferSize;
@@ -660,7 +659,7 @@ final class Http1Driver implements HttpDriver
 
                                 if ($remaining) {
                                     $this->updateTimeout();
-                                    yield $emitter->emit(\substr($body, 0, $remaining));
+                                    yield $queue->pushAsync(\substr($body, 0, $remaining));
                                     $buffer = \substr($body, $remaining);
                                     $body = "";
                                     $bodySize += $remaining;
@@ -692,21 +691,21 @@ final class Http1Driver implements HttpDriver
                             $this->updateTimeout();
 
                             if ($bufferLength >= $chunkLengthRemaining + 2) {
-                                yield $emitter->emit(\substr($buffer, 0, $chunkLengthRemaining));
+                                yield $queue->pushAsync(\substr($buffer, 0, $chunkLengthRemaining));
                                 $buffer = \substr($buffer, $chunkLengthRemaining + 2);
 
                                 $chunkLengthRemaining = null;
                                 continue 2; // next chunk (chunked loop)
                             }
 
-                            yield $emitter->emit($buffer);
+                            yield $queue->pushAsync($buffer);
                             $buffer = "";
                             $chunkLengthRemaining -= $bufferLength;
                         }
                     }
 
                     if ($body !== "") {
-                        yield $emitter->emit($body);
+                        yield $queue->pushAsync($body);
                     }
                 } else {
                     $bodyBufferSize = \strlen($buffer);
@@ -715,7 +714,7 @@ final class Http1Driver implements HttpDriver
                     while ($bodySize + $bodyBufferSize < \min($maxBodySize, $contentLength)) {
                         if ($bodyBufferSize) {
                             $this->updateTimeout();
-                            $buffer = yield $emitter->emit($buffer);
+                            $buffer = yield $queue->pushAsync($buffer);
                             $bodySize += $bodyBufferSize;
                         }
                         $buffer .= yield;
@@ -726,7 +725,7 @@ final class Http1Driver implements HttpDriver
 
                     if ($remaining) {
                         $this->updateTimeout();
-                        yield $emitter->emit(\substr($buffer, 0, $remaining));
+                        yield $queue->pushAsync(\substr($buffer, 0, $remaining));
                         $buffer = \substr($buffer, $remaining);
                     }
 
@@ -740,24 +739,24 @@ final class Http1Driver implements HttpDriver
                     $trailerDeferred = null;
                 }
 
-                $this->bodyEmitter = null;
-                $emitter->complete();
+                $this->bodyQueue = null;
+                $queue->complete();
 
                 $this->updateTimeout();
 
                 yield $this->pendingResponse; // Wait for response to be generated.
             } while (true);
         } catch (ClientException $exception) {
-            if ($this->bodyEmitter === null || $this->client->getPendingResponseCount()) {
+            if ($this->bodyQueue === null || $this->client->getPendingResponseCount()) {
                 // Send an error response only if another response has not already been sent to the request.
                 yield $this->sendErrorResponse($exception);
             }
             return;
         } finally {
-            if ($this->bodyEmitter !== null) {
-                $emitter = $this->bodyEmitter;
-                $this->bodyEmitter = null;
-                $emitter->error($exception ?? new ClientException(
+            if ($this->bodyQueue !== null) {
+                $queue = $this->bodyQueue;
+                $this->bodyQueue = null;
+                $queue->error($exception ?? new ClientException(
                         $this->client,
                         "Client disconnected",
                         Status::REQUEST_TIMEOUT

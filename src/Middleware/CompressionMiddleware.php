@@ -2,13 +2,13 @@
 
 namespace Amp\Http\Server\Middleware;
 
-use Amp\ByteStream\IterableStream;
+use Amp\ByteStream\ReadableIterableStream;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Pipeline\Pipeline;
 use cash\LRUCache;
-use function Amp\Pipeline\fromIterable;
 
 final class CompressionMiddleware implements Middleware
 {
@@ -156,7 +156,7 @@ final class CompressionMiddleware implements Middleware
         $response->setHeader("content-encoding", $encoding);
         $response->addHeader("vary", "accept-encoding");
 
-        $generator = fromIterable(function () use ($resource, $body, $bodyBuffer) {
+        $generator = Pipeline::fromIterable(function () use ($resource, $body, $bodyBuffer) {
             do {
                 if (isset($bodyBuffer[$this->chunkSize - 1])) {
                     if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
@@ -177,7 +177,7 @@ final class CompressionMiddleware implements Middleware
             yield $bodyBuffer;
         });
 
-        $response->setBody(new IterableStream($generator));
+        $response->setBody(new ReadableIterableStream($generator));
 
         return $response;
     }
