@@ -2,8 +2,8 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
-use Amp\ByteStream\IterableStream;
 use Amp\ByteStream\ReadableBuffer;
+use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
 use Amp\Cancellation;
 use Amp\Http\Client\Connection\DefaultConnectionFactory;
@@ -27,7 +27,7 @@ use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\Pipeline\Emitter;
+use Amp\Pipeline\Queue;
 use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
@@ -182,19 +182,19 @@ class RemoteClientTest extends AsyncTestCase
 
     public function testStreamRequest(): void
     {
-        $emitter = new Emitter();
+        $queue = new Queue();
 
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
             Uri\Http::createFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]], // headers
-            new RequestBody(new IterableStream($emitter->pipe())) // body
+            new RequestBody(new ReadableIterableStream($queue->pipe())) // body
         );
 
-        $emitter->emit("fooBar")->ignore();
-        $emitter->emit("BUZZ!")->ignore();
-        $emitter->complete();
+        $queue->pushAsync("fooBar")->ignore();
+        $queue->pushAsync("BUZZ!")->ignore();
+        $queue->complete();
 
         /** @var Response $response */
         [$response, $body] = $this->tryRequest($request, function (Request $req) {
@@ -305,8 +305,8 @@ class RemoteClientTest extends AsyncTestCase
 
         $driver->expects(self::once())
             ->method("setup")
-            ->willReturnCallback(function (Client $client, callable $emitter) use (&$emit) {
-                $emit = $emitter;
+            ->willReturnCallback(function (Client $client, callable $queue) use (&$emit) {
+                $emit = $queue;
                 yield;
             });
 
@@ -447,8 +447,8 @@ class RemoteClientTest extends AsyncTestCase
 
         $driver->expects(self::once())
             ->method("setup")
-            ->willReturnCallback(static function (Client $client, callable $emitter) use (&$emit) {
-                $emit = $emitter;
+            ->willReturnCallback(static function (Client $client, callable $queue) use (&$emit) {
+                $emit = $queue;
                 yield;
             });
 

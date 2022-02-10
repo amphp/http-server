@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\IterableStream;
+use Amp\ByteStream\ReadableIterableStream;
 use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\HPack;
@@ -20,7 +20,7 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Pipeline\Emitter;
+use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -88,8 +88,8 @@ final class Http2Driver implements HttpDriver, Http2Processor
     /** @var DeferredFuture[] */
     private array $trailerDeferreds = [];
 
-    /** @var Emitter[] */
-    private array $bodyEmitters = [];
+    /** @var Queue[] */
+    private array $bodyQueues = [];
 
     /** @var int Number of streams that may be opened. */
     private int $remainingStreams;
@@ -168,7 +168,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
     public function getPendingRequestCount(): int
     {
-        return \count($this->bodyEmitters);
+        return \count($this->bodyQueues);
     }
 
     private function send(int $id, Response $response, Request $request): void
@@ -527,10 +527,10 @@ final class Http2Driver implements HttpDriver, Http2Processor
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 
-        if (isset($this->bodyEmitters[$id])) {
-            $emitter = $this->bodyEmitters[$id];
-            unset($this->bodyEmitters[$id]);
-            $emitter->error($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
+        if (isset($this->bodyQueues[$id])) {
+            $queue = $this->bodyQueues[$id];
+            unset($this->bodyQueues[$id]);
+            $queue->error($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
         }
 
         if (isset($this->trailerDeferreds[$id])) {
@@ -805,11 +805,11 @@ final class Http2Driver implements HttpDriver, Http2Processor
             }
 
             $deferred = $this->trailerDeferreds[$streamId];
-            $emitter = $this->bodyEmitters[$streamId];
+            $queue = $this->bodyQueues[$streamId];
 
-            unset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId]);
+            unset($this->bodyQueues[$streamId], $this->trailerDeferreds[$streamId]);
 
-            $emitter->complete();
+            $queue->complete();
             $deferred->complete($headers);
 
             return;
@@ -901,12 +901,12 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         $this->trailerDeferreds[$streamId] = new DeferredFuture;
-        $this->bodyEmitters[$streamId] = new Emitter;
+        $this->bodyQueues[$streamId] = new Queue();
 
         $body = new RequestBody(
-            new IterableStream($this->bodyEmitters[$streamId]->pipe()),
+            new ReadableIterableStream($this->bodyQueues[$streamId]->pipe()),
             function (int $bodySize) use ($streamId) {
-                if (!isset($this->streams[$streamId], $this->bodyEmitters[$streamId])) {
+                if (!isset($this->streams[$streamId], $this->bodyQueues[$streamId])) {
                     return;
                 }
 
@@ -982,7 +982,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $length = \strlen($data);
         $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
-        if (!isset($this->streams[$streamId], $this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId])) {
+        if (!isset($this->streams[$streamId], $this->bodyQueues[$streamId], $this->trailerDeferreds[$streamId])) {
             if ($streamId > 0 && $streamId <= $this->remoteStreamId) {
                 throw new Http2StreamException(
                     "Stream closed",
@@ -1033,7 +1033,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $stream->expectedLength -= $length;
         }
 
-        $future = $this->bodyEmitters[$streamId]->emit($data);
+        $future = $this->bodyQueues[$streamId]->pushAsync($data);
         $future->ignore();
 
         if ($stream->serverWindow <= self::MINIMUM_WINDOW) {
@@ -1096,16 +1096,16 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         try {
-            if (!isset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId])) {
+            if (!isset($this->bodyQueues[$streamId], $this->trailerDeferreds[$streamId])) {
                 return; // Stream closed after emitting body fragment.
             }
 
             $deferred = $this->trailerDeferreds[$streamId];
-            $emitter = $this->bodyEmitters[$streamId];
+            $queue = $this->bodyQueues[$streamId];
 
-            unset($this->bodyEmitters[$streamId], $this->trailerDeferreds[$streamId]);
+            unset($this->bodyQueues[$streamId], $this->trailerDeferreds[$streamId]);
 
-            $emitter->complete();
+            $queue->complete();
             $deferred->complete([]);
         } finally {
             if (!isset($this->streams[$streamId])) {

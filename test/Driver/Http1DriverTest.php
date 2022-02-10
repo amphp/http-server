@@ -2,8 +2,8 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
-use Amp\ByteStream\IterableStream;
 use Amp\ByteStream\ReadableBuffer;
+use Amp\ByteStream\ReadableIterableStream;
 use Amp\Future;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Request as ClientRequest;
@@ -18,7 +18,7 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Pipeline\Emitter;
+use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
@@ -854,18 +854,18 @@ class Http1DriverTest extends HttpDriverTest
             }
         );
 
-        $emitter = new Emitter;
+        $queue = new Queue();
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("http://test.local"));
-        $response = new Response(Status::OK, $headers, new IterableStream($emitter->pipe()));
+        $response = new Response(Status::OK, $headers, new ReadableIterableStream($queue->pipe()));
         $response->push("/foo");
 
         async(fn () => $driver->write($request, $response));
 
         foreach (\str_split($data) as $c) {
-            $emitter->emit($c)->ignore();
+            $queue->pushAsync($c)->ignore();
         }
-        $emitter->complete();
+        $queue->complete();
 
         delay(0.1);
 
@@ -972,15 +972,15 @@ class Http1DriverTest extends HttpDriverTest
             }
         );
 
-        $emitter = new Emitter;
+        $queue = new Queue();
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0');
-        async(fn () => $driver->write($request, new Response(Status::OK, [], new IterableStream($emitter->pipe()))));
+        async(fn () => $driver->write($request, new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))));
 
         delay(0.1);
 
-        $emitter->emit("foo")->ignore();
+        $queue->pushAsync("foo")->ignore();
         self::assertNull($invoked);
-        $emitter->complete();
+        $queue->complete();
 
         delay(0.1);
 
