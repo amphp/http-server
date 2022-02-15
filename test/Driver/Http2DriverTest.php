@@ -20,9 +20,9 @@ use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
+use function Amp\async;
 use function Amp\delay;
 use function Amp\Http\formatDateHeader;
-use function Amp\async;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -69,6 +69,18 @@ class Http2DriverTest extends HttpDriverTest
         $flags = ($continue ? $flag : Http2Parser::END_STREAM | $flag) | Http2Parser::END_HEADERS;
 
         return $data . self::packFrame($end, $type, $flags, $stream);
+    }
+
+    private static function thenFrameIsEqualTo(
+        array $frame,
+        string $data,
+        int $type,
+        int $flags,
+        int $stream
+    ): void {
+        $frame[0] = \bin2hex($frame[0]);
+
+        self::assertSame([\bin2hex($data), $type, $flags, $stream], $frame);
     }
 
     /**
@@ -122,7 +134,11 @@ class Http2DriverTest extends HttpDriverTest
             self::assertSame($expectations["method"], $request->getMethod(), "method mismatch");
             self::assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
             self::assertSame($expectations["headers"], $headers, "headers mismatch");
-            self::assertSame($expectations["port"] ?? 80, $request->getUri()->getPort() ?: $defaultPort, "uriPort mismatch");
+            self::assertSame(
+                $expectations["port"] ?? 80,
+                $request->getUri()->getPort() ?: $defaultPort,
+                "uriPort mismatch"
+            );
             self::assertSame($expectations["host"], $request->getUri()->getHost(), "uriHost mismatch");
             self::assertSame($expectations["body"], $body, "body mismatch");
             self::assertSame($expectations["trailers"] ?? [], $trailers ? $trailers->getHeaders() : []);
@@ -357,7 +373,10 @@ class Http2DriverTest extends HttpDriverTest
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '2');
 
         $queue = new Queue();
-        EventLoop::queue(fn () => $driver->write($request, new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))));
+        EventLoop::queue(fn () => $driver->write(
+            $request,
+            new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))
+        ));
 
         $queue->pushAsync("foo");
         $queue->error(new \Exception);
@@ -384,7 +403,12 @@ class Http2DriverTest extends HttpDriverTest
         ]), Http2Parser::HEADERS, Http2Parser::END_HEADERS, 1);
 
         $data .= self::packFrame("foo", Http2Parser::DATA, Http2Parser::NO_FLAG, 1);
-        $data .= self::packFrame(\pack("N", Http2Parser::INTERNAL_ERROR), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, 1);
+        $data .= self::packFrame(
+            \pack("N", Http2Parser::INTERNAL_ERROR),
+            Http2Parser::RST_STREAM,
+            Http2Parser::NO_FLAG,
+            1
+        );
 
         delay(0.1);
 
@@ -417,7 +441,11 @@ class Http2DriverTest extends HttpDriverTest
         }
         $driver->frames = [];
 
-        $parser->send(self::packFrame(\pack("nN", Http2Parser::INITIAL_WINDOW_SIZE, 66000), Http2Parser::SETTINGS, Http2Parser::NO_FLAG));
+        $parser->send(self::packFrame(
+            \pack("nN", Http2Parser::INITIAL_WINDOW_SIZE, 66000),
+            Http2Parser::SETTINGS,
+            Http2Parser::NO_FLAG
+        ));
         self::assertCount(1, $driver->frames);
         [$data, $type, $flags, $stream] = \array_pop($driver->frames);
         self::assertEquals(Http2Parser::SETTINGS, $type);
@@ -529,10 +557,12 @@ class Http2DriverTest extends HttpDriverTest
             new ReadableIterableStream($queue->pipe())
         )));
 
-        delay(0.1);
+        delay(0.001);
 
         $hpack = new HPack;
-        self::assertEquals([
+
+        self::thenFrameIsEqualTo(
+            \array_pop($driver->frames),
             $hpack->encode([
                 [":status", (string) Status::OK],
                 ["content-type", "text/html; charset=utf-8"],
@@ -540,8 +570,8 @@ class Http2DriverTest extends HttpDriverTest
             ]),
             Http2Parser::HEADERS,
             Http2Parser::END_HEADERS,
-            3,
-        ], \array_pop($driver->frames));
+            3
+        );
 
         $queue->pushAsync("**")->ignore();
 
@@ -607,7 +637,10 @@ class Http2DriverTest extends HttpDriverTest
         self::assertInstanceOf(Request::class, $request);
 
         $queue = new Queue();
-        $writer = async(fn () => $driver->write($request, new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))));
+        $writer = async(fn () => $driver->write(
+            $request,
+            new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))
+        ));
 
         $queue->pushAsync("{data}")->ignore();
 
@@ -700,8 +733,8 @@ class Http2DriverTest extends HttpDriverTest
         $parser->send($buffer);
 
         self::assertSame(
-            self::packFrame(\pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM), Http2Parser::GOAWAY, Http2Parser::NO_FLAG),
-            $lastWrite
+            \bin2hex(self::packFrame(\pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM), Http2Parser::GOAWAY, Http2Parser::NO_FLAG)),
+            \bin2hex($lastWrite)
         );
     }
 
@@ -741,8 +774,8 @@ class Http2DriverTest extends HttpDriverTest
         $parser->send($buffer);
 
         self::assertSame(
-            self::packFrame(\pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM), Http2Parser::GOAWAY, Http2Parser::NO_FLAG),
-            $lastWrite
+            \bin2hex(self::packFrame(\pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM), Http2Parser::GOAWAY, Http2Parser::NO_FLAG)),
+            \bin2hex($lastWrite)
         );
     }
 

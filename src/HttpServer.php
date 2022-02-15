@@ -399,7 +399,7 @@ final class HttpServer
 
         $futures = [];
         foreach ($this->observers as $observer) {
-            $futures[] = async(fn() => $observer->onStop($this));
+            $futures[] = async(fn () => $observer->onStop($this));
         }
 
         [$exceptions] = Future\settle($futures);

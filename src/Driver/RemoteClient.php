@@ -107,11 +107,12 @@ final class RemoteClient implements Client
                     }
                 }
             } catch (\Throwable $exception) {
-                \assert($this->logger->debug(\sprintf(
-                        "Exception while handling client %s: %s",
-                        $this->socket->getRemoteAddress(),
-                        $exception->getMessage()
-                    )) || true
+                \assert(
+                    $this->logger->debug(\sprintf(
+                    "Exception while handling client %s: %s",
+                    $this->socket->getRemoteAddress(),
+                    $exception->getMessage()
+                )) || true
                 );
 
                 $this->close();
@@ -134,13 +135,14 @@ final class RemoteClient implements Client
         $this->tlsInfo = $this->socket->getTlsInfo();
         \assert($this->tlsInfo !== null);
 
-        \assert($this->logger->debug(\sprintf(
-                "TLS negotiated with %s (%s with %s, application protocol: %s)",
-                $this->socket->getRemoteAddress()->toString(),
-                $this->tlsInfo->getVersion(),
-                $this->tlsInfo->getCipherName(),
-                $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
-            )) || true
+        \assert(
+            $this->logger->debug(\sprintf(
+            "TLS negotiated with %s (%s with %s, application protocol: %s)",
+            $this->socket->getRemoteAddress()->toString(),
+            $this->tlsInfo->getVersion(),
+            $this->tlsInfo->getCipherName(),
+            $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
+        )) || true
         );
     }
 
@@ -313,12 +315,12 @@ final class RemoteClient implements Client
     private function onMessage(Request $request, string $buffer = ''): Future
     {
         \assert($this->logger->debug(\sprintf(
-                "%s %s HTTP/%s @ %s",
-                $request->getMethod(),
-                $request->getUri(),
-                $request->getProtocolVersion(),
-                $this->socket->getRemoteAddress()->toString()
-            )) || true);
+            "%s %s HTTP/%s @ %s",
+            $request->getMethod(),
+            $request->getUri(),
+            $request->getProtocolVersion(),
+            $this->socket->getRemoteAddress()->toString()
+        )) || true);
 
         return async(fn () => $this->respond($request, $buffer));
     }

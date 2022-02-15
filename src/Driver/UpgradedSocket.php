@@ -30,7 +30,7 @@ final class UpgradedSocket implements EncryptableSocket
         if ($this->buffer !== null) {
             $buffer = $this->buffer;
             $this->buffer = null;
-            if($limit !== null && \strlen($buffer) > $limit) {
+            if ($limit !== null && \strlen($buffer) > $limit) {
                 $this->buffer = \substr($buffer, $limit);
                 return \substr($buffer, 0, $limit);
             }
@@ -112,11 +112,13 @@ final class UpgradedSocket implements EncryptableSocket
         return $this->socket->getTlsInfo();
     }
 
-    public function isReadable(): bool {
+    public function isReadable(): bool
+    {
         return $this->socket->isReadable();
     }
 
-    public function isWritable(): bool {
+    public function isWritable(): bool
+    {
         return $this->socket->isWritable();
     }
 }

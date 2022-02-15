@@ -36,8 +36,8 @@ use Amp\Socket\ServerTlsContext;
 use League\Uri;
 use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\delay;
 use function Amp\async;
+use function Amp\delay;
 
 class RemoteClientTest extends AsyncTestCase
 {

@@ -22,8 +22,8 @@ use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
-use function Amp\delay;
 use function Amp\async;
+use function Amp\delay;
 
 class Http1DriverTest extends HttpDriverTest
 {

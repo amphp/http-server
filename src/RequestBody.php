@@ -2,8 +2,8 @@
 
 namespace Amp\Http\Server;
 
-use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\Payload;
+use Amp\ByteStream\ReadableStream;
 
 /**
  * This class allows streamed and buffered access to an `ReadableStream` like `Amp\ByteStream\Payload`.

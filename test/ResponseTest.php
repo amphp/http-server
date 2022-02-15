@@ -6,7 +6,6 @@ use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\PHPUnit\LoopCaughtException;
 use Amp\PHPUnit\TestException;
 use Amp\PHPUnit\UnhandledException;
 use function Amp\delay;
