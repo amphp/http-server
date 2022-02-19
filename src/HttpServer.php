@@ -94,7 +94,7 @@ final class HttpServer
             throw new \Error("Argument 1 can't be an empty array");
         }
 
-        $this->options = $options ?? new Options;
+        $this->options = $options ?? Options::createDefault();
         $this->timeoutCache = new TimeoutCache;
 
         if ($this->options->isCompressionEnabled()) {

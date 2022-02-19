@@ -109,7 +109,7 @@ class Http1DriverTest extends HttpDriverTest
         };
 
         $driver = new Http1Driver(
-            new Options,
+            Options::createDefault(),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -148,7 +148,7 @@ class Http1DriverTest extends HttpDriverTest
         };
 
         $driver = new Http1Driver(
-            new Options,
+            Options::createDefault(),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -199,7 +199,7 @@ class Http1DriverTest extends HttpDriverTest
         };
 
         $driver = new Http1Driver(
-            new Options,
+            Options::createDefault(),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -262,7 +262,7 @@ class Http1DriverTest extends HttpDriverTest
         };
 
         $driver = new Http1Driver(
-            new Options,
+            Options::createDefault(),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -536,7 +536,7 @@ class Http1DriverTest extends HttpDriverTest
         $msg = "dajfalkjf jslfhalsdjf\r\n\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 1 -------------------------------------------------------------------------------------->
@@ -544,7 +544,7 @@ class Http1DriverTest extends HttpDriverTest
         $msg = "test   \r\n\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 2 -------------------------------------------------------------------------------------->
@@ -556,7 +556,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 431;
         $errMsg = "Bad Request: header size violation";
-        $opts = (new Options)->withHeaderSizeLimit(128);
+        $opts = Options::createDefault()->withHeaderSizeLimit(128);
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 3 -------------------------------------------------------------------------------------->
@@ -569,7 +569,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: Invalid header syntax: Obsolete line folding";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 4 -------------------------------------------------------------------------------------->
@@ -581,7 +581,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: Invalid header syntax: Obsolete line folding";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 5 -------------------------------------------------------------------------------------->
@@ -593,7 +593,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: Invalid header syntax";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 6 -------------------------------------------------------------------------------------->
@@ -604,7 +604,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 7 -------------------------------------------------------------------------------------->
@@ -615,7 +615,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: target host mis-matched to host header";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 8 -------------------------------------------------------------------------------------->
@@ -626,7 +626,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid connect target";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 9 -------------------------------------------------------------------------------------->
@@ -637,7 +637,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: authority-form only valid for CONNECT requests";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // 10 ------------------------------------------------------------------------------------->
@@ -648,7 +648,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid host header";
-        $opts = new Options;
+        $opts = Options::createDefault();
         $return[] = [$msg, $errCode, $errMsg, $opts];
 
         // x -------------------------------------------------------------------------------------->
@@ -670,7 +670,7 @@ class Http1DriverTest extends HttpDriverTest
         };
 
         $driver = new Http1Driver(
-            (new Options)->withBodySizeLimit(4),
+            Options::createDefault()->withBodySizeLimit(4),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -722,7 +722,7 @@ class Http1DriverTest extends HttpDriverTest
         };
 
         $driver = new Http1Driver(
-            new Options,
+            Options::createDefault(),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -837,7 +837,7 @@ class Http1DriverTest extends HttpDriverTest
         $data = "foobar";
 
         $driver = new Http1Driver(
-            (new Options)->withHttp1Timeout(60),
+            Options::createDefault()->withHttp1Timeout(60),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -882,7 +882,7 @@ class Http1DriverTest extends HttpDriverTest
     public function testResponseWrite(Request $request, Response $response, string $expectedRegexp, bool $expectedClosed): void
     {
         $driver = new Http1Driver(
-            (new Options)->withHttp1Timeout(60),
+            Options::createDefault()->withHttp1Timeout(60),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -947,7 +947,7 @@ class Http1DriverTest extends HttpDriverTest
     public function testWriteAbortAfterHeaders(): void
     {
         $driver = new Http1Driver(
-            (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
+            Options::createDefault()->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -997,7 +997,7 @@ class Http1DriverTest extends HttpDriverTest
             "http2-settings: $settings\r\n" .
             "\r\n";
 
-        $options = (new Options)->withHttp2Upgrade();
+        $options = Options::createDefault()->withHttp2Upgrade();
 
         $expected = [
             "HTTP/1.1 101 Switching Protocols",
@@ -1041,7 +1041,7 @@ class Http1DriverTest extends HttpDriverTest
 
     public function testNativeHttp2(): void
     {
-        $options = (new Options)->withHttp2Upgrade();
+        $options = Options::createDefault()->withHttp2Upgrade();
 
         $driver = new Http1Driver(
             $options,
@@ -1079,7 +1079,7 @@ class Http1DriverTest extends HttpDriverTest
         $received = "";
 
         $driver = new Http1Driver(
-            new Options,
+            Options::createDefault(),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );
@@ -1118,7 +1118,7 @@ class Http1DriverTest extends HttpDriverTest
     public function testTrailerHeaders(): void
     {
         $driver = new Http1Driver(
-            new Options,
+            Options::createDefault(),
             $this->createMock(ErrorHandler::class),
             new NullLogger
         );

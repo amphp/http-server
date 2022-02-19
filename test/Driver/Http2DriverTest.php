@@ -227,7 +227,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function setupDriver(\Closure $onMessage = null, Options $options = null): array
     {
-        $driver = new class($options ?? new Options) implements HttpDriver {
+        $driver = new class($options ?? Options::createDefault()) implements HttpDriver {
             public array $frames = [];
 
             private Http2Driver $driver;
@@ -288,7 +288,7 @@ class Http2DriverTest extends HttpDriverTest
     public function testWrite(): void
     {
         $buffer = "";
-        $options = new Options;
+        $options = Options::createDefault();
         $driver = new Http2Driver($options, new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
@@ -354,7 +354,7 @@ class Http2DriverTest extends HttpDriverTest
     public function testWriterAbortAfterHeaders(): void
     {
         $buffer = "";
-        $options = new Options;
+        $options = Options::createDefault();
         $driver = new Http2Driver($options, new NullLogger);
         $parser = $driver->setup(
             $this->createClientMock(),
@@ -431,7 +431,7 @@ class Http2DriverTest extends HttpDriverTest
     {
         [$driver, $parser] = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
-        }, (new Options)->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
+        }, Options::createDefault()->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
 
         $parser->send(Http2Parser::PREFACE);
 
@@ -612,7 +612,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testClosingStreamYieldsFalseFromWriter(): void
     {
-        $driver = new Http2Driver(new Options, new NullLogger);
+        $driver = new Http2Driver(Options::createDefault(), new NullLogger);
 
         $parser = $driver->setup(
             $this->createClientMock(),
@@ -658,7 +658,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPush(): void
     {
-        $driver = new Http2Driver(new Options, new NullLogger);
+        $driver = new Http2Driver(Options::createDefault(), new NullLogger);
 
         $requests = [];
 
@@ -705,7 +705,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPingFlood(): void
     {
-        $driver = new Http2Driver(new Options, new NullLogger);
+        $driver = new Http2Driver(Options::createDefault(), new NullLogger);
 
         $client = $this->createClientMock();
         $client->expects(self::atLeastOnce())
@@ -740,7 +740,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testTinyDataFlood(): void
     {
-        $driver = new Http2Driver(new Options, new NullLogger);
+        $driver = new Http2Driver(Options::createDefault(), new NullLogger);
 
         $client = $this->createClientMock();
         $client->expects(self::atLeastOnce())
@@ -781,7 +781,7 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testSendingResponseBeforeRequestCompletes(): void
     {
-        $driver = new Http2Driver(new Options, new NullLogger);
+        $driver = new Http2Driver(Options::createDefault(), new NullLogger);
         $invoked = false;
         $parser = $driver->setup(
             $this->createClientMock(),

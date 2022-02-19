@@ -9,7 +9,7 @@ class OptionsTest extends TestCase
 {
     public function testWithDebugMode(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertFalse($options->isInDebugMode());
@@ -23,7 +23,7 @@ class OptionsTest extends TestCase
 
     public function testWithoutDebugMode(): void
     {
-        $options = (new Options)->withDebugMode();
+        $options = Options::createDefault()->withDebugMode();
 
         // default
         self::assertTrue($options->isInDebugMode());
@@ -37,7 +37,7 @@ class OptionsTest extends TestCase
 
     public function testWithConnectionLimit(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(10000, $options->getConnectionLimit());
@@ -55,7 +55,7 @@ class OptionsTest extends TestCase
 
     public function testWithConnectionsPerIpLimit(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(30, $options->getConnectionsPerIpLimit());
@@ -73,7 +73,7 @@ class OptionsTest extends TestCase
 
     public function testWithHttp1Timeout(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(15, $options->getHttp1Timeout());
@@ -91,7 +91,7 @@ class OptionsTest extends TestCase
 
     public function testWithHttp2Timeout(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(60, $options->getHttp2Timeout());
@@ -109,7 +109,7 @@ class OptionsTest extends TestCase
 
     public function testWithTlsSetupTimeout(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(5, $options->getTlsSetupTimeout());
@@ -127,7 +127,7 @@ class OptionsTest extends TestCase
 
     public function testWithBodySizeLimit(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(128 * 1024, $options->getBodySizeLimit());
@@ -145,7 +145,7 @@ class OptionsTest extends TestCase
 
     public function testWithHeaderSizeLimit(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(32768, $options->getHeaderSizeLimit());
@@ -163,7 +163,7 @@ class OptionsTest extends TestCase
 
     public function testWithConcurrentStreamLimit(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(256, $options->getConcurrentStreamLimit());
@@ -181,7 +181,7 @@ class OptionsTest extends TestCase
 
     public function testWithChunkSize(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(8192, $options->getChunkSize());
@@ -199,7 +199,7 @@ class OptionsTest extends TestCase
 
     public function testWithStreamThreshold(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(8192, $options->getStreamThreshold());
@@ -217,7 +217,7 @@ class OptionsTest extends TestCase
 
     public function testWithAllowedMethods(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertSame(["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"], $options->getAllowedMethods());
@@ -233,33 +233,33 @@ class OptionsTest extends TestCase
     {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Servers must support GET");
-        (new Options)->withAllowedMethods(["HEAD"]);
+        Options::createDefault()->withAllowedMethods(["HEAD"]);
     }
 
     public function testWithAllowedMethodsWithInvalidType(): void
     {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Invalid type at key 0 of allowed methods array: integer");
-        (new Options)->withAllowedMethods([42]);
+        Options::createDefault()->withAllowedMethods([42]);
     }
 
     public function testWithAllowedMethodsWithEmptyMethod(): void
     {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Invalid empty HTTP method");
-        (new Options)->withAllowedMethods(["HEAD", "GET", ""]);
+        Options::createDefault()->withAllowedMethods(["HEAD", "GET", ""]);
     }
 
     public function testWithAllowedMethodsWithoutHead(): void
     {
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Servers must support HEAD");
-        (new Options)->withAllowedMethods(["GET"]);
+        Options::createDefault()->withAllowedMethods(["GET"]);
     }
 
     public function testWithHttpUpgrade(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertFalse($options->isHttp2UpgradeAllowed());
@@ -273,7 +273,7 @@ class OptionsTest extends TestCase
 
     public function testWithoutHttpUpgrade(): void
     {
-        $options = (new Options)->withHttp2Upgrade();
+        $options = Options::createDefault()->withHttp2Upgrade();
 
         // default
         self::assertTrue($options->isHttp2UpgradeAllowed());
@@ -287,7 +287,7 @@ class OptionsTest extends TestCase
 
     public function testWithoutPush(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertTrue($options->isPushEnabled());
@@ -301,7 +301,7 @@ class OptionsTest extends TestCase
 
     public function testWithPush(): void
     {
-        $options = (new Options)->withoutPush();
+        $options = Options::createDefault()->withoutPush();
 
         // default
         self::assertFalse($options->isPushEnabled());
@@ -315,7 +315,7 @@ class OptionsTest extends TestCase
 
     public function testWithCompression(): void
     {
-        $options = new Options;
+        $options = Options::createDefault();
 
         // default
         self::assertTrue($options->isCompressionEnabled());
@@ -329,7 +329,7 @@ class OptionsTest extends TestCase
 
     public function testWithoutCompression(): void
     {
-        $options = (new Options)->withoutCompression();
+        $options = Options::createDefault()->withoutCompression();
 
         // default
         self::assertFalse($options->isCompressionEnabled());

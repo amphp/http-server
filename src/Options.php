@@ -25,6 +25,25 @@ final class Options
     private bool $pushEnabled = true;
     private bool $requestLogContext = false;
 
+    public static function createDefault(): self
+    {
+        return new self;
+    }
+
+    public static function createForBehindProxy(): self
+    {
+        $options = new self;
+        $options->connectionLimit = \PHP_INT_MAX;
+        $options->connectionsPerIpLimit = \PHP_INT_MAX;
+
+        return $options;
+    }
+
+    private function __construct()
+    {
+        // Private constructor to force use of static constructors.
+    }
+
     /**
      * @return bool `true` if server is in debug mode, `false` if in production mode.
      */

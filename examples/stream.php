@@ -40,7 +40,7 @@ $server = new HttpServer($servers, new ClosureRequestHandler(function (Request $
             yield "Line {$i}\r\n";
         }
     })()));
-}), $logger, (new Options)->withoutCompression());
+}), $logger, Options::createDefault()->withoutCompression());
 
 $server->start();
 

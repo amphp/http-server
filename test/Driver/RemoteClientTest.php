@@ -60,7 +60,7 @@ class RemoteClientTest extends AsyncTestCase
             ),
         ];
 
-        $options = (new Options)->withDebugMode();
+        $options = Options::createDefault()->withDebugMode();
         $server = new HttpServer($servers, $handler, $this->createMock(PsrLogger::class), $options);
 
         $server->start();
@@ -279,7 +279,7 @@ class RemoteClientTest extends AsyncTestCase
         });
 
         self::assertSame(Status::NO_CONTENT, $response->getStatus());
-        self::assertSame(\implode(", ", (new Options)->getAllowedMethods()), $response->getHeader("allow"));
+        self::assertSame(\implode(", ", Options::createDefault()->getAllowedMethods()), $response->getHeader("allow"));
     }
 
     public function testError(): void
@@ -325,7 +325,7 @@ class RemoteClientTest extends AsyncTestCase
 
         $bodyData = "{data}";
 
-        $options = (new Options)
+        $options = Options::createDefault()
             ->withDebugMode();
 
         $body = $this->createMock(ReadableStream::class);
@@ -465,7 +465,7 @@ class RemoteClientTest extends AsyncTestCase
         $factory->method('selectDriver')
             ->willReturn($driver);
 
-        $options = (new Options)
+        $options = Options::createDefault()
             ->withDebugMode();
 
         [$server, $client] = Socket\createSocketPair();
@@ -509,7 +509,7 @@ class RemoteClientTest extends AsyncTestCase
         $factory->method('selectDriver')
             ->willReturn($driver);
 
-        $options = (new Options)
+        $options = Options::createDefault()
             ->withDebugMode();
 
         $client = new RemoteClient(
