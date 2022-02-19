@@ -50,7 +50,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup($client, $this->createCallback(0), $writer);
 
-        $parser->send($unparsable);
+        EventLoop::queue(fn () => $parser->send($unparsable));
 
         delay(0.05); // Allow loop to tick a couple of times to complete request cycle.
 
@@ -83,12 +83,14 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup($client, $this->createCallback(0), $writer);
 
-        for ($i = 0, $c = \strlen($unparsable); $i < $c; $i++) {
-            $parser->send($unparsable[$i]);
-            if ($written) {
-                break;
+        EventLoop::queue(function () use ($parser, $unparsable, &$written): void {
+            for ($i = 0, $c = \strlen($unparsable); $i < $c; $i++) {
+                $parser->send($unparsable[$i]);
+                if ($written) {
+                    break;
+                }
             }
-        }
+        });
 
         delay(0.05); // Allow loop to tick a couple of times to complete request cycle.
 
@@ -120,10 +122,9 @@ class Http1DriverTest extends HttpDriverTest
             $this->createCallback(0)
         );
 
-        $future = $parser->send($msg);
-        while ($future instanceof Future) {
-            $future = $parser->send(null);
-        }
+        EventLoop::queue(fn () => $parser->send($msg));
+
+        delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
@@ -159,12 +160,13 @@ class Http1DriverTest extends HttpDriverTest
             $this->createCallback(0)
         );
 
-        for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
-            $future = $parser->send($msg[$i]);
-            while ($future instanceof Future) {
-                $future = $parser->send(null);
+        EventLoop::queue(function () use ($parser, $msg): void {
+            for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
+                $parser->send($msg[$i]);
             }
-        }
+        });
+
+        delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
@@ -210,13 +212,13 @@ class Http1DriverTest extends HttpDriverTest
             $this->createCallback(0)
         );
 
-        for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
-            $future = $parser->send($msg[$i]);
-        }
+        EventLoop::queue(function () use ($parser, $msg): void {
+            for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
+                $parser->send($msg[$i]);
+            }
+        });
 
-        while ($future instanceof Future) {
-            $future = $parser->send(null);
-        }
+        delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
@@ -273,12 +275,13 @@ class Http1DriverTest extends HttpDriverTest
             $this->createCallback(0)
         );
 
-        foreach (\str_split($msg, $chunkSize) as $chunk) {
-            $future = $parser->send($chunk);
-            while ($future instanceof Future) {
-                $future = $parser->send("");
+        EventLoop::queue(function () use ($parser, $msg, $chunkSize): void {
+            foreach (\str_split($msg, $chunkSize) as $chunk) {
+                $parser->send($chunk);
             }
-        }
+        });
+
+        delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
@@ -681,10 +684,9 @@ class Http1DriverTest extends HttpDriverTest
             $this->createCallback(0)
         );
 
-        $future = $parser->send($data);
-        while ($future instanceof Future) {
-            $future = $parser->send(null);
-        }
+        EventLoop::queue(fn () => $parser->send($data));
+
+        delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
@@ -730,84 +732,44 @@ class Http1DriverTest extends HttpDriverTest
         $parser = $driver->setup(
             $this->createClientMock(),
             $resultEmitter,
-            fn () => Future::complete(),
+            fn () => null,
         );
 
-        $parser->send($payloads[0] . $payloads[1]); // Send first two payloads simultaneously.
+        EventLoop::queue(function () use ($parser, $payloads): void {
+            $parser->send($payloads[0] . $payloads[1]);
+            $parser->send($payloads[0]);
+        });
 
-        delay(0.1);
+        delay(0.01); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
-        EventLoop::queue(function () use (&$body, $request): void {
-            $body = $request->getBody()->buffer();
-        });
-
-        while ($body === null) {
-            $parser->send(null); // Continue past yields to body emits.
-            delay(0.1);
-        }
-
-        self::assertSame($results[0], $body);
+        self::assertSame($results[0], $request->getBody()->buffer());
 
         EventLoop::queue(fn () => $driver->write($request, new Response));
         $request = null;
-        $body = null;
 
-        while ($request === null) {
-            $parser->send(null); // Continue past yield to request emit.
-            delay(0.1);
-        }
+        delay(0.01); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
-        EventLoop::queue(function () use (&$body, $request): void {
-            $body = $request->getBody()->buffer();
-        });
-
-        while ($body === null) {
-            $parser->send(null); // Continue past yields to body emits.
-            delay(0.1);
-        }
-
-        self::assertSame($results[1], $body);
+        self::assertSame($results[1], $request->getBody()->buffer());
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
         async(fn () => $driver->write($request, new Response));
         $request = null;
-        $body = null;
 
-        $parser->send(null); // Resume parser after last request.
-
-        delay(0.1);
-
-        $parser->send($payloads[0]); // Resume and send next body payload.
-
-        while ($request === null) {
-            $parser->send(null); // Continue past yield to request emit.
-            delay(0.1);
-        }
+        delay(0.01); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
-        EventLoop::queue(function () use (&$body, $request): void {
-            $body = $request->getBody()->buffer();
-        });
-
-        while ($body === null) {
-            $parser->send(null); // Continue past yields to body emits.
-            delay(0.1);
-        }
-
-        self::assertSame($results[0], $body);
+        self::assertSame($results[0], $request->getBody()->buffer());
 
         $request = new Request($this->createClientMock(), "POST", Uri\Http::createFromString("/"));
         async(fn () => $driver->write($request, new Response));
         $request = null;
 
         self::assertSame(3, $responses);
-
-        delay(0.1);
     }
 
     public function verifyWrite(string $input, int $status, array $headers, string $data): void
@@ -850,7 +812,6 @@ class Http1DriverTest extends HttpDriverTest
             function (string $data, bool $close = false) use (&$buffer, &$fin) {
                 $buffer .= $data;
                 $fin = $close;
-                return Future::complete();
             }
         );
 
@@ -893,14 +854,12 @@ class Http1DriverTest extends HttpDriverTest
         $driver->setup(
             $this->createClientMock(),
             $this->createCallback(0),
-            function (string $data, bool $close = false) use (&$buffer, &$closed): Future {
+            function (string $data, bool $close = false) use (&$buffer, &$closed): void {
                 $buffer .= $data;
 
                 if ($close) {
                     $closed = true;
                 }
-
-                return Future::complete();
             }
         );
 
@@ -967,8 +926,6 @@ class Http1DriverTest extends HttpDriverTest
                     $this->assertTrue($close);
                     $invoked = true;
                 }
-
-                return Future::complete();
             }
         );
 
@@ -1022,21 +979,19 @@ class Http1DriverTest extends HttpDriverTest
 
         $parser = $driver->setup(
             $this->createClientMock(),
-            function (Request $request) {
+            function (Request $request): Future {
                 $this->assertSame("foo.bar", $request->getUri()->getHost());
                 $this->assertSame("/path", $request->getUri()->getPath());
-                $this->assertSame("2.0", $request->getProtocolVersion());
+                $this->assertSame("2", $request->getProtocolVersion());
+                return Future::complete();
             },
-            function (string $data) use (&$expected): Future {
+            function (string $data) use (&$expected): void {
                 $write = \array_shift($expected);
                 $this->assertSame($write, \substr($data, 0, \strlen($write)));
-                return Future::complete();
             }
         );
 
-        $parser->send($payload);
-
-        delay(0.1);
+        EventLoop::queue(fn () => $parser->send($payload));
     }
 
     public function testNativeHttp2(): void
@@ -1052,7 +1007,7 @@ class Http1DriverTest extends HttpDriverTest
         $parser = $driver->setup(
             $this->createClientMock(),
             $this->createCallback(0),
-            function (string $data) use ($options): Future {
+            function (string $data) use ($options): void {
                 $expected = Http2DriverTest::packFrame(\pack(
                     "nNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
@@ -1066,8 +1021,6 @@ class Http1DriverTest extends HttpDriverTest
                 ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG);
 
                 $this->assertSame($expected, $data);
-
-                return Future::complete();
             }
         );
 
@@ -1090,9 +1043,8 @@ class Http1DriverTest extends HttpDriverTest
                 $request = $req;
                 return Future::complete();
             },
-            function (string $data) use (&$received) {
+            function (string $data) use (&$received): void {
                 $received .= $data;
-                return Future::complete();
             }
         );
 
@@ -1144,10 +1096,9 @@ class Http1DriverTest extends HttpDriverTest
             "My-Trailer: 42\r\n" .
             "\r\n";
 
-        $future = $parser->send($message);
-        while ($future instanceof Future) {
-            $future = $parser->send(null);
-        }
+        EventLoop::queue(fn () => $parser->send($message));
+
+        delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 

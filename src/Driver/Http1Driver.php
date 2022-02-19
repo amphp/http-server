@@ -15,6 +15,7 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
+use Amp\Pipeline\DisposedException;
 use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
@@ -244,8 +245,8 @@ final class Http1Driver implements HttpDriver
 
                 do {
                     if ($this->stopping) {
-                        // Yielding an unresolved promise prevents further data from being read.
-                        yield (new DeferredFuture)->getFuture();
+                        // Awaiting an unresolved promise prevents further data from being read.
+                        (new DeferredFuture)->getFuture()->await();
                     }
 
                     $buffer = \ltrim($buffer, "\r\n");
@@ -440,10 +441,10 @@ final class Http1Driver implements HttpDriver
                 }
 
                 if (isset($headerMap["expect"][0]) && \strtolower($headerMap["expect"][0]) === "100-continue") {
-                    yield async(fn () => $this->write(
+                    $this->write(
                         new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::CONTINUE, [])
-                    ));
+                    );
                 }
 
                 // Handle HTTP/2 upgrade request.
@@ -456,13 +457,13 @@ final class Http1Driver implements HttpDriver
                     && false !== $h2cSettings = \base64_decode(\strtr($headerMap["http2-settings"][0], "-_", "+/"), true)
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
-                    yield async(fn () => $this->write(
+                    $this->write(
                         new Request($this->client, $method, $uri, $headerMap, '', $protocol),
                         new Response(Status::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
                             "upgrade" => "h2c",
                         ])
-                    ));
+                    );
 
                     // Internal upgrade
                     $this->http2 = new Http2Driver($this->options, $this->logger);
@@ -495,7 +496,7 @@ final class Http1Driver implements HttpDriver
                     $this->pendingResponse = ($this->onMessage)($request, $buffer);
                     $request = null; // DO NOT leave a reference to the Request object in the parser!
 
-                    yield $this->pendingResponse; // Wait for response to be generated.
+                    $this->pendingResponse->await(); // Wait for response to be generated.
 
                     continue;
                 }
@@ -507,7 +508,7 @@ final class Http1Driver implements HttpDriver
 
                 $body = new RequestBody(
                     new ReadableIterableStream($queue->pipe()),
-                    function (int $bodySize) use (&$maxBodySize) {
+                    static function (int $bodySize) use (&$maxBodySize): void {
                         if ($bodySize > $maxBodySize) {
                             $maxBodySize = $bodySize;
                         }
@@ -535,7 +536,7 @@ final class Http1Driver implements HttpDriver
                     $request->addHeader($key, $value);
                 }
 
-                // Do not yield promise until body is completely read.
+                // Do not await future until body is completely read.
                 $this->pendingResponse = ($this->onMessage)($request);
 
                 // DO NOT leave a reference to the Request, Trailers, or Body objects within the parser!
@@ -644,7 +645,11 @@ final class Http1Driver implements HttpDriver
                                 while ($bodyBufferSize < $remaining) {
                                     if ($bodyBufferSize) {
                                         $this->updateTimeout();
-                                        yield $queue->pushAsync($body);
+                                        try {
+                                            $queue->push($body);
+                                        } catch (DisposedException) {
+                                            // Ignore and continue consuming body.
+                                        }
                                         $body = "";
                                         $bodySize += $bodyBufferSize;
                                         $remaining -= $bodyBufferSize;
@@ -659,7 +664,11 @@ final class Http1Driver implements HttpDriver
 
                                 if ($remaining) {
                                     $this->updateTimeout();
-                                    yield $queue->pushAsync(\substr($body, 0, $remaining));
+                                    try {
+                                        $queue->push(\substr($body, 0, $remaining));
+                                    } catch (DisposedException) {
+                                        // Ignore and continue consuming body.
+                                    }
                                     $buffer = \substr($body, $remaining);
                                     $body = "";
                                     $bodySize += $remaining;
@@ -691,21 +700,33 @@ final class Http1Driver implements HttpDriver
                             $this->updateTimeout();
 
                             if ($bufferLength >= $chunkLengthRemaining + 2) {
-                                yield $queue->pushAsync(\substr($buffer, 0, $chunkLengthRemaining));
+                                try {
+                                    $queue->push(\substr($buffer, 0, $chunkLengthRemaining));
+                                } catch (DisposedException) {
+                                    // Ignore and continue consuming body.
+                                }
                                 $buffer = \substr($buffer, $chunkLengthRemaining + 2);
 
                                 $chunkLengthRemaining = null;
                                 continue 2; // next chunk (chunked loop)
                             }
 
-                            yield $queue->pushAsync($buffer);
+                            try{
+                                $queue->push($buffer);
+                            } catch (DisposedException) {
+                                // Ignore and continue consuming body.
+                            }
                             $buffer = "";
                             $chunkLengthRemaining -= $bufferLength;
                         }
                     }
 
                     if ($body !== "") {
-                        yield $queue->pushAsync($body);
+                        try{
+                            $queue->push($body);
+                        } catch (DisposedException) {
+                            // Ignore and continue consuming body.
+                        }
                     }
                 } else {
                     $bodyBufferSize = \strlen($buffer);
@@ -714,7 +735,12 @@ final class Http1Driver implements HttpDriver
                     while ($bodySize + $bodyBufferSize < \min($maxBodySize, $contentLength)) {
                         if ($bodyBufferSize) {
                             $this->updateTimeout();
-                            $buffer = yield $queue->pushAsync($buffer);
+                            try{
+                                $queue->push($buffer);
+                            } catch (DisposedException) {
+                                // Ignore and continue consuming body.
+                            }
+                            $buffer = '';
                             $bodySize += $bodyBufferSize;
                         }
                         $buffer .= yield;
@@ -725,7 +751,11 @@ final class Http1Driver implements HttpDriver
 
                     if ($remaining) {
                         $this->updateTimeout();
-                        yield $queue->pushAsync(\substr($buffer, 0, $remaining));
+                        try {
+                            $queue->push(\substr($buffer, 0, $remaining));
+                        } catch (DisposedException) {
+                            // Ignore and continue consuming body.
+                        }
                         $buffer = \substr($buffer, $remaining);
                     }
 
@@ -744,12 +774,12 @@ final class Http1Driver implements HttpDriver
 
                 $this->updateTimeout();
 
-                yield $this->pendingResponse; // Wait for response to be generated.
+                $this->pendingResponse->await(); // Wait for response to be generated.
             } while (true);
         } catch (ClientException $exception) {
             if ($this->bodyQueue === null || $this->client->getPendingResponseCount()) {
                 // Send an error response only if another response has not already been sent to the request.
-                yield $this->sendErrorResponse($exception);
+                $this->sendErrorResponse($exception)->await();
             }
             return;
         } finally {

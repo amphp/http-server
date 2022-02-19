@@ -100,11 +100,7 @@ final class RemoteClient implements Client
                 $requestParser->current(); // Advance parser to first yield for data.
 
                 while (!$this->isExported && null !== $chunk = $this->socket->read()) {
-                    $future = $requestParser->send($chunk); // Parser yields a Future or null.
-                    if ($future instanceof Future) {
-                        $future->await();
-                        $requestParser->send(null); // Signal the parser that the yielded future has completed.
-                    }
+                    $requestParser->send($chunk);
                 }
             } catch (\Throwable $exception) {
                 \assert(

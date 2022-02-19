@@ -17,10 +17,7 @@ interface HttpDriver
     /**
      * Setup the driver.
      *
-     * Data read from the client connection should be sent to the generator returned from this method. If the generator
-     * yields a promise, no additional data is to be sent to the parser or read from the client until the promise
-     * resolves. Yielding null indicates the parser needs more data. NULL will be sent to the generator upon promise
-     * resolution. The generator MUST yield only null or a promise.
+     * Data read from the client connection should be sent to the generator returned from this method.
      *
      * @param Client $client The client associated with the data being sent to the returned generator.
      * @param Closure(Request, string):Future $onMessage Invoked with an instance of Request when the returned
