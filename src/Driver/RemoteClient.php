@@ -105,10 +105,10 @@ final class RemoteClient implements Client
             } catch (\Throwable $exception) {
                 \assert(
                     $this->logger->debug(\sprintf(
-                    "Exception while handling client %s: %s",
-                    $this->socket->getRemoteAddress(),
-                    $exception->getMessage()
-                )) || true
+                        "Exception while handling client %s: %s",
+                        $this->socket->getRemoteAddress(),
+                        $exception->getMessage()
+                    )) || true
                 );
 
                 $this->close();
@@ -133,12 +133,12 @@ final class RemoteClient implements Client
 
         \assert(
             $this->logger->debug(\sprintf(
-            "TLS negotiated with %s (%s with %s, application protocol: %s)",
-            $this->socket->getRemoteAddress()->toString(),
-            $this->tlsInfo->getVersion(),
-            $this->tlsInfo->getCipherName(),
-            $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
-        )) || true
+                "TLS negotiated with %s (%s with %s, application protocol: %s)",
+                $this->socket->getRemoteAddress()->toString(),
+                $this->tlsInfo->getVersion(),
+                $this->tlsInfo->getCipherName(),
+                $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
+            )) || true
         );
     }
 

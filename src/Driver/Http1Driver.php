@@ -711,7 +711,7 @@ final class Http1Driver implements HttpDriver
                                 continue 2; // next chunk (chunked loop)
                             }
 
-                            try{
+                            try {
                                 $queue->push($buffer);
                             } catch (DisposedException) {
                                 // Ignore and continue consuming body.
@@ -722,7 +722,7 @@ final class Http1Driver implements HttpDriver
                     }
 
                     if ($body !== "") {
-                        try{
+                        try {
                             $queue->push($body);
                         } catch (DisposedException) {
                             // Ignore and continue consuming body.
@@ -735,7 +735,7 @@ final class Http1Driver implements HttpDriver
                     while ($bodySize + $bodyBufferSize < \min($maxBodySize, $contentLength)) {
                         if ($bodyBufferSize) {
                             $this->updateTimeout();
-                            try{
+                            try {
                                 $queue->push($buffer);
                             } catch (DisposedException) {
                                 // Ignore and continue consuming body.
