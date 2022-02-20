@@ -11,17 +11,21 @@ jobs:
         include:
           - operating-system: 'ubuntu-latest'
             php-version: '8.0'
+            ini-values: 'ffi.enable=false'
 
           - operating-system: 'ubuntu-latest'
             php-version: '8.1'
+            ini-values: 'ffi.enable=false'
 
           - operating-system: 'windows-latest'
             php-version: '8.1'
             job-description: 'on Windows'
+            ini-values: 'ffi.enable=false'
 
           - operating-system: 'macos-latest'
             php-version: '8.1'
             job-description: 'on macOS'
+            ini-values: 'ffi.enable=false'
 
     name: PHP ${{ matrix.php-version }} ${{ matrix.job-description }}
 
