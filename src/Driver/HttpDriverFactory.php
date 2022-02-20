@@ -10,15 +10,6 @@ interface HttpDriverFactory
 {
     /**
      * Selects an HTTP driver based on the given client.
-     *
-     * @param Client       $client
-     * @param ErrorHandler $errorHandler
-     *
-     * @param PsrLogger    $logger
-     *
-     * @param Options      $options
-     *
-     * @return HttpDriver
      */
     public function selectDriver(
         Client $client,

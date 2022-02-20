@@ -10,16 +10,6 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 interface ClientFactory
 {
-    /**
-     * @param Socket $socket
-     * @param RequestHandler $requestHandler
-     * @param ErrorHandler $errorHandler
-     * @param PsrLogger $logger
-     * @param Options $options
-     * @param TimeoutCache $timeoutCache
-     *
-     * @return Client
-     */
     public function createClient(
         Socket $socket,
         RequestHandler $requestHandler,

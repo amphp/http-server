@@ -67,7 +67,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
     private int $maxFrameSize = self::DEFAULT_MAX_FRAME_SIZE;
 
-    /** @var bool */
     private bool $allowsPush;
 
     /** @var int Last used local stream ID. */
@@ -118,12 +117,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
     }
 
     /**
-     * @param Client      $client
-     * @param callable    $onMessage
-     * @param callable    $write
      * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
-     *
-     * @return \Generator
      */
     public function setup(Client $client, \Closure $onMessage, \Closure $write, ?string $settings = null): \Generator
     {
@@ -316,7 +310,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
     /**
      * @param int|null        $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no
      *                                streams have been opened.
-     * @param \Throwable|null $reason
      */
     private function shutdown(?int $lastId = null, ?\Throwable $reason = null): void
     {
@@ -548,8 +541,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
     /**
      * @param string|null $settings HTTP2-Settings header content from upgrade request or null for direct HTTP/2.
-     *
-     * @return \Generator
      */
     private function parser(?string $settings = null): \Generator
     {

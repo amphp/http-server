@@ -26,7 +26,6 @@ final class Response extends Message
     /** @var Push[] */
     private array $push = [];
 
-    /** @var \Closure|null */
     private ?\Closure $upgrade = null;
 
     /** @var \Closure[] */
@@ -37,8 +36,6 @@ final class Response extends Message
     /**
      * @param int $code Status code.
      * @param string[]|string[][] $headers
-     * @param ReadableStream|string $body
-     * @param Trailers|null $trailers
      *
      * @throws \Error If one of the arguments is invalid.
      */
@@ -71,8 +68,6 @@ final class Response extends Message
 
     /**
      * Returns the stream for the message body.
-     *
-     * @return ReadableStream
      */
     public function getBody(): ReadableStream
     {
@@ -82,8 +77,6 @@ final class Response extends Message
     /**
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Setting a stream will remove the Content-Length header.
-     *
-     * @param ReadableStream|string $body
      */
     public function setBody(ReadableStream|string $body): void
     {
@@ -119,7 +112,6 @@ final class Response extends Message
     /**
      * Sets the named header to the given value.
      *
-     * @param string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -140,7 +132,6 @@ final class Response extends Message
     /**
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
-     * @param string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -160,8 +151,6 @@ final class Response extends Message
 
     /**
      * Removes the given header if it exists.
-     *
-     * @param string $name
      */
     public function removeHeader(string $name): void
     {
@@ -174,8 +163,6 @@ final class Response extends Message
 
     /**
      * Returns the response status code.
-     *
-     * @return int
      */
     public function getStatus(): int
     {
@@ -184,8 +171,6 @@ final class Response extends Message
 
     /**
      * Returns the reason phrase describing the status code.
-     *
-     * @return string
      */
     public function getReason(): string
     {
@@ -197,7 +182,6 @@ final class Response extends Message
      * associated with the status code.
      *
      * @param int $code 100 - 599
-     * @param string|null $reason
      */
     public function setStatus(int $code, string $reason = null): void
     {
@@ -219,8 +203,6 @@ final class Response extends Message
 
     /**
      * @param string $name Name of the cookie.
-     *
-     * @return ResponseCookie|null
      */
     public function getCookie(string $name): ?ResponseCookie
     {
@@ -229,8 +211,6 @@ final class Response extends Message
 
     /**
      * Adds a cookie to the response.
-     *
-     * @param ResponseCookie $cookie
      */
     public function setCookie(ResponseCookie $cookie): void
     {
@@ -240,8 +220,6 @@ final class Response extends Message
 
     /**
      * Removes a cookie from the response.
-     *
-     * @param string $name
      */
     public function removeCookie(string $name): void
     {
@@ -252,10 +230,6 @@ final class Response extends Message
     }
 
     /**
-     * @param int $code
-     *
-     * @return int
-     *
      * @throws \Error
      */
     private function validateStatusCode(int $code): int

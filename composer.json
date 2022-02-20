@@ -45,7 +45,7 @@
         "amphp/phpunit-util": "v3.x-dev",
         "amphp/http-client": "v5.x-dev",
         "amphp/log": "v2.x-dev",
-        "amphp/php-cs-fixer-config": "dev-master",
+        "amphp/php-cs-fixer-config": "^2-dev",
         "league/uri-components": "^2",
         "monolog/monolog": "^2 || ^1.23",
         "phpunit/phpunit": "^9"

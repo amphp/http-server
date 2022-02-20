@@ -70,9 +70,6 @@ final class TimeoutCache
         }
     }
 
-    /**
-     * @param int $id
-     */
     public function clear(int $id): void
     {
         if (!isset($this->pointers[$id])) {
@@ -101,8 +98,6 @@ final class TimeoutCache
     /**
      * @param int  $node   Rebuild the data array from the given node downward.
      * @param bool $remove Remove the given node from the data array if true.
-     *
-     * @return int
      */
     private function rebuild(int $node, bool $remove): int
     {

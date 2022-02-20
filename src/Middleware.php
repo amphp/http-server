@@ -9,11 +9,5 @@ namespace Amp\Http\Server;
  */
 interface Middleware
 {
-    /**
-     * @param Request        $request
-     * @param RequestHandler $requestHandler
-     *
-     * @return Response
-     */
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response;
 }

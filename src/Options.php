@@ -35,8 +35,6 @@ final class Options
 
     /**
      * Sets debug mode to `true`.
-     *
-     * @return self
      */
     public function withDebugMode(): self
     {
@@ -48,8 +46,6 @@ final class Options
 
     /**
      * Sets debug mode to `false`.
-     *
-     * @return self
      */
     public function withoutDebugMode(): self
     {
@@ -69,8 +65,6 @@ final class Options
 
     /**
      * @param int $count Maximum number of connections the server should accept at one time. Default is 10000.
-     *
-     * @return self
      *
      * @throws \Error If count is less than 1.
      */
@@ -98,8 +92,6 @@ final class Options
 
     /**
      * @param int $count Maximum number of connections to allow from a single IP address. Default is 30.
-     *
-     * @return self
      *
      * @throws \Error If the count is less than 1.
      */
@@ -129,8 +121,6 @@ final class Options
      * @param int $seconds Number of seconds an HTTP/1.x connection may be idle before it is automatically closed.
      *                     Default is 15.
      *
-     * @return self
-     *
      * @throws \Error If the number of seconds is less than 1.
      */
     public function withHttp1Timeout(int $seconds): self
@@ -158,8 +148,6 @@ final class Options
     /**
      * @param int $seconds Number of seconds an HTTP/2 connection may be idle before it is automatically closed.
      *                     Default is 60.
-     *
-     * @return self
      *
      * @throws \Error If the number of seconds is less than 1.
      */
@@ -189,8 +177,6 @@ final class Options
      * @param int $seconds Number of seconds connection may take to setup TLS.
      *                     Default is 5.
      *
-     * @return self
-     *
      * @throws \Error If the number of seconds is less than 1.
      */
     public function withTlsSetupTimeout(int $seconds): self
@@ -219,8 +205,6 @@ final class Options
      * @param int $bytes Default maximum request body size in bytes. Individual requests may be increased by calling
      *                   `RequestBody::increaseSizeLimit($newLimit)`. Default is 131072 (128k).
      *
-     * @return self
-     *
      * @throws \Error If the number of bytes is less than 0.
      */
     public function withBodySizeLimit(int $bytes): self
@@ -248,8 +232,6 @@ final class Options
     /**
      * @param int $bytes Maximum size of the request header section in bytes. Default is 32768 (32k).
      *
-     * @return self
-     *
      * @throws \Error
      */
     public function withHeaderSizeLimit(int $bytes): self
@@ -276,8 +258,6 @@ final class Options
 
     /**
      * @param int $streams Maximum number of concurrent HTTP/2 streams. Default is 256.
-     *
-     * @return self
      *
      * @throws \Error If the stream count is less than 1.
      */
@@ -307,8 +287,6 @@ final class Options
      * @param int $bytes The maximum number of bytes to read from a client per read. Larger numbers are better for
      *                   performance but can increase memory usage. Default is 8192 (8k).
      *
-     * @return self
-     *
      * @throws \Error If the number of bytes is less than 1.
      */
     public function withChunkSize(int $bytes): self
@@ -337,8 +315,6 @@ final class Options
      * @param int $bytes TThe minimum number of bytes to write to a client time for streamed responses. Larger numbers
      *                   are better for performance but can increase memory usage. Default is 1024 (1k).
      *
-     * @return self
-     *
      * @throws \Error If the number of bytes is less than 1.
      */
     public function withStreamThreshold(int $bytes): self
@@ -366,8 +342,6 @@ final class Options
     /**
      * @param string[] $allowedMethods An array of allowed request methods. Default is GET, POST, PUT, PATCH, HEAD,
      *                                 OPTIONS, DELETE.
-     *
-     * @return self
      *
      * @throws \Error If the array contains non-strings, empty method names, or does not contain GET or HEAD.
      */
@@ -422,8 +396,6 @@ final class Options
 
     /**
      * Enables unencrypted upgrade or prior knowledge requests to HTTP/2.
-     *
-     * @return self
      */
     public function withHttp2Upgrade(): self
     {
@@ -435,8 +407,6 @@ final class Options
 
     /**
      * Disables unencrypted upgrade or prior knowledge requests to HTTP/2.
-     *
-     * @return self
      */
     public function withoutHttp2Upgrade(): self
     {
@@ -457,8 +427,6 @@ final class Options
 
     /**
      * Enables HTTP/2 push promises.
-     *
-     * @return self
      */
     public function withPush(): self
     {
@@ -470,8 +438,6 @@ final class Options
 
     /**
      * Disables HTTP/2 push promises.
-     *
-     * @return self
      */
     public function withoutPush(): self
     {
@@ -491,8 +457,6 @@ final class Options
 
     /**
      * Enables compression-by-default.
-     *
-     * @return self
      */
     public function withCompression(): self
     {
@@ -504,8 +468,6 @@ final class Options
 
     /**
      * Disables compression-by-default.
-     *
-     * @return self
      */
     public function withoutCompression(): self
     {

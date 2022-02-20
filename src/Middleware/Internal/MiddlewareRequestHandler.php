@@ -17,10 +17,8 @@ use Amp\Http\Server\ServerObserver;
  */
 final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
 {
-    /** @var Middleware */
     private Middleware $middleware;
 
-    /** @var RequestHandler */
     private RequestHandler $next;
 
     public function __construct(Middleware $middleware, RequestHandler $requestHandler)

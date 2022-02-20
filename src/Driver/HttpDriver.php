@@ -33,9 +33,6 @@ interface HttpDriver
 
     /**
      * Write the given response to the client using the write callback provided to `setup()`.
-     *
-     * @param Request $request
-     * @param Response $response
      */
     public function write(Request $request, Response $response): void;
 

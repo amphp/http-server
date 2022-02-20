@@ -117,10 +117,6 @@ final class Http1Driver implements HttpDriver
 
     /**
      * HTTP/1.x response writer.
-     *
-     * @param Future $lastWrite
-     * @param Response $response
-     * @param Request|null $request
      */
     private function send(Future $lastWrite, Response $response, ?Request $request = null): void
     {
@@ -806,8 +802,6 @@ final class Http1Driver implements HttpDriver
 
     /**
      * Creates an error response from the error handler and sends that response to the client.
-     *
-     * @param ClientException $exception
      */
     private function sendErrorResponse(ClientException $exception): Future
     {
@@ -825,7 +819,6 @@ final class Http1Driver implements HttpDriver
     /**
      * Filters and updates response headers based on protocol and connection header from the request.
      *
-     * @param Response $response
      * @param string $protocol Request protocol.
      * @param array $connection Request connection header.
      *

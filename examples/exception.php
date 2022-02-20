@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 
-require \dirname(__DIR__) . "/vendor/autoload.php";
+require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
 use Amp\Http\Server\HttpServer;
@@ -33,6 +33,6 @@ $server->start();
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);
 
-$logger->info(\sprintf("Received signal %d, stopping HTTP server", $signal));
+$logger->info(sprintf("Received signal %d, stopping HTTP server", $signal));
 
 $server->stop();

@@ -15,8 +15,6 @@ interface Client
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
-     * @param HttpDriverFactory $driverFactory
-     *
      * @throws \Error If the client has already been started.
      */
     public function start(HttpDriverFactory $driverFactory): void;
@@ -45,8 +43,6 @@ interface Client
 
     /**
      * Integer ID of this client.
-     *
-     * @return int
      */
     public function getId(): int;
 
@@ -72,8 +68,6 @@ interface Client
 
     /**
      * If the client is encrypted a TlsInfo object is returned, otherwise null.
-     *
-     * @return TlsInfo|null
      */
     public function getTlsInfo(): ?TlsInfo;
 

@@ -94,9 +94,6 @@ final class Trailers
         return $this->fields;
     }
 
-    /**
-     * @return Message
-     */
     public function await(): Message
     {
         return $this->headers->await();

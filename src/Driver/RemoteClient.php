@@ -67,8 +67,6 @@ final class RemoteClient implements Client
     /**
      * Listen for requests on the client and parse them using the HTTP driver generated from the given factory.
      *
-     * @param HttpDriverFactory $driverFactory
-     *
      * @throws \Error If the client has already been started.
      */
     public function start(HttpDriverFactory $driverFactory): void
@@ -303,10 +301,7 @@ final class RemoteClient implements Client
     /**
      * Invoked by the HTTP parser when a request is parsed.
      *
-     * @param Request $request
      * @param string $buffer Remaining buffer in the parser.
-     *
-     * @return Future
      */
     private function onMessage(Request $request, string $buffer = ''): Future
     {
@@ -323,9 +318,6 @@ final class RemoteClient implements Client
 
     /**
      * Respond to a parsed request.
-     *
-     * @param Request $request
-     * @param string $buffer
      */
     private function respond(Request $request, string $buffer): void
     {
@@ -396,8 +388,6 @@ final class RemoteClient implements Client
 
     /**
      * Used if an exception is thrown from a request handler.
-     *
-     * @param Request $request
      */
     private function makeExceptionResponse(Request $request): Response
     {
@@ -421,9 +411,6 @@ final class RemoteClient implements Client
     /**
      * Invokes the export function on Response with the socket upgraded from the HTTP server.
      *
-     * @param callable $upgrade
-     * @param Request $request
-     * @param Response $response
      * @param string $buffer Remaining buffer read from the socket.
      */
     private function export(callable $upgrade, Request $request, Response $response, string $buffer): void

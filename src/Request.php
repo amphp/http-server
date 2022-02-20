@@ -26,7 +26,6 @@ final class Request extends Message
      * @param string $method HTTP request method.
      * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
      * @param string[]|string[][] $headers An array of strings or an array of string arrays.
-     * @param ReadableStream|string $body
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      * @param Trailers|null $trailers Trailers if request has trailers, or null otherwise.
      */
@@ -62,8 +61,6 @@ final class Request extends Message
 
     /**
      * Retrieve the HTTP method used to make this request.
-     *
-     * @return string
      */
     public function getMethod(): string
     {
@@ -72,8 +69,6 @@ final class Request extends Message
 
     /**
      * Sets the request HTTP method.
-     *
-     * @param string $method
      */
     public function setMethod(string $method): void
     {
@@ -82,8 +77,6 @@ final class Request extends Message
 
     /**
      * Retrieve the request URI.
-     *
-     * @return PsrUri
      */
     public function getUri(): PsrUri
     {
@@ -92,8 +85,6 @@ final class Request extends Message
 
     /**
      * Sets a new URI for the request.
-     *
-     * @param PsrUri $uri
      */
     public function setUri(PsrUri $uri): void
     {
@@ -103,8 +94,6 @@ final class Request extends Message
     /**
      * This method returns the HTTP protocol version (e.g. "1.0", "1.1", "2.0") in use;
      * it has nothing to do with URI schemes like http:// or https:// ...
-     *
-     * @return string
      */
     public function getProtocolVersion(): string
     {
@@ -113,8 +102,6 @@ final class Request extends Message
 
     /**
      * Sets a new protocol version number for the request.
-     *
-     * @param string $protocol
      */
     public function setProtocolVersion(string $protocol): void
     {
@@ -143,7 +130,6 @@ final class Request extends Message
     /**
      * Sets the named header to the given value.
      *
-     * @param string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -164,7 +150,6 @@ final class Request extends Message
     /**
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
-     * @param string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -184,8 +169,6 @@ final class Request extends Message
 
     /**
      * Removes the given header if it exists.
-     *
-     * @param string $name
      */
     public function removeHeader(string $name): void
     {
@@ -198,8 +181,6 @@ final class Request extends Message
 
     /**
      * Retrieve the request body.
-     *
-     * @return RequestBody
      */
     public function getBody(): RequestBody
     {
@@ -213,8 +194,6 @@ final class Request extends Message
     /**
      * Sets the stream for the message body. Note that using a string will automatically set the Content-Length header
      * to the length of the given string. Using an ReadableStream or Body instance will remove the Content-Length header.
-     *
-     * @param ReadableStream|string $body
      *
      * @throws \Error
      * @throws \TypeError
@@ -248,8 +227,6 @@ final class Request extends Message
 
     /**
      * @param string $name Name of the cookie.
-     *
-     * @return RequestCookie|null
      */
     public function getCookie(string $name): ?RequestCookie
     {
@@ -258,8 +235,6 @@ final class Request extends Message
 
     /**
      * Adds a cookie to the request.
-     *
-     * @param RequestCookie $cookie
      */
     public function setCookie(RequestCookie $cookie): void
     {
@@ -269,8 +244,6 @@ final class Request extends Message
 
     /**
      * Removes a cookie from the request.
-     *
-     * @param string $name
      */
     public function removeCookie(string $name): void
     {
@@ -330,8 +303,6 @@ final class Request extends Message
      * tightly coupled to specific implementations.
      *
      * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
-     *
-     * @return bool
      */
     public function hasAttribute(string $name): bool
     {
@@ -346,8 +317,6 @@ final class Request extends Message
      * tightly coupled to specific implementations.
      *
      * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
-     *
-     * @return mixed
      *
      * @throws MissingAttributeError If an attribute with the given name does not exist.
      */
@@ -405,17 +374,11 @@ final class Request extends Message
         $this->attributes = [];
     }
 
-    /**
-     * @return Trailers|null
-     */
     public function getTrailers(): ?Trailers
     {
         return $this->trailers;
     }
 
-    /**
-     * @param Trailers $trailers
-     */
     public function setTrailers(Trailers $trailers): void
     {
         $this->trailers = $trailers;

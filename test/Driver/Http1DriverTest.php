@@ -229,7 +229,6 @@ class Http1DriverTest extends HttpDriverTest
 
     /**
      * provide multiple chunk-sizes to test with.
-     * @return \Generator
      */
     public function chunkSizeProvider(): \Generator
     {
@@ -658,7 +657,6 @@ class Http1DriverTest extends HttpDriverTest
 
         return $return;
     }
-
 
     /**
      * @dataProvider provideUpgradeBodySizeData

@@ -19,7 +19,6 @@ namespace Amp\Http\Server;
  */
 class ClientException extends \Exception
 {
-    /** @var Driver\Client */
     private Driver\Client $client;
 
     public function __construct(Driver\Client $client, string $message, int $code = 0, \Throwable $previous = null)
