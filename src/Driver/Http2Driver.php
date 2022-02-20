@@ -1004,7 +1004,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         $stream = $this->streams[$streamId];
 
-
         if ($stream->state & Http2Stream::REMOTE_CLOSED) {
             throw new Http2StreamException(
                 "Stream remote closed",

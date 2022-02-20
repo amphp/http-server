@@ -738,47 +738,6 @@ class Http2DriverTest extends HttpDriverTest
         );
     }
 
-    public function testTinyDataFlood(): void
-    {
-        $driver = new Http2Driver(new Options, new NullLogger);
-
-        $client = $this->createClientMock();
-        $client->expects(self::atLeastOnce())
-            ->method('close');
-
-        $lastWrite = null;
-
-        $parser = $driver->setup(
-            $client,
-            $this->createCallback(1),
-            function (string $data) use (&$lastWrite): Future {
-                $lastWrite = $data;
-                return Future::complete();
-            }
-        );
-
-        $parser->send(Http2Parser::PREFACE);
-
-        $headers = [
-            ":authority" => "localhost",
-            ":path" => "/base",
-            ":scheme" => "https",
-            ":method" => "POST",
-            "content-length" => "1024",
-        ];
-        $parser->send(self::packHeader($headers));
-
-        $buffer = \str_repeat(self::packFrame(" ", Http2Parser::DATA, Http2Parser::NO_FLAG, 1), 1023);
-        $buffer .= self::packFrame(" ", Http2Parser::DATA, Http2Parser::END_STREAM, 1);
-
-        $parser->send($buffer);
-
-        self::assertSame(
-            \bin2hex(self::packFrame(\pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM), Http2Parser::GOAWAY, Http2Parser::NO_FLAG)),
-            \bin2hex($lastWrite)
-        );
-    }
-
     public function testSendingResponseBeforeRequestCompletes(): void
     {
         $driver = new Http2Driver(new Options, new NullLogger);
