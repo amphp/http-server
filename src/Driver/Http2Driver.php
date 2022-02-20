@@ -679,8 +679,13 @@ final class Http2Driver implements HttpDriver, Http2Processor
             );
         }
 
-        ++$this->pinged;
-        $this->writeFrame($data, Http2Parser::PING, Http2Parser::ACK);
+        $this->pinged++;
+
+        if ($this->pinged > 5) {
+            $this->handleConnectionException(new Http2ConnectionException('Too many pings', Http2Parser::ENHANCE_YOUR_CALM));
+        } else {
+            $this->writeFrame($data, Http2Parser::PING, Http2Parser::ACK);
+        }
     }
 
     public function handleShutdown(int $lastId, int $error): void

@@ -631,7 +631,7 @@ class Http2DriverTest extends HttpDriverTest
             ":scheme" => "http",
             ":method" => "GET",
         ];
-        $parser->send(self::packHeader($headers, false, 1));
+        $parser->send(self::packHeader($headers));
 
         // $onMessage callback should be invoked.
         self::assertInstanceOf(Request::class, $request);
@@ -766,7 +766,7 @@ class Http2DriverTest extends HttpDriverTest
             ":method" => "POST",
             "content-length" => "1024",
         ];
-        $parser->send(self::packHeader($headers, false, 1));
+        $parser->send(self::packHeader($headers));
 
         $buffer = \str_repeat(self::packFrame(" ", Http2Parser::DATA, Http2Parser::NO_FLAG, 1), 1023);
         $buffer .= self::packFrame(" ", Http2Parser::DATA, Http2Parser::END_STREAM, 1);
