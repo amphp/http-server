@@ -79,7 +79,7 @@ final class RemoteClient implements Client
             try {
                 $context = \stream_context_get_options($this->socket->getResource());
                 if (isset($context["ssl"])) {
-                    $this->negotiateCrypto();
+                    $this->setupTls();
                 }
 
                 $this->httpDriver = $driverFactory->selectDriver(
@@ -91,8 +91,8 @@ final class RemoteClient implements Client
 
                 $requestParser = $this->httpDriver->setup(
                     $this,
-                    \Closure::fromCallable([$this, 'onMessage']),
-                    \Closure::fromCallable([$this, 'write'])
+                    $this->onMessage(...),
+                    $this->write(...),
                 );
 
                 $requestParser->current(); // Advance parser to first yield for data.
@@ -101,23 +101,27 @@ final class RemoteClient implements Client
                     $requestParser->send($chunk);
                 }
             } catch (\Throwable $exception) {
-                \assert(
-                    $this->logger->debug(\sprintf(
-                        "Exception while handling client %s: %s",
-                        $this->socket->getRemoteAddress(),
-                        $exception->getMessage()
-                    )) || true
-                );
+                \assert($this->logDebug("Exception while handling client {address}", [
+                    'address' => $this->socket->getRemoteAddress(),
+                    'exception' => $exception,
+                ]));
 
                 $this->close();
             }
         });
     }
 
+    private function logDebug(string $message, array $context = []): bool
+    {
+        $this->logger->debug($message, $context);
+
+        return true;
+    }
+
     /**
      * Called by start() after the client connects if encryption is enabled.
      */
-    private function negotiateCrypto(): void
+    private function setupTls(): void
     {
         $this->timeoutCache->update(
             $this->id,
@@ -127,17 +131,14 @@ final class RemoteClient implements Client
         $this->socket->setupTls(new TimeoutCancellation($this->options->getTlsSetupTimeout()));
 
         $this->tlsInfo = $this->socket->getTlsInfo();
-        \assert($this->tlsInfo !== null);
 
-        \assert(
-            $this->logger->debug(\sprintf(
-                "TLS negotiated with %s (%s with %s, application protocol: %s)",
-                $this->socket->getRemoteAddress()->toString(),
-                $this->tlsInfo->getVersion(),
-                $this->tlsInfo->getCipherName(),
-                $this->tlsInfo->getApplicationLayerProtocol() ?? "none"
-            )) || true
-        );
+        \assert($this->tlsInfo !== null);
+        \assert($this->logDebug("TLS handshake complete with {address} ({tls.version}, {tls.cipher}, {tls.alpn})", [
+            $this->socket->getRemoteAddress(),
+            $this->tlsInfo->getVersion(),
+            $this->tlsInfo->getCipherName(),
+            $this->tlsInfo->getApplicationLayerProtocol() ?? "none",
+        ]));
     }
 
     public function getOptions(): Options
@@ -230,16 +231,20 @@ final class RemoteClient implements Client
         $this->status = self::CLOSED_RDWR;
 
         $this->clear();
-
         $this->socket->close();
 
         \assert((function (): bool {
             if (($this->socket->getLocalAddress()->getHost()[0] ?? "") !== "/") { // no unix domain socket
-                $this->logger->debug("Close {$this->socket->getRemoteAddress()} #{$this->id}");
-            } else {
-                $this->logger->debug("Close connection on {$this->socket->getLocalAddress()} #{$this->id}");
+                return $this->logDebug("Close {address} #{clientId}", [
+                    'address' => $this->socket->getRemoteAddress(),
+                    'clientId' => $this->id,
+                ]);
             }
-            return true;
+
+            return $this->logDebug("Close connection on {address} #{clientId}", [
+                'address' => $this->socket->getLocalAddress(),
+                'clientId' => $this->id,
+            ]);
         })());
 
         foreach ($onClose as $closure) {
@@ -251,22 +256,20 @@ final class RemoteClient implements Client
     {
         if ($this->onClose === null) {
             EventLoop::queue(fn () => $onClose($this));
-            return;
+        } else {
+            $this->onClose[] = $onClose;
         }
-
-        $this->onClose[] = $onClose;
     }
 
     public function stop(float $timeout): void
     {
-        if (!isset($this->httpDriver)) {
-            $this->close();
-            return;
-        }
-
-        try {
-            async(fn () => $this->httpDriver->stop())->await(new TimeoutCancellation($timeout));
-        } finally {
+        if (isset($this->httpDriver)) {
+            try {
+                async(fn () => $this->httpDriver->stop())->await(new TimeoutCancellation($timeout));
+            } finally {
+                $this->close();
+            }
+        } else {
             $this->close();
         }
     }
@@ -305,13 +308,12 @@ final class RemoteClient implements Client
      */
     private function onMessage(Request $request, string $buffer = ''): Future
     {
-        \assert($this->logger->debug(\sprintf(
-            "%s %s HTTP/%s @ %s",
-            $request->getMethod(),
-            $request->getUri(),
-            $request->getProtocolVersion(),
-            $this->socket->getRemoteAddress()->toString()
-        )) || true);
+        \assert($this->logDebug("{http.method} {http.uri} HTTP/{http.version} @ {address}", [
+            'http.method' => $request->getMethod(),
+            'http.uri' => $request->getUri(),
+            'http.version' => $request->getProtocolVersion(),
+            'address' => $this->socket->getRemoteAddress(),
+        ]));
 
         return async(fn () => $this->respond($request, $buffer));
     }
@@ -421,7 +423,10 @@ final class RemoteClient implements Client
 
         $this->clear();
 
-        \assert($this->logger->debug("Upgrade {$this->socket->getRemoteAddress()} #{$this->id}") || true);
+        \assert($this->logDebug("Upgrade {address} #{clientId}", [
+            'address' => $this->socket->getRemoteAddress(),
+            'clientId' => $this->id,
+        ]));
 
         $socket = new UpgradedSocket($this, $this->socket, $buffer);
 
