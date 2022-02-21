@@ -6,6 +6,7 @@ use Amp\ByteStream\ReadableIterableStream;
 use Amp\Future;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
+use Amp\Http\Internal\HPackNghttp2;
 use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
@@ -429,6 +430,11 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testFlowControl(): void
     {
+        /** @noinspection PhpInternalEntityUsedInspection */
+        if (HPackNghttp2::isSupported()) {
+            self::markTestSkipped('Not supported with nghttp2, disable ffi for this test.');
+        }
+
         [$driver, $parser] = $this->setupDriver(function (Request $read) use (&$request) {
             $request = $read;
         }, (new Options)->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
@@ -658,6 +664,11 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPush(): void
     {
+        /** @noinspection PhpInternalEntityUsedInspection */
+        if (HPackNghttp2::isSupported()) {
+            self::markTestSkipped('Not supported with nghttp2, disable ffi for this test.');
+        }
+
         $driver = new Http2Driver(new Options, new NullLogger);
 
         $requests = [];

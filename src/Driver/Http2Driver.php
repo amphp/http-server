@@ -402,6 +402,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $this->streams[$id] = $stream = new Http2Stream(
             0, // No data will be incoming on this stream.
             $this->initialWindowSize,
+            $this->initialWindowSize,
             Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
         );
 
@@ -569,6 +570,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             // Upgraded connections automatically assume an initial stream with ID 1.
             $this->streams[1] = new Http2Stream(
                 0, // No data will be incoming on this stream.
+                $this->initialWindowSize,
                 $this->initialWindowSize,
                 Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
             );
@@ -766,7 +768,11 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 );
             }
 
-            $stream = $this->streams[$streamId] = new Http2Stream($this->options->getBodySizeLimit(), $this->initialWindowSize);
+            $stream = $this->streams[$streamId] = new Http2Stream(
+                $this->options->getBodySizeLimit(),
+                $this->initialWindowSize,
+                $this->initialWindowSize
+            );
         }
 
         // Headers frames can be received on previously opened streams (trailer headers).
@@ -906,19 +912,19 @@ final class Http2Driver implements HttpDriver, Http2Processor
                     return;
                 }
 
-                if ($this->streams[$streamId]->maxBodySize >= $bodySize) {
+                if ($this->streams[$streamId]->bodySizeLimit >= $bodySize) {
                     return;
                 }
 
-                $this->streams[$streamId]->maxBodySize = $bodySize;
+                $this->streams[$streamId]->bodySizeLimit = $bodySize;
             }
         );
 
-        $maxBodySize = $this->options->getBodySizeLimit();
+        $bodySizeLimit = $this->options->getBodySizeLimit();
 
-        if ($this->serverWindow <= $maxBodySize >> 1) {
-            $increment = $maxBodySize - $this->serverWindow;
-            $this->serverWindow = $maxBodySize;
+        if ($this->serverWindow <= $bodySizeLimit >> 1) {
+            $increment = $bodySizeLimit - $this->serverWindow;
+            $this->serverWindow = $bodySizeLimit;
             $this->writeFrame(\pack("N", $increment), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
         }
 
@@ -1009,9 +1015,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         $this->serverWindow -= $length;
         $stream->serverWindow -= $length;
-        $stream->received += $length;
+        $stream->receivedByteCount += $length;
 
-        if ($stream->received > $stream->maxBodySize) {
+        if ($stream->receivedByteCount > $stream->bodySizeLimit) {
             throw new Http2StreamException(
                 "Max body size exceeded",
                 $streamId,
@@ -1024,7 +1030,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             $this->writeFrame(\pack("N", self::MAX_INCREMENT), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
         }
 
-        if (\is_int($stream->expectedLength)) {
+        if ($stream->expectedLength !== null) {
             $stream->expectedLength -= $length;
         }
 
@@ -1052,7 +1058,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 }
 
                 $increment = \min(
-                    $stream->maxBodySize + 1 - $stream->received - $stream->serverWindow,
+                    $stream->bodySizeLimit + 1 - $stream->receivedByteCount - $stream->serverWindow,
                     self::MAX_INCREMENT
                 );
 
@@ -1138,7 +1144,11 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
             // Open a new stream if the ID has not been seen before, but do not set
             // $this->remoteStreamId. That will be set once the headers are received.
-            $this->streams[$streamId] = new Http2Stream($this->options->getBodySizeLimit(), $this->initialWindowSize);
+            $this->streams[$streamId] = new Http2Stream(
+                $this->options->getBodySizeLimit(),
+                $this->initialWindowSize,
+                $this->initialWindowSize
+            );
         }
 
         $stream = $this->streams[$streamId];

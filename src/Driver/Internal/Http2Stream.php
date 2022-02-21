@@ -16,13 +16,12 @@ final class Http2Stream
     public const RESERVED = 0b0001;
     public const REMOTE_CLOSED = 0b0010;
     public const LOCAL_CLOSED = 0b0100;
-    public const CLOSED = 0b0110;
 
-    /** @var int Current max body length. */
-    public int $maxBodySize;
+    /** @var int Current body size limit. */
+    public int $bodySizeLimit;
 
     /** @var int Bytes received on the stream. */
-    public int $received = 0;
+    public int $receivedByteCount = 0;
 
     public int $serverWindow;
 
@@ -45,10 +44,10 @@ final class Http2Stream
 
     public ?int $expectedLength = null;
 
-    public function __construct(int $serverSize, int $clientSize, int $state = self::OPEN)
+    public function __construct(int $bodySizeLimit, int $serverSize, int $clientSize, int $state = self::OPEN)
     {
+        $this->bodySizeLimit = $bodySizeLimit;
         $this->serverWindow = $serverSize;
-        $this->maxBodySize = $serverSize;
         $this->clientWindow = $clientSize;
         $this->state = $state;
     }
