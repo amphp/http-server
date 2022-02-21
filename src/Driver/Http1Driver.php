@@ -221,7 +221,7 @@ final class Http1Driver implements HttpDriver
 
     private function parser(): \Generator
     {
-        $maxHeaderSize = $this->options->getHeaderSizeLimit();
+        $headerSizeLimit = $this->options->getHeaderSizeLimit();
         $parser = null;
 
         $this->updateTimeout();
@@ -249,11 +249,11 @@ final class Http1Driver implements HttpDriver
 
                     if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
                         $rawHeaders = \substr($buffer, 0, $headerPos + 2);
-                        $buffer = (string) \substr($buffer, $headerPos + 4);
+                        $buffer = \substr($buffer, $headerPos + 4);
                         break;
                     }
 
-                    if (\strlen($buffer) > $maxHeaderSize) {
+                    if (\strlen($buffer) > $headerSizeLimit) {
                         throw new ClientException(
                             $this->client,
                             "Bad Request: header size violation",
@@ -500,13 +500,13 @@ final class Http1Driver implements HttpDriver
                 // HTTP/1.x clients only ever have a single body emitter.
                 $this->bodyQueue = $queue = new Queue();
                 $trailerDeferred = new DeferredFuture;
-                $maxBodySize = $this->options->getBodySizeLimit();
+                $bodySizeLimit = $this->options->getBodySizeLimit();
 
                 $body = new RequestBody(
                     new ReadableIterableStream($queue->pipe()),
-                    static function (int $bodySize) use (&$maxBodySize): void {
-                        if ($bodySize > $maxBodySize) {
-                            $maxBodySize = $bodySize;
+                    static function (int $bodySize) use (&$bodySizeLimit): void {
+                        if ($bodySize > $bodySizeLimit) {
+                            $bodySizeLimit = $bodySize;
                         }
                     }
                 );
@@ -521,7 +521,7 @@ final class Http1Driver implements HttpDriver
                 } catch (InvalidHeaderException $exception) {
                     throw new ClientException(
                         $this->client,
-                        "Invalid headers field in promises trailers",
+                        "Invalid header field in trailers",
                         0,
                         $exception
                     );
@@ -590,11 +590,11 @@ final class Http1Driver implements HttpDriver
                             do {
                                 if ($trailerPos = \strpos($buffer, "\r\n\r\n")) {
                                     $rawTrailers = \substr($buffer, 0, $trailerPos + 2);
-                                    $buffer = (string) \substr($buffer, $trailerPos + 4);
+                                    $buffer = \substr($buffer, $trailerPos + 4);
                                     break;
                                 }
 
-                                if (\strlen($buffer) > $maxHeaderSize) {
+                                if (\strlen($buffer) > $headerSizeLimit) {
                                     throw new ClientException(
                                         $this->client,
                                         "Bad Request: trailer headers too large",
@@ -631,9 +631,9 @@ final class Http1Driver implements HttpDriver
                             break; // finished (chunked loop)
                         }
 
-                        if ($bodySize + $chunkLengthRemaining > $maxBodySize) {
+                        if ($bodySize + $chunkLengthRemaining > $bodySizeLimit) {
                             do {
-                                $remaining = $maxBodySize - $bodySize;
+                                $remaining = $bodySizeLimit - $bodySize;
                                 $chunkLengthRemaining -= $remaining - \strlen($body);
                                 $body .= $buffer;
                                 $bodyBufferSize = \strlen($body);
@@ -670,12 +670,12 @@ final class Http1Driver implements HttpDriver
                                     $bodySize += $remaining;
                                 }
 
-                                if ($bodySize !== $maxBodySize) {
+                                if ($bodySize !== $bodySizeLimit) {
                                     continue;
                                 }
 
                                 throw new ClientException($this->client, "Payload too large", Status::PAYLOAD_TOO_LARGE);
-                            } while ($maxBodySize < $bodySize + $chunkLengthRemaining);
+                            } while ($bodySizeLimit < $bodySize + $chunkLengthRemaining);
                         }
 
                         while (true) {
@@ -727,8 +727,8 @@ final class Http1Driver implements HttpDriver
                 } else {
                     $bodyBufferSize = \strlen($buffer);
 
-                    // Note that $maxBodySize may change while looping.
-                    while ($bodySize + $bodyBufferSize < \min($maxBodySize, $contentLength)) {
+                    // Note that $bodySizeLimit may change while looping.
+                    while ($bodySize + $bodyBufferSize < \min($bodySizeLimit, $contentLength)) {
                         if ($bodyBufferSize) {
                             $this->updateTimeout();
                             try {
@@ -743,7 +743,7 @@ final class Http1Driver implements HttpDriver
                         $bodyBufferSize = \strlen($buffer);
                     }
 
-                    $remaining = \min($maxBodySize, $contentLength) - $bodySize;
+                    $remaining = \min($bodySizeLimit, $contentLength) - $bodySize;
 
                     if ($remaining) {
                         $this->updateTimeout();
@@ -755,7 +755,7 @@ final class Http1Driver implements HttpDriver
                         $buffer = \substr($buffer, $remaining);
                     }
 
-                    if ($contentLength > $maxBodySize) {
+                    if ($contentLength > $bodySizeLimit) {
                         throw new ClientException($this->client, "Payload too large", Status::PAYLOAD_TOO_LARGE);
                     }
                 }
