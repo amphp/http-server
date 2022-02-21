@@ -198,7 +198,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
             $headers["date"] = [formatDateHeader()];
 
-            $headers["link"] = [];
             foreach ($response->getPushes() as $push) {
                 $headers["link"][] = "<{$push->getUri()}>; rel=preload";
                 if ($this->allowsPush) {
