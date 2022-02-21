@@ -52,7 +52,7 @@ final class Request extends Message
     }
 
     /**
-     * @return \Amp\Http\Server\Driver\Client The client sending the request.
+     * @return Client The client sending the request.
      */
     public function getClient(): Client
     {
@@ -92,7 +92,7 @@ final class Request extends Message
     }
 
     /**
-     * This method returns the HTTP protocol version (e.g. "1.0", "1.1", "2.0") in use;
+     * This method returns the HTTP protocol version (e.g. "1.0", "1.1", "2") in use;
      * it has nothing to do with URI schemes like http:// or https:// ...
      */
     public function getProtocolVersion(): string

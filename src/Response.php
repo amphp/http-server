@@ -50,7 +50,7 @@ final class Response extends Message
 
         $this->setBody($body);
 
-        if (!empty($headers)) {
+        if ($headers) {
             $this->setHeaders($headers);
         }
 
@@ -338,7 +338,7 @@ final class Response extends Message
      * response to 101 (Switching Protocols) and removes any trailers. The callback may be removed by changing the
      * response status to any value other than 101.
      *
-     * @param Closure(Driver\UpgradedSocket, Request, Response):void $upgrade Callback invoked once the response has
+     * @param \Closure(Driver\UpgradedSocket, Request, Response):void $upgrade Callback invoked once the response has
      * been written to the client. The callback is given three parameters: an instance of {@see Driver\UpgradedSocket},
      * the original {@see Request} object, and this {@see Response} object.
      */
@@ -354,9 +354,9 @@ final class Response extends Message
     /**
      * Returns the upgrade function if present.
      *
-     * @return callable|null Upgrade function.
+     * @return \Closure|null Upgrade function.
      */
-    public function getUpgradeHandler(): ?callable
+    public function getUpgradeHandler(): ?\Closure
     {
         return $this->upgrade;
     }
@@ -365,7 +365,7 @@ final class Response extends Message
      * Registers a function that is invoked when the Response is discarded. A response is discarded either once it has
      * been written to the client or if it gets replaced in a middleware chain.
      *
-     * @param Closure():void $onDispose
+     * @param \Closure():void $onDispose
      */
     public function onDispose(\Closure $onDispose): void
     {

@@ -16,7 +16,7 @@ final class RequestBody extends Payload
     private $upgradeSize;
 
     /**
-     * @param null|Closure(int):void $upgradeSize Closure used to increase the maximum size of the body.
+     * @param null|\Closure(int):void $upgradeSize Closure used to increase the maximum size of the body.
      */
     public function __construct(ReadableStream $stream, ?\Closure $upgradeSize = null)
     {
@@ -29,7 +29,7 @@ final class RequestBody extends Payload
      */
     public function increaseSizeLimit(int $size): void
     {
-        if (!$this->upgradeSize) {
+        if ($this->upgradeSize === null) {
             return;
         }
 

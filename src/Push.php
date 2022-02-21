@@ -11,7 +11,7 @@ final class Push extends Message
     private PsrUri $uri;
 
     /**
-     * @param string[]|string[] $headers
+     * @param string[]|string[][] $headers
      *
      * @throws InvalidHeaderException If given headers contain and invalid header name or value.
      * @throws \Error If the given headers have a colon-prefixed header or a Host header.
