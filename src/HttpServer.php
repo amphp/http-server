@@ -105,7 +105,7 @@ final class HttpServer
             }
         }
 
-        $this->timeoutWatcher = EventLoop::repeat(1, \Closure::fromCallable([$this, 'checkClientTimeouts']));
+        $this->timeoutWatcher = EventLoop::repeat(1, $this->checkClientTimeouts(...));
         EventLoop::disable($this->timeoutWatcher);
 
         $this->observers = new \SplObjectStorage;
@@ -258,7 +258,7 @@ final class HttpServer
 
         $protocols = $this->driverFactory->getApplicationLayerProtocols();
 
-        $onAcceptable = \Closure::fromCallable([$this, 'onAcceptable']);
+        $onAcceptable = $this->onAcceptable(...);
         foreach ($this->boundServers as $serverName => $server) {
             $context = \stream_context_get_options($server);
             $scheme = "http";

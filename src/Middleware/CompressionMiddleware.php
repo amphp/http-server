@@ -127,18 +127,11 @@ final class CompressionMiddleware implements Middleware
             } while (true);
         }
 
-        switch ($encoding) {
-            case "deflate":
-                $mode = \ZLIB_ENCODING_RAW;
-                break;
-
-            case "gzip":
-                $mode = \ZLIB_ENCODING_GZIP;
-                break;
-
-            default:
-                throw new \RuntimeException("Invalid encoding type");
-        }
+        $mode = match ($encoding) {
+            "deflate" => \ZLIB_ENCODING_RAW,
+            "gzip" => \ZLIB_ENCODING_GZIP,
+            default => throw new \RuntimeException("Invalid encoding type"),
+        };
 
         if (($resource = \deflate_init($mode)) === false) {
             throw new \RuntimeException(

@@ -10,7 +10,7 @@ use Amp\Http\Server\Response;
 final class ClosureMiddleware implements Middleware
 {
     /**
-     * @param Closure(Request, RequestHandler):Response $closure Closure accepting an {@see Request} object
+     * @param \Closure(Request, RequestHandler):Response $closure Closure accepting an {@see Request} object
      * as the first argument, {@see RequestHandler} as second argument and returning an instance of {@see Response}.
      */
     public function __construct(private \Closure $closure)
