@@ -20,21 +20,9 @@ use function Amp\async;
 
 final class HttpServer
 {
-    public const STOPPED = 0;
-    public const STARTING = 1;
-    public const STARTED = 2;
-    public const STOPPING = 3;
-
-    public const STATES = [
-        self::STOPPED => "STOPPED",
-        self::STARTING => "STARTING",
-        self::STARTED => "STARTED",
-        self::STOPPING => "STOPPING",
-    ];
-
     public const DEFAULT_SHUTDOWN_TIMEOUT = 3;
 
-    private int $state = self::STOPPED;
+    private HttpServerStatus $status = HttpServerStatus::Stopped;
 
     private Options $options;
 
@@ -130,7 +118,7 @@ final class HttpServer
      */
     public function setDriverFactory(HttpDriverFactory $driverFactory): void
     {
-        if ($this->state) {
+        if ($this->status !== HttpServerStatus::Stopped) {
             throw new \Error("Cannot set the driver factory after the server has started");
         }
 
@@ -144,7 +132,7 @@ final class HttpServer
      */
     public function setClientFactory(ClientFactory $clientFactory): void
     {
-        if ($this->state) {
+        if ($this->status !== HttpServerStatus::Stopped) {
             throw new \Error("Cannot set the client factory after the server has started");
         }
 
@@ -158,7 +146,7 @@ final class HttpServer
      */
     public function setErrorHandler(ErrorHandler $errorHandler): void
     {
-        if ($this->state) {
+        if ($this->status !== HttpServerStatus::Stopped) {
             throw new \Error("Cannot set the error handler after the server has started");
         }
 
@@ -166,11 +154,11 @@ final class HttpServer
     }
 
     /**
-     * Retrieve the current server state.
+     * Retrieve the current server status.
      */
-    public function getState(): int
+    public function getStatus(): HttpServerStatus
     {
-        return $this->state;
+        return $this->status;
     }
 
     /**
@@ -204,7 +192,7 @@ final class HttpServer
      */
     public function attach(ServerObserver $observer): void
     {
-        if ($this->state) {
+        if ($this->status !== HttpServerStatus::Stopped) {
             throw new \Error("Cannot attach observers after the server has started");
         }
 
@@ -216,8 +204,8 @@ final class HttpServer
      */
     public function start(): void
     {
-        if ($this->state !== self::STOPPED) {
-            throw new \Error("Cannot start server: already " . self::STATES[$this->state]);
+        if ($this->status !== HttpServerStatus::Stopped) {
+            throw new \Error("Cannot start server: " . $this->status->getLabel());
         }
 
         if ($this->driverFactory instanceof ServerObserver) {
@@ -236,7 +224,7 @@ final class HttpServer
             $this->observers->attach($this->errorHandler);
         }
 
-        $this->state = self::STARTING;
+        $this->status = HttpServerStatus::Starting;
 
         $futures = [];
         foreach ($this->observers as $observer) {
@@ -244,7 +232,7 @@ final class HttpServer
         }
         [$exceptions] = Future\settle($futures);
 
-        $this->state = self::STARTED;
+        $this->status = HttpServerStatus::Started;
 
         if (!empty($exceptions)) {
             try {
@@ -356,21 +344,21 @@ final class HttpServer
      */
     public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): void
     {
-        switch ($this->state) {
-            case self::STARTED:
+        switch ($this->status) {
+            case HttpServerStatus::Started:
                 $this->shutdown($timeout);
                 return;
-            case self::STOPPED:
+            case HttpServerStatus::Stopped:
                 return;
             default:
-                throw new \Error("Cannot stop server: currently " . self::STATES[$this->state]);
+                throw new \Error("Cannot stop server: " . $this->status->getLabel());
         }
     }
 
     private function shutdown(int $timeout): void
     {
         \assert($this->logger->debug("Stopping") || true);
-        $this->state = self::STOPPING;
+        $this->status = HttpServerStatus::Stopping;
 
         foreach ($this->acceptWatcherIds as $watcherId) {
             EventLoop::cancel($watcherId);
@@ -393,7 +381,7 @@ final class HttpServer
         Future\settle($futures);
 
         \assert($this->logger->debug("Stopped") || true);
-        $this->state = self::STOPPED;
+        $this->status = HttpServerStatus::Stopped;
 
         if (!empty($exceptions)) {
             throw new CompositeException($exceptions, "onStop observer failure");
@@ -424,7 +412,7 @@ final class HttpServer
     public function __debugInfo(): array
     {
         return [
-            "state" => $this->state,
+            "status" => $this->status,
             "observers" => $this->observers,
             "acceptWatcherIds" => $this->acceptWatcherIds,
             "boundServers" => $this->boundServers,
