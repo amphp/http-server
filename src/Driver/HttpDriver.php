@@ -20,10 +20,10 @@ interface HttpDriver
      * Data read from the client connection should be sent to the generator returned from this method.
      *
      * @param Client $client The client associated with the data being sent to the returned generator.
-     * @param Closure(Request, string):Future $onMessage Invoked with an instance of Request when the returned
+     * @param \Closure(Request, string):Future $onMessage Invoked with an instance of Request when the returned
      * parser has parsed a request. Returns a {@see Future} that is resolved once the response has been generated and
      * writing the response to the client initiated (but not necessarily complete).
-     * @param Closure(string, bool):void $write Invoked with raw data to be written to the client connection. Returns
+     * @param \Closure(string, bool):void $write Invoked with raw data to be written to the client connection. Returns
      * when the data has been successfully written. If the second param is true, the client is closed after the data
      * is written.
      *
@@ -43,7 +43,7 @@ interface HttpDriver
 
     /**
      * Stops processing further requests, returning once all currently pending requests have been fulfilled and any
-     * remaining data is send to the client (such as GOAWAY frames for HTTP/2).
+     * remaining data is sent to the client (such as GOAWAY frames for HTTP/2).
      */
     public function stop(): void;
 }

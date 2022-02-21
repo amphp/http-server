@@ -720,7 +720,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         $stream->clientWindow += $windowSize;
 
-        EventLoop::defer(\Closure::fromCallable([$this, 'sendBufferedData']));
+        EventLoop::defer($this->sendBufferedData(...));
     }
 
     public function handleConnectionWindowIncrement(int $windowSize): void
@@ -734,7 +734,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
 
         $this->clientWindow += $windowSize;
 
-        EventLoop::defer(\Closure::fromCallable([$this, 'sendBufferedData']));
+        EventLoop::defer($this->sendBufferedData(...));
     }
 
     public function handleHeaders(int $streamId, array $pseudo, array $headers, bool $ended): void
@@ -774,7 +774,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
             );
         }
 
-        // Headers frames can be received on previously opened streams (trailer headers).
+        // Header frames can be received on previously opened streams (trailer headers).
         $this->remoteStreamId = \max($streamId, $this->remoteStreamId);
 
         $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
@@ -1194,7 +1194,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
                     }
 
                     // Settings ACK should be sent before HEADER or DATA frames.
-                    EventLoop::defer(\Closure::fromCallable([$this, 'sendBufferedData']));
+                    EventLoop::defer($this->sendBufferedData(...));
                     break;
 
                 case Http2Parser::ENABLE_PUSH:
