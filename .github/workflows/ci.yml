@@ -78,3 +78,4 @@ jobs:
 
       - name: Run h2spec
         run: sh tools/h2spec.sh
+        if: runner.os == 'Linux'
