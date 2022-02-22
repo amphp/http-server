@@ -34,11 +34,8 @@ final class HttpServer
 
     private \SplObjectStorage $observers;
 
-    /** @var string[] */
-    private array $acceptWatcherIds = [];
-
-    /** @var resource[] Server sockets. */
-    private array $boundServers = [];
+    /** @var SocketServer[] */
+    private array $sockets = [];
 
     /** @var Client[] */
     private array $clients = [];
@@ -53,13 +50,13 @@ final class HttpServer
     private string $timeoutWatcher;
 
     /**
-     * @param SocketServer[] $servers
+     * @param SocketServer[] $sockets
      * @param RequestHandler $requestHandler
      * @param PsrLogger $logger
      * @param Options|null $options Null creates an Options object with all default options.
      */
     public function __construct(
-        array $servers,
+        array $sockets,
         private RequestHandler $requestHandler,
         private PsrLogger $logger,
         ?Options $options = null,
@@ -67,16 +64,14 @@ final class HttpServer
         ?HttpDriverFactory $driverFactory = null,
         ?ClientFactory $clientFactory = null,
     ) {
-        foreach ($servers as $server) {
-            if (!$server instanceof SocketServer) {
-                throw new \TypeError(\sprintf("Only instances of %s should be given", SocketServer::class));
-            }
-
-            $this->boundServers[$server->getAddress()->toString()] = $server->getResource();
+        if (!$sockets) {
+            throw new \ValueError('Argument #1 ($sockets) can\'t be an empty array');
         }
 
-        if (!$servers) {
-            throw new \Error("Argument 1 can't be an empty array");
+        foreach ($sockets as $socket) {
+            if (!$socket instanceof SocketServer) {
+                throw new \TypeError(\sprintf('Argument #1 ($sockets) must be of type array<%s>', SocketServer::class));
+            }
         }
 
         $this->options = $options ?? new Options;
@@ -99,6 +94,7 @@ final class HttpServer
         $this->observers = new \SplObjectStorage;
         $this->observers->attach(new Internal\PerformanceRecommender);
 
+        $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new DefaultClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
         $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory;
@@ -230,7 +226,8 @@ final class HttpServer
         foreach ($this->observers as $observer) {
             $futures[] = async(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
         }
-        [$exceptions] = Future\settle($futures);
+
+        [$exceptions] = Future\awaitAll($futures);
 
         $this->status = HttpServerStatus::Started;
 
@@ -242,40 +239,28 @@ final class HttpServer
             }
         }
 
-        \assert($this->logger->debug("Started") || true);
+        $this->logger->info("Started server");
 
-        $protocols = $this->driverFactory->getApplicationLayerProtocols();
+        foreach ($this->sockets as $socket) {
+            $scheme = $socket->getTlsContext() !== null ? 'https' : 'http';
+            $serverName = $socket->getAddress()->toString();
 
-        $onAcceptable = $this->onAcceptable(...);
-        foreach ($this->boundServers as $serverName => $server) {
-            $context = \stream_context_get_options($server);
-            $scheme = "http";
-
-            if (isset($context["ssl"])) {
-                $scheme = "https";
-
-                if (Socket\hasTlsAlpnSupport()) {
-                    \stream_context_set_option($server, "ssl", "alpn_protocols", \implode(", ", $protocols));
-                } elseif ($protocols) {
-                    $this->logger->alert("ALPN not supported with the installed version of OpenSSL");
-                }
-            }
-
-            $this->acceptWatcherIds[$serverName] = EventLoop::onReadable($server, $onAcceptable);
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
+
+            async(function () use ($socket) {
+                while ($client = $socket->accept()) {
+                    $this->accept($client);
+                }
+            });
         }
 
         EventLoop::enable($this->timeoutWatcher);
     }
 
-    private function onAcceptable(string $watcherId, $server): void
+    private function accept(Socket\EncryptableSocket $clientSocket): void
     {
-        if (!$socket = @\stream_socket_accept($server, 0)) {
-            return;
-        }
-
         $client = $this->clientFactory->createClient(
-            ResourceSocket::fromServerSocket($socket),
+            $clientSocket,
             $this->requestHandler,
             $this->errorHandler,
             $this->logger,
@@ -283,8 +268,7 @@ final class HttpServer
             $this->timeoutCache
         );
 
-        \assert($this->logger->debug("Accept {$client->getRemoteAddress()} on " .
-                "{$client->getLocalAddress()} #{$client->getId()}") || true);
+        $this->logger->debug("Accepted {$client->getRemoteAddress()} on {$client->getLocalAddress()} #{$client->getId()}");
 
         $ip = $net = $client->getRemoteAddress()->getHost();
         if (@\inet_pton($net) !== false && isset($net[4])) {
@@ -357,30 +341,28 @@ final class HttpServer
 
     private function shutdown(int $timeout): void
     {
-        \assert($this->logger->debug("Stopping") || true);
+        $this->logger->info("Stopping server");
         $this->status = HttpServerStatus::Stopping;
 
-        foreach ($this->acceptWatcherIds as $watcherId) {
-            EventLoop::cancel($watcherId);
+        foreach ($this->sockets as $socket) {
+            $socket->close();
         }
-        $this->boundServers = [];
-        $this->acceptWatcherIds = [];
 
         $futures = [];
         foreach ($this->observers as $observer) {
             $futures[] = async(fn () => $observer->onStop($this));
         }
 
-        [$exceptions] = Future\settle($futures);
+        [$exceptions] = Future\awaitAll($futures);
 
         $futures = [];
         foreach ($this->clients as $client) {
             $futures[] = async(fn () => $client->stop($timeout));
         }
 
-        Future\settle($futures);
+        Future\awaitAll($futures);
 
-        \assert($this->logger->debug("Stopped") || true);
+        $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
 
         if (!empty($exceptions)) {
@@ -414,8 +396,7 @@ final class HttpServer
         return [
             "status" => $this->status,
             "observers" => $this->observers,
-            "acceptWatcherIds" => $this->acceptWatcherIds,
-            "boundServers" => $this->boundServers,
+            "sockets" => $this->sockets,
             "clients" => $this->clients,
             "connectionTimeouts" => $this->timeoutCache,
         ];
