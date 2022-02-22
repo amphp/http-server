@@ -38,6 +38,7 @@ use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\async;
 use function Amp\delay;
+use const Amp\Process\IS_WINDOWS;
 
 class RemoteClientTest extends AsyncTestCase
 {
@@ -376,6 +377,10 @@ class RemoteClientTest extends AsyncTestCase
      */
     public function testIO(bool $unixSocket, bool $tls): void
     {
+        if (IS_WINDOWS && $unixSocket) {
+            self::markTestSkipped('Unix sockets are not supported on Windows');
+        }
+
         $bindContext = null;
 
         if ($tls) {
