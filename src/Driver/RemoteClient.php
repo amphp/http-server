@@ -310,9 +310,9 @@ final class RemoteClient implements Client
     {
         \assert($this->logDebug("{http.method} {http.uri} HTTP/{http.version} @ {address}", [
             'http.method' => $request->getMethod(),
-            'http.uri' => $request->getUri(),
+            'http.uri' => (string) $request->getUri(),
             'http.version' => $request->getProtocolVersion(),
-            'address' => $this->socket->getRemoteAddress(),
+            'address' => (string) $this->socket->getRemoteAddress(),
         ]));
 
         return async(fn () => $this->respond($request, $buffer));

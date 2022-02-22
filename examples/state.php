@@ -13,6 +13,7 @@ use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Monolog\Logger;
+use Monolog\Processor\PsrLogMessageProcessor;
 use function Amp\trapSignal;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
@@ -23,6 +24,7 @@ $servers = [
 ];
 
 $logHandler = new StreamHandler(ByteStream\getStdout());
+$logHandler->pushProcessor(new PsrLogMessageProcessor());
 $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);

@@ -13,6 +13,7 @@ use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Monolog\Logger;
+use Monolog\Processor\PsrLogMessageProcessor;
 use function Amp\delay;
 use function Amp\trapSignal;
 
@@ -24,6 +25,7 @@ $servers = [
 ];
 
 $logHandler = new StreamHandler(ByteStream\getStdout());
+$logHandler->pushProcessor(new PsrLogMessageProcessor());
 $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
