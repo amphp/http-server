@@ -16,6 +16,5 @@ interface ClientFactory
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
-        TimeoutCache $timeoutCache
     ): Client;
 }

@@ -7,13 +7,11 @@ use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\DefaultClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
-use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
 use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
-use Revolt\EventLoop;
 use function Amp\async;
 
 final class HttpServer
@@ -41,10 +39,6 @@ final class HttpServer
     /** @var int[] */
     private array $clientsPerIP = [];
 
-    private TimeoutCache $timeoutCache;
-
-    private string $timeoutWatcher;
-
     /**
      * @param SocketServer[] $sockets
      * @param RequestHandler $requestHandler
@@ -71,7 +65,6 @@ final class HttpServer
         }
 
         $this->options = $options ?? new Options;
-        $this->timeoutCache = new TimeoutCache;
 
         if ($this->options->isCompressionEnabled()) {
             if (!\extension_loaded('zlib')) {
@@ -84,20 +77,10 @@ final class HttpServer
             }
         }
 
-        $this->timeoutWatcher = EventLoop::repeat(1, $this->checkClientTimeouts(...));
-        EventLoop::disable($this->timeoutWatcher);
-
         $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new DefaultClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
         $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory;
-    }
-
-    public function __destruct()
-    {
-        if ($this->timeoutWatcher) {
-            EventLoop::cancel($this->timeoutWatcher);
-        }
     }
 
     /**
@@ -200,8 +183,6 @@ final class HttpServer
                 }
             });
         }
-
-        EventLoop::enable($this->timeoutWatcher);
     }
 
     private function accept(Socket\EncryptableSocket $clientSocket): void
@@ -212,7 +193,6 @@ final class HttpServer
             $this->errorHandler,
             $this->logger,
             $this->options,
-            $this->timeoutCache
         );
 
         $this->logger->debug("Accepted {$client->getRemoteAddress()} on {$client->getLocalAddress()} #{$client->getId()}");
@@ -277,7 +257,7 @@ final class HttpServer
     {
         switch ($this->status) {
             case HttpServerStatus::Started:
-                $this->shutdown($timeout);
+                $this->shutdown();
                 return;
             case HttpServerStatus::Stopped:
                 return;
@@ -286,7 +266,7 @@ final class HttpServer
         }
     }
 
-    private function shutdown(int $timeout): void
+    private function shutdown(): void
     {
         $this->logger->info("Stopping server");
         $this->status = HttpServerStatus::Stopping;
@@ -297,37 +277,14 @@ final class HttpServer
 
         $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
-
-        EventLoop::disable($this->timeoutWatcher);
-    }
-
-    private function checkClientTimeouts(): void
-    {
-        $now = \time();
-
-        while ($id = $this->timeoutCache->extract($now)) {
-            \assert(isset($this->clients[$id]), "Timeout cache contains an invalid client ID");
-
-            $client = $this->clients[$id];
-
-            if ($client->isWaitingOnResponse()) {
-                $this->timeoutCache->update($id, $now + 1);
-                continue;
-            }
-
-            // Client is either idle or taking too long to send request, so simply close the connection.
-            $client->close();
-        }
     }
 
     public function __debugInfo(): array
     {
         return [
             "status" => $this->status,
-            "observers" => $this->observers,
             "sockets" => $this->sockets,
             "clients" => $this->clients,
-            "connectionTimeouts" => $this->timeoutCache,
         ];
     }
 }
