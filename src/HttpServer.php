@@ -4,9 +4,9 @@ namespace Amp\Http\Server;
 
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\ClientFactory;
-use Amp\Http\Server\Driver\DefaultClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
+use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
@@ -78,7 +78,7 @@ final class HttpServer
         }
 
         $this->sockets = $sockets;
-        $this->clientFactory = $clientFactory ?? new DefaultClientFactory;
+        $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
         $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory;
     }

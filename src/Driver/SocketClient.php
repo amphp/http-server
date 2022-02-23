@@ -19,7 +19,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
 
-final class RemoteClient implements Client
+final class SocketClient implements Client
 {
     private const SHUTDOWN_TIMEOUT_ON_ERROR = 1;
 

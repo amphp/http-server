@@ -15,7 +15,7 @@ use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
-use Amp\Http\Server\Driver\RemoteClient;
+use Amp\Http\Server\Driver\SocketClient;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\HttpServer;
@@ -343,7 +343,7 @@ class RemoteClientTest extends AsyncTestCase
 
         [$server, $client] = Socket\createSocketPair();
 
-        $client = new RemoteClient(
+        $client = new SocketClient(
             $client,
             $requestHandler,
             new DefaultErrorHandler,
@@ -475,7 +475,7 @@ class RemoteClientTest extends AsyncTestCase
 
         [$server, $client] = Socket\createSocketPair();
 
-        $client = new RemoteClient(
+        $client = new SocketClient(
             $client,
             new ClosureRequestHandler($requestHandler),
             new DefaultErrorHandler,
@@ -497,7 +497,7 @@ class RemoteClientTest extends AsyncTestCase
         return [$response, $body];
     }
 
-    protected function startClient(callable $parser, $socket): RemoteClient
+    protected function startClient(callable $parser, $socket): SocketClient
     {
         $driver = $this->createMock(HttpDriver::class);
 
@@ -517,7 +517,7 @@ class RemoteClientTest extends AsyncTestCase
         $options = (new Options)
             ->withDebugMode();
 
-        $client = new RemoteClient(
+        $client = new SocketClient(
             Socket\ResourceSocket::fromServerSocket($socket),
             $this->createMock(RequestHandler::class),
             $this->createMock(ErrorHandler::class),

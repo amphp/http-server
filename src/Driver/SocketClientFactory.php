@@ -9,7 +9,7 @@ use Amp\Socket\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 
-final class DefaultClientFactory implements ClientFactory
+final class SocketClientFactory implements ClientFactory
 {
     /** @var Client[] */
     private array $clients = [];
@@ -36,7 +36,7 @@ final class DefaultClientFactory implements ClientFactory
         PsrLogger $logger,
         Options $options,
     ): Client {
-        $client = new RemoteClient($socket, $requestHandler, $errorHandler, $logger, $options, $this->timeoutCache);
+        $client = new SocketClient($socket, $requestHandler, $errorHandler, $logger, $options, $this->timeoutCache);
 
         if (!$this->clients) {
             EventLoop::enable($this->timeoutId);
