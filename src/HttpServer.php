@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
@@ -16,8 +15,6 @@ use function Amp\async;
 
 final class HttpServer
 {
-    public const DEFAULT_SHUTDOWN_TIMEOUT = 3;
-
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 
     private Options $options;
@@ -29,15 +26,7 @@ final class HttpServer
     private HttpDriverFactory $driverFactory;
 
     /** @var SocketServer[] */
-    private array $sockets = [];
-
-    /** @var Client[] */
-    private array $clients = [];
-
-    private int $clientCount = 0;
-
-    /** @var int[] */
-    private array $clientsPerIP = [];
+    private array $sockets;
 
     /**
      * @param SocketServer[] $sockets
@@ -195,79 +184,26 @@ final class HttpServer
             $this->options,
         );
 
-        $this->logger->debug("Accepted {$client->getRemoteAddress()} on {$client->getLocalAddress()} #{$client->getId()}");
-
-        $ip = $net = $client->getRemoteAddress()->getHost();
-        if (@\inet_pton($net) !== false && isset($net[4])) {
-            $net = \substr($net, 0, 7 /* /56 block for IPv6 */);
-        }
-
-        if (!isset($this->clientsPerIP[$net])) {
-            $this->clientsPerIP[$net] = 0;
-        }
-
-        $client->onClose(function (Client $client) use ($net): void {
-            unset($this->clients[$client->getId()]);
-
-            if (--$this->clientsPerIP[$net] === 0) {
-                unset($this->clientsPerIP[$net]);
-            }
-
-            --$this->clientCount;
-        });
-
-        if ($this->clientCount++ === $this->options->getConnectionLimit()) {
-            $this->logger->warning("Client denied: too many existing connections");
-            $client->close();
+        if ($client === null) {
             return;
         }
-
-        $clientCount = $this->clientsPerIP[$net]++;
-
-        // Connections on localhost are excluded from the connections per IP setting.
-        // Checks IPv4 loopback (127.x), IPv6 loopback (::1) and IPv4-to-IPv6 mapped loopback.
-        // Also excludes all connections that are via unix sockets.
-        if ($clientCount === $this->options->getConnectionsPerIpLimit()
-            && $ip !== "::1" && \strncmp($ip, "127.", 4) !== 0 && $client->getLocalAddress()->getPort() !== null
-            && \strncmp(\inet_pton($ip), '\0\0\0\0\0\0\0\0\0\0\xff\xff\7f', 31)
-        ) {
-            $packedIp = @\inet_pton($ip);
-
-            if (isset($packedIp[4])) {
-                $ip .= "/56";
-            }
-
-            $this->logger->warning("Client denied: too many existing connections from {$ip}");
-
-            $client->close();
-            return;
-        }
-
-        $this->clients[$client->getId()] = $client;
 
         $client->start($this->driverFactory);
     }
 
     /**
      * Stop the server.
-     *
-     * @param int $timeout Number of milliseconds to allow clients to gracefully shutdown before forcefully closing.
      */
-    public function stop(int $timeout = self::DEFAULT_SHUTDOWN_TIMEOUT): void
+    public function stop(): void
     {
-        switch ($this->status) {
-            case HttpServerStatus::Started:
-                $this->shutdown();
-                return;
-            case HttpServerStatus::Stopped:
-                return;
-            default:
-                throw new \Error("Cannot stop server: " . $this->status->getLabel());
+        if ($this->status === HttpServerStatus::Stopped) {
+            return;
         }
-    }
 
-    private function shutdown(): void
-    {
+        if ($this->status !== HttpServerStatus::Started) {
+            throw new \Error("Cannot stop server: " . $this->status->getLabel());
+        }
+
         $this->logger->info("Stopping server");
         $this->status = HttpServerStatus::Stopping;
 
@@ -277,14 +213,5 @@ final class HttpServer
 
         $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
-    }
-
-    public function __debugInfo(): array
-    {
-        return [
-            "status" => $this->status,
-            "sockets" => $this->sockets,
-            "clients" => $this->clients,
-        ];
     }
 }

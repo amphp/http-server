@@ -16,5 +16,5 @@ interface ClientFactory
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
-    ): Client;
+    ): ?Client;
 }
