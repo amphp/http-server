@@ -2,17 +2,15 @@
 
 namespace Amp\Http\Server;
 
-use Amp\CompositeException;
-use Amp\Future;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\DefaultClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\TimeoutCache;
+use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
-use Amp\Socket\ResourceSocket;
 use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -31,8 +29,6 @@ final class HttpServer
     private ClientFactory $clientFactory;
 
     private HttpDriverFactory $driverFactory;
-
-    private \SplObjectStorage $observers;
 
     /** @var SocketServer[] */
     private array $sockets = [];
@@ -90,9 +86,6 @@ final class HttpServer
 
         $this->timeoutWatcher = EventLoop::repeat(1, $this->checkClientTimeouts(...));
         EventLoop::disable($this->timeoutWatcher);
-
-        $this->observers = new \SplObjectStorage;
-        $this->observers->attach(new Internal\PerformanceRecommender);
 
         $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new DefaultClientFactory;
@@ -182,20 +175,6 @@ final class HttpServer
     }
 
     /**
-     * Attach an observer.
-     *
-     * @throws \Error If the server has started.
-     */
-    public function attach(ServerObserver $observer): void
-    {
-        if ($this->status !== HttpServerStatus::Stopped) {
-            throw new \Error("Cannot attach observers after the server has started");
-        }
-
-        $this->observers->attach($observer);
-    }
-
-    /**
      * Start the server.
      */
     public function start(): void
@@ -204,45 +183,13 @@ final class HttpServer
             throw new \Error("Cannot start server: " . $this->status->getLabel());
         }
 
-        if ($this->driverFactory instanceof ServerObserver) {
-            $this->observers->attach($this->driverFactory);
-        }
-
-        if ($this->clientFactory instanceof ServerObserver) {
-            $this->observers->attach($this->clientFactory);
-        }
-
-        if ($this->requestHandler instanceof ServerObserver) {
-            $this->observers->attach($this->requestHandler);
-        }
-
-        if ($this->errorHandler instanceof ServerObserver) {
-            $this->observers->attach($this->errorHandler);
-        }
-
-        $this->status = HttpServerStatus::Starting;
-
-        $futures = [];
-        foreach ($this->observers as $observer) {
-            $futures[] = async(fn () => $observer->onStart($this, $this->logger, $this->errorHandler));
-        }
-
-        [$exceptions] = Future\awaitAll($futures);
-
         $this->status = HttpServerStatus::Started;
 
-        if (!empty($exceptions)) {
-            try {
-                $this->stop();
-            } finally {
-                throw new CompositeException($exceptions, "onStart observer initialization failure");
-            }
-        }
-
+        (new PerformanceRecommender())->onStart($this);
         $this->logger->info("Started server");
 
         foreach ($this->sockets as $socket) {
-            $scheme = $socket->getTlsContext() !== null ? 'https' : 'http';
+            $scheme = $socket->getBindContext()?->getTlsContext() !== null ? 'https' : 'http';
             $serverName = $socket->getAddress()->toString();
 
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
@@ -348,26 +295,8 @@ final class HttpServer
             $socket->close();
         }
 
-        $futures = [];
-        foreach ($this->observers as $observer) {
-            $futures[] = async(fn () => $observer->onStop($this));
-        }
-
-        [$exceptions] = Future\awaitAll($futures);
-
-        $futures = [];
-        foreach ($this->clients as $client) {
-            $futures[] = async(fn () => $client->stop($timeout));
-        }
-
-        Future\awaitAll($futures);
-
         $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
-
-        if (!empty($exceptions)) {
-            throw new CompositeException($exceptions, "onStop observer failure");
-        }
 
         EventLoop::disable($this->timeoutWatcher);
     }

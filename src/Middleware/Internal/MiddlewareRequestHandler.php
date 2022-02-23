@@ -2,12 +2,10 @@
 
 namespace Amp\Http\Server\Middleware\Internal;
 
-use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\ServerObserver;
 
 /**
  * Wraps a request handler with a single middleware.
@@ -15,7 +13,7 @@ use Amp\Http\Server\ServerObserver;
  * @see stack()
  * @internal
  */
-final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
+final class MiddlewareRequestHandler implements RequestHandler
 {
     private Middleware $middleware;
 
@@ -30,27 +28,5 @@ final class MiddlewareRequestHandler implements RequestHandler, ServerObserver
     public function handleRequest(Request $request): Response
     {
         return $this->middleware->handleRequest($request, $this->next);
-    }
-
-    public function onStart(HttpServer $server): void
-    {
-        if ($this->middleware instanceof ServerObserver) {
-            $this->middleware->onStart($server);
-        }
-
-        if ($this->next instanceof ServerObserver) {
-            $this->next->onStart($server);
-        }
-    }
-
-    public function onStop(HttpServer $server): void
-    {
-        if ($this->middleware instanceof ServerObserver) {
-            $this->middleware->onStop($server);
-        }
-
-        if ($this->next instanceof ServerObserver) {
-            $this->next->onStop($server);
-        }
     }
 }

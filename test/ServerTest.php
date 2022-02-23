@@ -18,7 +18,7 @@ class ServerTest extends AsyncTestCase
     public function testEmptySocketArray(): void
     {
         $this->expectException(\Error::class);
-        $this->expectExceptionMessage('Argument 1 can\'t be an empty array');
+        $this->expectExceptionMessage('Argument #1 ($sockets) can\'t be an empty array');
         new HttpServer([], new ClosureRequestHandler(function () {
             return new Response;
         }), $this->createMock(PsrLogger::class));

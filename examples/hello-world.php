@@ -21,7 +21,11 @@ use function Amp\trapSignal;
 $cert = new Socket\Certificate(__DIR__ . '/../test/server.pem');
 
 $context = (new Socket\BindContext)
-        ->withTlsContext((new Socket\ServerTlsContext)->withDefaultCertificate($cert));
+        ->withTlsContext(
+            (new Socket\ServerTlsContext)
+                        ->withDefaultCertificate($cert)
+                        ->withApplicationLayerProtocols(['h2', 'http/1.1'])
+        );
 
 $servers = [
         Socket\listen("0.0.0.0:1337"),
