@@ -11,11 +11,12 @@ use Revolt\EventLoop;
 
 final class DefaultClientFactory implements ClientFactory
 {
+    /** @var Client[] */
+    private array $clients = [];
+
     private TimeoutCache $timeoutCache;
 
     private string $timeoutId;
-
-    private int $clientCount = 0;
 
     public function __construct()
     {
@@ -37,20 +38,20 @@ final class DefaultClientFactory implements ClientFactory
     ): Client {
         $client = new RemoteClient($socket, $requestHandler, $errorHandler, $logger, $options, $this->timeoutCache);
 
-        if ($this->clientCount === 0) {
+        if (!$this->clients) {
             EventLoop::enable($this->timeoutId);
         }
 
-        $this->clientCount++;
+        $this->clients[$client->getId()] = $client;
         $client->onClose($this->handleClose(...));
 
         return $client;
     }
 
-    private function handleClose(): void
+    private function handleClose(Client $client): void
     {
-        $this->clientCount--;
-        if ($this->clientCount === 0) {
+        unset($this->clients[$client->getId()]);
+        if (!$this->clients) {
             EventLoop::disable($this->timeoutId);
         }
     }
