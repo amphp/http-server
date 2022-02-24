@@ -31,7 +31,7 @@ final class SocketClient implements Client
 
     private ?TlsInfo $tlsInfo = null;
 
-    private int $status = 0;
+    private bool $closed = false;
 
     private bool $isExported = false;
 
@@ -200,11 +200,6 @@ final class SocketClient implements Client
         return $this->isExported;
     }
 
-    public function getStatus(): int
-    {
-        return $this->status;
-    }
-
     public function getExpirationTime(): int
     {
         return $this->timeoutCache->getExpirationTime($this->id) ?? 0;
@@ -228,7 +223,7 @@ final class SocketClient implements Client
         $onClose = $this->onClose;
         $this->onClose = null;
 
-        $this->status = self::CLOSED_RDWR;
+        $this->closed = true;
 
         $this->clear();
         $this->socket->close();
@@ -289,14 +284,14 @@ final class SocketClient implements Client
      */
     private function write(string $data, bool $close = false): void
     {
-        if ($this->status & self::CLOSED_WR) {
+        if ($this->closed) {
             throw new ClientException($this, "Client socket closed");
         }
 
         $this->socket->write($data);
 
         if ($close) {
-            $this->status |= self::CLOSED_WR;
+            $this->closed = true;
             $this->socket->end();
         }
     }
@@ -359,7 +354,7 @@ final class SocketClient implements Client
             $this->pendingHandlers--;
         }
 
-        if ($this->status & self::CLOSED_WR) {
+        if ($this->closed) {
             return; // Client closed before response could be sent.
         }
 
@@ -417,7 +412,7 @@ final class SocketClient implements Client
      */
     private function export(callable $upgrade, Request $request, Response $response, string $buffer): void
     {
-        if ($this->status & self::CLOSED_RDWR) {
+        if ($this->closed) {
             return;
         }
 

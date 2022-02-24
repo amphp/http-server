@@ -8,10 +8,6 @@ use Amp\Socket\TlsInfo;
 
 interface Client
 {
-    public const CLOSED_RD = 1;
-    public const CLOSED_WR = 2;
-    public const CLOSED_RDWR = 3;
-
     /**
      * Listen for requests on the client and parse them using the given HTTP driver.
      *
@@ -77,11 +73,6 @@ interface Client
     public function isExported(): bool;
 
     /**
-     * @return int Integer mask of `Client::CLOSED_*` constants.
-     */
-    public function getStatus(): int;
-
-    /**
      * @return int Timestamp when the client will automatically be closed. This timestamp is updated when there
      *             is activity on the connect that should extend the timeout.
      */
@@ -104,6 +95,11 @@ interface Client
      * Forcefully closes the client connection.
      */
     public function close(): void;
+
+    /**
+     * @return bool {@code true} if the connection has been closed, {@code false} otherwise.
+     */
+    public function isClosed(): bool;
 
     /**
      * Gracefully close the client, responding to any pending requests before closing the connection.
