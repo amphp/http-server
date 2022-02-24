@@ -447,4 +447,9 @@ final class SocketClient implements Client
 
         return $logContext;
     }
+
+    public function isClosed(): bool
+    {
+        return $this->closed;
+    }
 }
