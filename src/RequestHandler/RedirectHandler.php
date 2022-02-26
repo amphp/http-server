@@ -11,19 +11,18 @@ use function Amp\Http\Server\redirectTo;
 
 final class RedirectHandler implements RequestHandler
 {
-    private string $redirectUri;
-    private int $statusCode;
-
     /**
      * Create a redirect handler.
      *
      * @param PsrUri $uri Absolute URI prefix to redirect to. Requested URI paths and queries are appended to this URI.
-     * @param int    $statusCode HTTP status code to set.
+     * @param int $statusCode HTTP status code to set.
      *
      * @throws \Error If the given redirect URI is invalid or contains a query or fragment.
      */
-    public function __construct(PsrUri $uri, int $statusCode = Status::TEMPORARY_REDIRECT)
-    {
+    public function __construct(
+        private readonly PsrUri $uri,
+        private readonly int $statusCode = Status::TEMPORARY_REDIRECT,
+    ) {
         if ($uri->getQuery() || $uri->getFragment()) {
             throw new \Error("Invalid redirect URI; Host redirect must not contain a query or fragment component");
         }
@@ -31,21 +30,19 @@ final class RedirectHandler implements RequestHandler
         if ($statusCode < 300 || $statusCode > 399) {
             throw new \Error("Invalid status code; code in the range 300..399 required");
         }
-
-        $this->redirectUri = \rtrim((string) $uri, "/");
-        $this->statusCode = $statusCode;
     }
 
     public function handleRequest(Request $request): Response
     {
-        $uri = $request->getUri();
-        $path = $uri->getPath();
-        $query = $uri->getQuery();
+        $requestUri = $request->getUri();
 
-        if ($query !== "") {
-            $path .= "?" . $query;
-        }
+        $path = $this->uri->getPath() . '/' . ltrim($requestUri->getPath(), '/');
 
-        return redirectTo($this->redirectUri . $path, $this->statusCode);
+        return redirectTo(
+            $this->uri
+                ->withPath($path)
+                ->withQuery($requestUri->getQuery()),
+            $this->statusCode
+        );
     }
 }
