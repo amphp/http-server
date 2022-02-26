@@ -2,11 +2,8 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Options;
-use Amp\Http\Server\RequestHandler;
 use Amp\Socket\Socket;
-use Psr\Log\LoggerInterface as PsrLogger;
+use Amp\TimeoutCancellation;
 use Revolt\EventLoop;
 
 final class SocketClientFactory implements ClientFactory
@@ -29,14 +26,14 @@ final class SocketClientFactory implements ClientFactory
         EventLoop::cancel($this->timeoutId);
     }
 
-    public function createClient(
-        Socket $socket,
-        RequestHandler $requestHandler,
-        ErrorHandler $errorHandler,
-        PsrLogger $logger,
-        Options $options,
-    ): Client {
-        $client = new SocketClient($socket, $requestHandler, $errorHandler, $logger, $options, $this->timeoutCache);
+    public function createClient(Socket $socket): ?Client
+    {
+        $context = \stream_context_get_options($this->socket->getResource());
+        if (isset($context["ssl"])) {
+            $this->setupTls();
+        }
+
+        $client = new SocketClient($socket, $this->timeoutCache);
 
         if (!$this->clients) {
             EventLoop::enable($this->timeoutId);
@@ -46,6 +43,29 @@ final class SocketClientFactory implements ClientFactory
         $client->onClose($this->handleClose(...));
 
         return $client;
+    }
+
+    /**
+     * Called by start() after the client connects if encryption is enabled.
+     */
+    private function setupTls(): void
+    {
+        $this->timeoutCache->update(
+            $this->id,
+            \time() + $this->options->getTlsSetupTimeout()
+        );
+
+        $this->socket->setupTls(new TimeoutCancellation($this->options->getTlsSetupTimeout()));
+
+        $this->tlsInfo = $this->socket->getTlsInfo();
+
+        \assert($this->tlsInfo !== null);
+        \assert($this->logDebug("TLS handshake complete with {address} ({tls.version}, {tls.cipher}, {tls.alpn})", [
+            $this->socket->getRemoteAddress(),
+            $this->tlsInfo->getVersion(),
+            $this->tlsInfo->getCipherName(),
+            $this->tlsInfo->getApplicationLayerProtocol() ?? "none",
+        ]));
     }
 
     private function handleClose(Client $client): void

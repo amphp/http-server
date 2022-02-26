@@ -2,48 +2,54 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\WritableStream;
 use Amp\Cancellation;
-use Amp\Socket\EncryptableSocket;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
-use Amp\Socket\TlsInfo;
 
-final class UpgradedSocket implements EncryptableSocket
+final class UpgradedSocket implements Socket
 {
-    private ?string $buffer;
+    private string $readBuffer = '';
 
-    /**
-     * @param Client $client
-     * @param Socket $socket
-     * @param string $buffer Remaining buffer previously read from the socket.
-     */
     public function __construct(
         private Client $client,
-        private Socket $socket,
-        string $buffer
+        private ReadableStream $readableStream,
+        private WritableStream $writableStream,
     ) {
-        $this->buffer = $buffer !== '' ? $buffer : null;
     }
 
     public function read(?Cancellation $cancellation = null, ?int $limit = null): ?string
     {
-        if ($this->buffer !== null) {
-            $buffer = $this->buffer;
-            $this->buffer = null;
+        if ($this->readBuffer !== '') {
+            $buffer = $this->readBuffer;
+            $this->readBuffer = '';
+
             if ($limit !== null && \strlen($buffer) > $limit) {
-                $this->buffer = \substr($buffer, $limit);
+                $this->readBuffer = \substr($buffer, $limit);
                 return \substr($buffer, 0, $limit);
             }
 
             return $buffer;
         }
 
-        return $this->socket->read($cancellation, $limit);
+        $buffer = $this->readableStream->read($cancellation);
+        if ($buffer === null) {
+            return null;
+        }
+
+        if ($limit !== null && \strlen($buffer) > $limit) {
+            $this->readBuffer = \substr($buffer, $limit);
+            return \substr($buffer, 0, $limit);
+        }
+
+        return $buffer;
     }
 
     public function close(): void
     {
-        $this->socket->close();
+        $this->readableStream->close();
+        $this->writableStream->close();
         $this->client->close();
     }
 
@@ -54,71 +60,46 @@ final class UpgradedSocket implements EncryptableSocket
 
     public function write(string $bytes): void
     {
-        $this->socket->write($bytes);
+        $this->writableStream->write($bytes);
     }
 
     public function end(): void
     {
-        $this->socket->end();
+        $this->writableStream->end();
     }
 
     public function reference(): void
     {
-        $this->socket->reference();
+        // TODO: Remove ResourceStream from Socket?
     }
 
     public function unreference(): void
     {
-        $this->socket->unreference();
-    }
-
-    public function isClosed(): bool
-    {
-        return $this->socket->isClosed();
+        // TODO: Remove ResourceStream from Socket?
     }
 
     public function getLocalAddress(): SocketAddress
     {
-        return $this->socket->getLocalAddress();
+        return $this->client->getLocalAddress();
     }
 
     public function getRemoteAddress(): SocketAddress
     {
-        return $this->socket->getRemoteAddress();
+        return $this->client->getRemoteAddress();
     }
 
-    public function getResource()
+    public function isClosed(): bool
     {
-        return $this->socket->getResource();
-    }
-
-    public function setupTls(?Cancellation $token = null): void
-    {
-        $this->socket->setupTls($token);
-    }
-
-    public function shutdownTls(?Cancellation $token = null): void
-    {
-        $this->socket->shutdownTls();
-    }
-
-    public function getTlsState(): int
-    {
-        return $this->socket->getTlsState();
-    }
-
-    public function getTlsInfo(): ?TlsInfo
-    {
-        return $this->socket->getTlsInfo();
+        return !$this->isReadable() && !$this->isWritable();
     }
 
     public function isReadable(): bool
     {
-        return $this->socket->isReadable();
+        return $this->readBuffer !== '' || $this->readableStream->isReadable();
     }
 
     public function isWritable(): bool
     {
-        return $this->socket->isWritable();
+        return $this->writableStream->isWritable();
     }
 }

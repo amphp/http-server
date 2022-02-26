@@ -2,30 +2,24 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Options;
-use Amp\Http\Server\RequestHandler;
 use Amp\Socket\Socket;
-use Psr\Log\LoggerInterface as PsrLogger;
+use Psr\Log\LoggerInterface;
 
 final class LoggingClientFactory implements ClientFactory
 {
     private ClientFactory $delegate;
+    private LoggerInterface $logger;
 
-    public function __construct(ClientFactory $delegate)
+    public function __construct(ClientFactory $delegate, LoggerInterface $logger)
     {
         $this->delegate = $delegate;
+        $this->logger = $logger;
     }
 
-    public function createClient(
-        Socket $socket,
-        RequestHandler $requestHandler,
-        ErrorHandler $errorHandler,
-        PsrLogger $logger,
-        Options $options,
-    ): ?Client {
-        $logger->debug("Accepted {$socket->getRemoteAddress()} on {$socket->getLocalAddress()}");
+    public function createClient(Socket $socket): ?Client
+    {
+        $this->logger->debug("Accepted {$socket->getRemoteAddress()} on {$socket->getLocalAddress()}");
 
-        return $this->delegate->createClient($socket, $requestHandler, $errorHandler, $logger, $options);
+        return $this->delegate->createClient($socket);
     }
 }

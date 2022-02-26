@@ -2,35 +2,30 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Options;
-use Amp\Http\Server\RequestHandler;
 use Amp\Socket\Socket;
-use Psr\Log\LoggerInterface as PsrLogger;
+use Psr\Log\LoggerInterface;
 
 final class ConnectionLimitingClientFactory implements ClientFactory
 {
     private ClientFactory $delegate;
+
+    private LoggerInterface $logger;
 
     private int $clientCount = 0;
 
     /** @var Client[] */
     private array $clientsPerIp = [];
 
-    public function __construct(ClientFactory $delegate)
+    public function __construct(ClientFactory $delegate, LoggerInterface $logger)
     {
         $this->delegate = $delegate;
+        $this->logger = $logger;
     }
 
-    public function createClient(
-        Socket $socket,
-        RequestHandler $requestHandler,
-        ErrorHandler $errorHandler,
-        PsrLogger $logger,
-        Options $options,
-    ): ?Client {
+    public function createClient(Socket $socket): ?Client
+    {
         if (++$this->clientCount > $options->getConnectionLimit()) {
-            $logger->warning("Client denied: too many existing connections");
+            $this->logger->warning("Client denied: too many existing connections");
             $socket->close();
 
             return null;
@@ -46,7 +41,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
         $this->clientsPerIp[$net] ??= 0;
         $clientsPerIp = ++$this->clientsPerIp[$net];
 
-        $client = $this->delegate->createClient($socket, $requestHandler, $errorHandler, $logger, $options);
+        $client = $this->delegate->createClient($socket);
         if ($client === null) {
             $this->clientCount--;
 
@@ -78,7 +73,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
                 $ip .= "/56";
             }
 
-            $logger->warning("Client denied: too many existing connections from {$ip}");
+            $this->logger->warning("Client denied: too many existing connections from {$ip}");
             $client->close();
 
             return null;

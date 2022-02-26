@@ -3,7 +3,7 @@
 namespace Amp\Http\Server;
 
 use Amp\Http\Server\Driver\ClientFactory;
-use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
+use Amp\Http\Server\Driver\AlpnHttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
@@ -69,7 +69,7 @@ final class HttpServer
         $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
-        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory;
+        $this->driverFactory = $driverFactory ?? new AlpnHttpDriver;
     }
 
     /**
@@ -176,19 +176,29 @@ final class HttpServer
 
     private function accept(Socket\EncryptableSocket $clientSocket): void
     {
-        $client = $this->clientFactory->createClient(
-            $clientSocket,
-            $this->requestHandler,
-            $this->errorHandler,
-            $this->logger,
-            $this->options,
-        );
-
+        $client = $this->clientFactory->createClient($clientSocket);
         if ($client === null) {
             return;
         }
 
-        $client->start($this->driverFactory);
+        $httpDriver = $this->driverFactory->selectDriver($client, $this->errorHandler, $this->logger, $this->options);
+
+        try {
+            $httpDriver->handleClient(
+                $client,
+                $clientSocket,
+                $clientSocket,
+            );
+        } catch (ClientException) {
+            $clientSocket->close();
+        } catch (\Throwable $exception) {
+            \assert($this->logDebug("Exception while handling client {address}", [
+                'address' => $this->socket->getRemoteAddress(),
+                'exception' => $exception,
+            ]));
+
+            $clientSocket->close();
+        }
     }
 
     /**
