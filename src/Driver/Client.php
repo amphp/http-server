@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Http\Server\Options;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 

@@ -3,7 +3,7 @@
 namespace Amp\Http\Server;
 
 use Amp\Http\Server\Driver\ClientFactory;
-use Amp\Http\Server\Driver\AlpnHttpDriver;
+use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
@@ -69,7 +69,7 @@ final class HttpServer
         $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
-        $this->driverFactory = $driverFactory ?? new AlpnHttpDriver;
+        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory;
     }
 
     /**
@@ -181,7 +181,7 @@ final class HttpServer
             return;
         }
 
-        $httpDriver = $this->driverFactory->selectDriver($client, $this->errorHandler, $this->logger, $this->options);
+        $httpDriver = $this->driverFactory->createHttpDriver($client);
 
         try {
             $httpDriver->handleClient(

@@ -143,8 +143,10 @@ abstract class AbstractHttpDriver implements HttpDriver
         try {
             $upgrade($socket, $request, $response);
         } catch (\Throwable $exception) {
+            $exceptionClass = $exception::class;
+
             $this->logger->error(
-                "Unexpected {$exception::class} thrown during socket upgrade, closing connection.",
+                "Unexpected {$exceptionClass} thrown during socket upgrade, closing connection.",
                 ['exception' => $exception]
             );
 
@@ -169,9 +171,12 @@ abstract class AbstractHttpDriver implements HttpDriver
         try {
             return $this->errorHandler->handleError($status, null, $request);
         } catch (\Throwable $exception) {
+            $exceptionClass = $exception::class;
+            $errorHandlerClass = $this->errorHandler::class;
+
             // If the error handler throws, fallback to returning the default error page.
             $this->logger->error(
-                "Unexpected {$exception::class} thrown from {$this->errorHandler::class}::handleError(), falling back to default error handler.",
+                "Unexpected {$exceptionClass} thrown from {$errorHandlerClass}::handleError(), falling back to default error handler.",
                 ['exception' => $exception]
             );
 

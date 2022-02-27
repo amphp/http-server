@@ -9,8 +9,6 @@ use Revolt\EventLoop;
 
 final class SocketClient implements Client
 {
-    private static int $nextId = 0;
-
     private int $id;
 
     private ?TlsInfo $tlsInfo = null;
@@ -20,7 +18,7 @@ final class SocketClient implements Client
 
     public function __construct(private Socket $socket)
     {
-        $this->id = self::$nextId++;
+        $this->id = createClientId();
     }
 
     public function getId(): int

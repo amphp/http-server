@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Test\Driver;
 
 use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableIterableStream;
+use Amp\ByteStream\WritableBuffer;
 use Amp\Future;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Request as ClientRequest;
@@ -15,6 +16,7 @@ use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
@@ -30,74 +32,56 @@ class Http1DriverTest extends HttpDriverTest
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestBufferedParse(string $unparsable, int $errCode, string $errMsg, Options $options): void
-    {
-        $written = "";
-        $writer = function (string $data) use (&$written): Future {
-            $written .= $data;
-            return Future::complete();
-        };
-
+    public function testBadRequestBufferedParse(
+        string $unparsable,
+        int $errCode,
+        string $errMsg,
+        Options $options
+    ): void {
         $driver = new Http1Driver(
+            new ClosureRequestHandler($this->createCallback(0)),
+            new DefaultErrorHandler(new NullLogger), // Using concrete instance to generate error response.
+            new NullLogger,
             $options,
-            new DefaultErrorHandler, // Using concrete instance to generate error response.
-            new NullLogger
         );
 
         $client = $this->createClientMock();
-        $client->method('getPendingResponseCount')
-            ->willReturn(1);
+        $input = new ReadableBuffer($unparsable);
+        $output = new WritableBuffer();
 
-        $parser = $driver->setup($client, $this->createCallback(0), $writer);
+        $driver->handleClient($client, $input, $output);
 
-        EventLoop::queue(fn () => $parser->send($unparsable));
-
-        delay(0.05); // Allow loop to tick a couple of times to complete request cycle.
-
-        $expected = \sprintf("HTTP/1.0 %d %s", $errCode, $errMsg);
-        $written = \substr($written, 0, \strlen($expected));
-
-        self::assertSame($expected, $written);
+        self::assertStringStartsWith(\sprintf("HTTP/1.0 %d %s", $errCode, $errMsg), $output->buffer());
     }
 
     /**
      * @dataProvider provideUnparsableRequests
      */
-    public function testBadRequestIncrementalParse(string $unparsable, int $errCode, string $errMsg, Options $options): void
-    {
-        $written = "";
-        $writer = function (string $data) use (&$written): Future {
-            $written .= $data;
-            return Future::complete();
-        };
-
+    public function testBadRequestIncrementalParse(
+        string $unparsable,
+        int $errCode,
+        string $errMsg,
+        Options $options
+    ): void {
         $driver = new Http1Driver(
+            new ClosureRequestHandler($this->createCallback(0)),
+            new DefaultErrorHandler(new NullLogger), // Using concrete instance to generate error response.
+            new NullLogger,
             $options,
-            new DefaultErrorHandler, // Using concrete instance to generate error response.
-            new NullLogger
         );
 
         $client = $this->createClientMock();
-        $client->method('getPendingResponseCount')
-            ->willReturn(1);
-
-        $parser = $driver->setup($client, $this->createCallback(0), $writer);
-
-        EventLoop::queue(function () use ($parser, $unparsable, &$written): void {
+        $input = new ReadableIterableStream((static function () use ($unparsable) {
             for ($i = 0, $c = \strlen($unparsable); $i < $c; $i++) {
-                $parser->send($unparsable[$i]);
-                if ($written) {
-                    break;
-                }
+                yield $unparsable[$i];
             }
-        });
+        })());
 
-        delay(0.05); // Allow loop to tick a couple of times to complete request cycle.
+        $output = new WritableBuffer();
 
-        $expected = \sprintf("HTTP/1.0 %d %s", $errCode, $errMsg);
-        $written = \substr($written, 0, \strlen($expected));
+        $driver->handleClient($client, $input, $output);
 
-        self::assertSame($expected, $written);
+        self::assertStringStartsWith(\sprintf("HTTP/1.0 %d %s", $errCode, $errMsg), $output->buffer());
     }
 
     /**
@@ -105,24 +89,23 @@ class Http1DriverTest extends HttpDriverTest
      */
     public function testBufferedRequestParse(string $msg, array $expectations): void
     {
-        $resultEmitter = function (Request $req) use (&$request): Future {
-            $request = $req;
-            return Future::complete();
-        };
-
         $driver = new Http1Driver(
-            new Options,
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            new Options,
         );
 
-        $parser = $driver->setup(
+        $input = new ReadableBuffer($msg);
+        $output = new WritableBuffer();
+
+        $driver->handleClient(
             $this->createClientMock(),
-            $resultEmitter,
-            $this->createCallback(0)
+            $input,
+            $output,
         );
-
-        EventLoop::queue(fn () => $parser->send($msg));
 
         delay(0.1); // Allow parser generator to continue.
 
@@ -143,34 +126,33 @@ class Http1DriverTest extends HttpDriverTest
      */
     public function testIncrementalRequestParse(string $msg, array $expectations): void
     {
-        $resultEmitter = function (Request $req) use (&$request): Future {
-            $request = $req;
-            return Future::complete();
-        };
-
         $driver = new Http1Driver(
-            new Options,
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            new Options,
         );
 
-        $parser = $driver->setup(
-            $this->createClientMock(),
-            $resultEmitter,
-            $this->createCallback(0)
-        );
-
-        EventLoop::queue(function () use ($parser, $msg): void {
+        $input = new ReadableIterableStream((static function () use ($msg) {
             for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
-                $parser->send($msg[$i]);
+                yield $msg[$i];
             }
-        });
+        })());
+
+        $output = new WritableBuffer();
+
+        $driver->handleClient(
+            $this->createClientMock(),
+            $input,
+            $output,
+        );
 
         delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
 
-        /** @var Request $request */
         $body = $request->getBody()->buffer();
 
         $defaultPort = $request->getUri()->getScheme() === "https" ? 443 : 80;
@@ -195,28 +177,28 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n" .
             $originalBody;
 
-        $resultEmitter = function (Request $req) use (&$request): Future {
-            $request = $req;
-            return Future::complete();
-        };
-
         $driver = new Http1Driver(
-            new Options,
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            new Options,
         );
 
-        $parser = $driver->setup(
-            $this->createClientMock(),
-            $resultEmitter,
-            $this->createCallback(0)
-        );
-
-        EventLoop::queue(function () use ($parser, $msg): void {
+        $input = new ReadableIterableStream((static function () use ($msg) {
             for ($i = 0, $c = \strlen($msg); $i < $c; $i++) {
-                $parser->send($msg[$i]);
+                yield $msg[$i];
             }
-        });
+        })());
+
+        $output = new WritableBuffer();
+
+        $driver->handleClient(
+            $this->createClientMock(),
+            $input,
+            $output,
+        );
 
         delay(0.1); // Allow parser generator to continue.
 
@@ -257,28 +239,28 @@ class Http1DriverTest extends HttpDriverTest
 
         $expectedBody = "woot!test";
 
-        $resultEmitter = function (Request $req) use (&$request): Future {
-            $request = $req;
-            return Future::complete();
-        };
-
         $driver = new Http1Driver(
-            new Options,
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            new Options,
         );
 
-        $parser = $driver->setup(
-            $this->createClientMock(),
-            $resultEmitter,
-            $this->createCallback(0)
-        );
-
-        EventLoop::queue(function () use ($parser, $msg, $chunkSize): void {
+        $input = new ReadableIterableStream((static function () use ($msg, $chunkSize) {
             foreach (\str_split($msg, $chunkSize) as $chunk) {
-                $parser->send($chunk);
+                yield $chunk;
             }
-        });
+        })());
+
+        $output = new WritableBuffer();
+
+        $driver->handleClient(
+            $this->createClientMock(),
+            $input,
+            $output,
+        );
 
         delay(0.1); // Allow parser generator to continue.
 
@@ -397,7 +379,10 @@ class Http1DriverTest extends HttpDriverTest
         $rawHeaders = [
             ["Host", "localhost"],
             ["Connection", "keep-alive"],
-            ["User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.97 Safari/537.11"],
+            [
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.97 Safari/537.11",
+            ],
             ["Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"],
             ["Accept-Encoding", "gzip,deflate,sdch"],
             ["Accept-Language", "en-US,en;q=0.8"],
@@ -663,26 +648,23 @@ class Http1DriverTest extends HttpDriverTest
      */
     public function testUpgradeBodySizeContentLength(string $data, string $payload): void
     {
-        $onMessage = function (Request $req) use (&$request, $payload): Future {
-            $body = $req->getBody();
-            $body->increaseSizeLimit(\strlen($payload));
-            $request = $req;
-            return Future::complete();
-        };
-
         $driver = new Http1Driver(
-            (new Options)->withBodySizeLimit(4),
+            new ClosureRequestHandler(function (Request $req) use (&$request, $payload) {
+                $request = $req;
+
+                $body = $req->getBody();
+                $body->increaseSizeLimit(\strlen($payload));
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            (new Options)->withBodySizeLimit(4),
         );
 
-        $parser = $driver->setup(
+        $driver->handleClient(
             $this->createClientMock(),
-            $onMessage,
-            $this->createCallback(0)
+            new ReadableBuffer($data),
+            new WritableBuffer(),
         );
-
-        EventLoop::queue(fn () => $parser->send($data));
 
         delay(0.1); // Allow parser generator to continue.
 
@@ -715,28 +697,21 @@ class Http1DriverTest extends HttpDriverTest
 
         $responses = 0;
 
-        $resultEmitter = function (Request $req) use (&$request, &$responses): Future {
-            $responses++;
-            $request = $req;
-            return Future::complete();
-        };
-
         $driver = new Http1Driver(
-            new Options,
+            new ClosureRequestHandler(function (Request $req) use (&$request, &$responses) {
+                $request = $req;
+                $responses++;
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            new Options,
         );
 
-        $parser = $driver->setup(
+        $driver->handleClient(
             $this->createClientMock(),
-            $resultEmitter,
-            fn () => null,
+            new ReadableBuffer($payloads[0] . $payloads[1] . $payloads[0]),
+            new WritableBuffer(),
         );
-
-        EventLoop::queue(function () use ($parser, $payloads): void {
-            $parser->send($payloads[0] . $payloads[1]);
-            $parser->send($payloads[0]);
-        });
 
         delay(0.01); // Allow parser generator to continue.
 
@@ -792,79 +767,85 @@ class Http1DriverTest extends HttpDriverTest
 
     public function testWrite(): void
     {
-        $headers = ["test" => ["successful"]];
-        $status = 200;
-        $data = "foobar";
-
         $driver = new Http1Driver(
-            (new Options)->withHttp1Timeout(60),
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+
+                $queue = new Queue;
+
+                $response = new Response(Status::OK, ["test" => ["successful"]],
+                    new ReadableIterableStream($queue->pipe()));
+                $response->push("/foo");
+
+                foreach (\str_split("foobar") as $c) {
+                    $queue->pushAsync($c)->ignore();
+                }
+                $queue->complete();
+
+                return $response;
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            (new Options)->withHttp1Timeout(60),
         );
 
         $buffer = "";
 
-        $driver->setup(
+        $output = new WritableBuffer;
+
+        $driver->handleClient(
             $this->createClientMock(),
-            $this->createCallback(0),
-            function (string $data, bool $close = false) use (&$buffer, &$fin) {
-                $buffer .= $data;
-                $fin = $close;
-            }
+            new ReadableBuffer("GET / HTTP/1.1\r\nHost: test.local\r\n\r\n"),
+            $output,
         );
-
-        $queue = new Queue();
-
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("http://test.local"));
-        $response = new Response(Status::OK, $headers, new ReadableIterableStream($queue->pipe()));
-        $response->push("/foo");
-
-        async(fn () => $driver->write($request, $response));
-
-        foreach (\str_split($data) as $c) {
-            $queue->pushAsync($c)->ignore();
-        }
-        $queue->complete();
 
         delay(0.1);
 
-        self::assertFalse($fin);
-        $this->verifyWrite($buffer, $status, $headers + [
+        self::assertTrue($output->isWritable());
+        self::assertFalse($output->isClosed());
+
+        $this->verifyWrite($buffer, 200, [
+            "test" => ["successful"],
             "link" => ["</foo>; rel=preload"],
             "connection" => ["keep-alive"],
             "keep-alive" => ["timeout=60"],
             "transfer-encoding" => ["chunked"],
-        ], $data);
+        ], "foobar");
     }
 
     /** @dataProvider provideWriteResponses */
-    public function testResponseWrite(Request $request, Response $response, string $expectedRegexp, bool $expectedClosed): void
-    {
+    public function testResponseWrite(
+        Request $request,
+        Response $response,
+        string $expectedRegexp,
+        bool $expectedClosed
+    ): void {
         $driver = new Http1Driver(
-            (new Options)->withHttp1Timeout(60),
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+
+                return new Response(Status::OK, [], '');
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            (new Options)->withHttp1Timeout(60),
         );
 
-        $buffer = "";
-        $closed = false;
+        $output = new WritableBuffer;
 
-        $driver->setup(
+        $driver->handleClient(
             $this->createClientMock(),
-            $this->createCallback(0),
-            function (string $data, bool $close = false) use (&$buffer, &$closed): void {
-                $buffer .= $data;
-
-                if ($close) {
-                    $closed = true;
-                }
-            }
+            new ReadableBuffer("GET / HTTP/1.1\r\nHost: test.local\r\n\r\n"),
+            $output,
         );
 
-        $driver->write($request, $response);
+        self::assertSame($output->isClosed(), $expectedClosed);
 
-        self::assertMatchesRegularExpression('#' . $expectedRegexp . '#i', $buffer);
-        self::assertSame($closed, $expectedClosed);
+        if (!$output->isClosed()) {
+            $output->end();
+        }
+
+        self::assertMatchesRegularExpression('#' . $expectedRegexp . '#i', $output->buffer());
     }
 
     public function provideWriteResponses(): array
@@ -878,7 +859,8 @@ class Http1DriverTest extends HttpDriverTest
             ],
             [
                 new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/')),
-                new Response(Status::OK, [], new ReadableBuffer, new Trailers(Future::complete(['test' => 'value']), ['test'])),
+                new Response(Status::OK, [], new ReadableBuffer,
+                    new Trailers(Future::complete(['test' => 'value']), ['test'])),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
@@ -904,12 +886,13 @@ class Http1DriverTest extends HttpDriverTest
     public function testWriteAbortAfterHeaders(): void
     {
         $driver = new Http1Driver(
-            (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
+            new ClosureRequestHandler($this->createCallback(0)),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
         );
 
-        $driver->setup(
+        $driver->handleClient(
             $this->createClientMock(),
             $this->createCallback(0),
             function (string $data, bool $close = false) use (&$invoked) {
@@ -929,7 +912,8 @@ class Http1DriverTest extends HttpDriverTest
 
         $queue = new Queue();
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0');
-        async(fn () => $driver->write($request, new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))));
+        async(fn () => $driver->write($request,
+            new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))));
 
         delay(0.1);
 
@@ -954,6 +938,22 @@ class Http1DriverTest extends HttpDriverTest
 
         $options = (new Options)->withHttp2Upgrade();
 
+        $driver = new Http1Driver(
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+            }),
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+            $options,
+        );
+
+        $driver->handleClient(
+            $this->createClientMock(),
+            new ReadableBuffer($payload),
+            new WritableBuffer(),
+        );
+
+        // TODO
         $expected = [
             "HTTP/1.1 101 Switching Protocols",
             Http2DriverTest::packFrame(\pack(
@@ -966,30 +966,12 @@ class Http1DriverTest extends HttpDriverTest
                 $options->getHeaderSizeLimit(),
                 Http2Parser::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
-            ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
+            ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG),
         ];
 
-        $driver = new Http1Driver(
-            $options,
-            $this->createMock(ErrorHandler::class),
-            new NullLogger
-        );
-
-        $parser = $driver->setup(
-            $this->createClientMock(),
-            function (Request $request): Future {
-                $this->assertSame("foo.bar", $request->getUri()->getHost());
-                $this->assertSame("/path", $request->getUri()->getPath());
-                $this->assertSame("2", $request->getProtocolVersion());
-                return Future::complete();
-            },
-            function (string $data) use (&$expected): void {
-                $write = \array_shift($expected);
-                $this->assertSame($write, \substr($data, 0, \strlen($write)));
-            }
-        );
-
-        EventLoop::queue(fn () => $parser->send($payload));
+        self::assertSame("foo.bar", $request->getUri()->getHost());
+        self::assertSame("/path", $request->getUri()->getPath());
+        self::assertSame("2", $request->getProtocolVersion());
     }
 
     public function testNativeHttp2(): void
@@ -997,32 +979,35 @@ class Http1DriverTest extends HttpDriverTest
         $options = (new Options)->withHttp2Upgrade();
 
         $driver = new Http1Driver(
-            $options,
+            new ClosureRequestHandler(function (Request $req) use (&$request) {
+                $request = $req;
+            }),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            $options,
         );
 
-        $parser = $driver->setup(
+        $output = new WritableBuffer;
+
+        $driver->handleClient(
             $this->createClientMock(),
-            $this->createCallback(0),
-            function (string $data) use ($options): void {
-                $expected = Http2DriverTest::packFrame(\pack(
-                    "nNnNnNnN",
-                    Http2Parser::INITIAL_WINDOW_SIZE,
-                    $options->getBodySizeLimit(),
-                    Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $options->getConcurrentStreamLimit(),
-                    Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $options->getHeaderSizeLimit(),
-                    Http2Parser::MAX_FRAME_SIZE,
-                    Http2Driver::DEFAULT_MAX_FRAME_SIZE
-                ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG);
-
-                $this->assertSame($expected, $data);
-            }
+            new ReadableBuffer("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"),
+            $output,
         );
 
-        $parser->send("PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n");
+        $expected = Http2DriverTest::packFrame(\pack(
+            "nNnNnNnN",
+            Http2Parser::INITIAL_WINDOW_SIZE,
+            $options->getBodySizeLimit(),
+            Http2Parser::MAX_CONCURRENT_STREAMS,
+            $options->getConcurrentStreamLimit(),
+            Http2Parser::MAX_HEADER_LIST_SIZE,
+            $options->getHeaderSizeLimit(),
+            Http2Parser::MAX_FRAME_SIZE,
+            Http2Driver::DEFAULT_MAX_FRAME_SIZE
+        ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG);
+
+        $this->assertSame($expected, $output->buffer());
     }
 
     public function testExpect100Continue(): void
@@ -1030,12 +1015,13 @@ class Http1DriverTest extends HttpDriverTest
         $received = "";
 
         $driver = new Http1Driver(
-            new Options,
+            new ClosureRequestHandler(fn () => null),
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            new Options,
         );
 
-        $parser = $driver->setup(
+        $driver->handleClient(
             $this->createClientMock(),
             function (Request $req) use (&$request): Future {
                 $request = $req;
@@ -1068,9 +1054,10 @@ class Http1DriverTest extends HttpDriverTest
     public function testTrailerHeaders(): void
     {
         $driver = new Http1Driver(
-            new Options,
+
             $this->createMock(ErrorHandler::class),
-            new NullLogger
+            new NullLogger,
+            new Options,
         );
 
         $parser = $driver->setup(

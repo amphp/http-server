@@ -25,11 +25,6 @@ final class DefaultErrorHandler implements ErrorHandler
             $errorHtml = \file_get_contents(\dirname(__DIR__) . "/resources/error.html");
         }
 
-        $this->logger->error(
-            "Unexpected {$exception::class} thrown from RequestHandler::handleRequest(), falling back to error handler.",
-            ['exception' => $exception]
-        );
-
         if (!isset($this->cache[$statusCode])) {
             $this->cache[$statusCode] = \str_replace(
                 ["{code}", "{reason}"],
