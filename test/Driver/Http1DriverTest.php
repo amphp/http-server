@@ -883,44 +883,24 @@ class Http1DriverTest extends HttpDriverTest
     public function testWriteAbortAfterHeaders(): void
     {
         $driver = new Http1Driver(
-            new ClosureRequestHandler($this->createCallback(0)),
+            new ClosureRequestHandler(fn () => new Response()),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
         );
 
-        $driver->handleClient(
+        $output = new WritableBuffer();
+
+        async(fn () => $driver->handleClient(
             $this->createClientMock(),
-            $this->createCallback(0),
-            function (string $data, bool $close = false) use (&$invoked) {
-                static $i = 0;
-
-                // Headers are written with the first body chunk, then all remaining body chunks separately
-                if (++$i === 1) {
-                    $expected = "HTTP/1.0 200 OK";
-                    $this->assertEquals($expected, \substr($data, 0, \strlen($expected)));
-                    $this->assertFalse($close);
-                } elseif ($i === 2) {
-                    $this->assertTrue($close);
-                    $invoked = true;
-                }
-            }
-        );
-
-        $queue = new Queue();
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0');
-        async(fn () => $driver->write($request,
-            new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))));
+            new ReadableBuffer("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"),
+            $output,
+        ));
 
         delay(0.1);
 
-        $queue->pushAsync("foo")->ignore();
-        self::assertNull($invoked);
-        $queue->complete();
-
-        delay(0.1);
-
-        self::assertTrue($invoked);
+        self::assertFalse($output->isWritable());
+        self::assertStringStartsWith("HTTP/1.0 200 OK\r\n", $output->buffer());
     }
 
     public function testHttp2Upgrade(): void
