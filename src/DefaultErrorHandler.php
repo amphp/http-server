@@ -13,7 +13,7 @@ final class DefaultErrorHandler implements ErrorHandler
     /** @var string[] */
     private array $cache = [];
 
-    public function __construct(private LoggerInterface $logger)
+    public function __construct()
     {
     }
 

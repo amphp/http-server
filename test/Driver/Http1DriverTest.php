@@ -23,7 +23,6 @@ use Amp\Http\Status;
 use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\NullLogger;
-use Revolt\EventLoop;
 use function Amp\async;
 use function Amp\delay;
 
@@ -649,11 +648,14 @@ class Http1DriverTest extends HttpDriverTest
     public function testUpgradeBodySizeContentLength(string $data, string $payload): void
     {
         $driver = new Http1Driver(
-            new ClosureRequestHandler(function (Request $req) use (&$request, $payload) {
+            new ClosureRequestHandler(function (Request $req) use (&$request, &$body, $payload) {
                 $request = $req;
 
                 $body = $req->getBody();
                 $body->increaseSizeLimit(\strlen($payload));
+
+                /** @var $request */
+                $body = $request->getBody()->buffer();
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
@@ -669,10 +671,6 @@ class Http1DriverTest extends HttpDriverTest
         delay(0.1); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
-
-        /** @var $request */
-        $body = $request->getBody()->buffer();
-
         self::assertSame($payload, $body);
     }
 
@@ -818,10 +816,10 @@ class Http1DriverTest extends HttpDriverTest
         bool $expectedClosed
     ): void {
         $driver = new Http1Driver(
-            new ClosureRequestHandler(function (Request $req) use (&$request) {
+            new ClosureRequestHandler(function (Request $req) use (&$request, $response) {
                 $request = $req;
 
-                return new Response(Status::OK, [], '');
+                return $response;
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
@@ -830,11 +828,13 @@ class Http1DriverTest extends HttpDriverTest
 
         $output = new WritableBuffer;
 
-        $driver->handleClient(
+        async(fn () => $driver->handleClient(
             $this->createClientMock(),
             new ReadableBuffer("GET / HTTP/1.1\r\nHost: test.local\r\n\r\n"),
             $output,
-        );
+        ));
+
+        delay(0.1);
 
         self::assertSame($output->isClosed(), $expectedClosed);
 
