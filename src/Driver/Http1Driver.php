@@ -128,6 +128,9 @@ final class Http1Driver extends AbstractHttpDriver
         $this->updateTimeout();
 
         $buffer = $readableStream->read();
+        if ($buffer === null) {
+            return;
+        }
 
         try {
             do {
@@ -155,7 +158,12 @@ final class Http1Driver extends AbstractHttpDriver
                         );
                     }
 
-                    $buffer .= $readableStream->read();
+                    $chunk = $readableStream->read();
+                    if ($chunk === null) {
+                        return;
+                    }
+
+                    $buffer .= $chunk;
                 } while (true);
 
                 $startLineEndPos = \strpos($rawHeaders, "\r\n");
@@ -472,7 +480,12 @@ final class Http1Driver extends AbstractHttpDriver
                                 );
                             }
 
-                            $buffer .= $this->readableStream->read();
+                            $chunk = $this->readableStream->read();
+                            if ($chunk === null) {
+                                return;
+                            }
+
+                            $buffer .= $chunk;
                         }
 
                         $line = \substr($buffer, 0, $lineEndPos);
@@ -494,7 +507,12 @@ final class Http1Driver extends AbstractHttpDriver
 
                         if ($chunkLengthRemaining === 0) {
                             while (!isset($buffer[1])) {
-                                $buffer .= $readableStream->read();
+                                $chunk = $readableStream->read();
+                                if ($chunk === null) {
+                                    return;
+                                }
+
+                                $buffer .= $chunk;
                             }
 
                             $firstTwoBytes = \substr($buffer, 0, 2);
@@ -521,7 +539,12 @@ final class Http1Driver extends AbstractHttpDriver
                                     );
                                 }
 
-                                $buffer .= $this->readableStream->read();
+                                $chunk = $this->readableStream->read();
+                                if ($chunk === null) {
+                                    return;
+                                }
+
+                                $buffer .= $chunk;
                             } while (true);
 
                             if ($rawTrailers) {
@@ -572,7 +595,12 @@ final class Http1Driver extends AbstractHttpDriver
                                     }
 
                                     if (!$bodyBufferSize) {
-                                        $body = $readableStream->read();
+                                        $chunk = $readableStream->read();
+                                        if ($chunk === null) {
+                                            return;
+                                        }
+
+                                        $body = $chunk;
                                         $bodyBufferSize = \strlen($body);
                                     }
                                 }
@@ -602,14 +630,24 @@ final class Http1Driver extends AbstractHttpDriver
                             $bufferLength = \strlen($buffer);
 
                             if (!$bufferLength) {
-                                $buffer = $readableStream->read();
+                                $chunk = $readableStream->read();
+                                if ($chunk === null) {
+                                    return;
+                                }
+
+                                $buffer = $chunk;
                                 $bufferLength = \strlen($buffer);
                             }
 
                             // These first two (extreme) edge cases prevent errors where the packet boundary ends after
                             // the \r and before the \n at the end of a chunk.
                             if ($bufferLength === $chunkLengthRemaining || $bufferLength === $chunkLengthRemaining + 1) {
-                                $buffer .= $readableStream->read();
+                                $chunk = $readableStream->read();
+                                if ($chunk === null) {
+                                    return;
+                                }
+
+                                $buffer .= $chunk;
                                 continue;
                             }
 
@@ -659,7 +697,13 @@ final class Http1Driver extends AbstractHttpDriver
                             $buffer = '';
                             $bodySize += $bodyBufferSize;
                         }
-                        $buffer .= $readableStream->read();
+
+                        $chunk = $readableStream->read();
+                        if ($chunk === null) {
+                            return;
+                        }
+
+                        $buffer .= $chunk;
                         $bodyBufferSize = \strlen($buffer);
                     }
 
