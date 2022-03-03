@@ -2,7 +2,11 @@
 
 namespace Amp\Http\Server\Test\Driver;
 
+use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableIterableStream;
+use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\WritableBuffer;
+use Amp\ByteStream\WritableStream;
 use Amp\Future;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
@@ -11,8 +15,10 @@ use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\HttpDriver;
+use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
@@ -24,6 +30,7 @@ use Revolt\EventLoop;
 use function Amp\async;
 use function Amp\delay;
 use function Amp\Http\formatDateHeader;
+use function Amp\Http\Server\streamChunks;
 
 class Http2DriverTest extends HttpDriverTest
 {
@@ -92,25 +99,23 @@ class Http2DriverTest extends HttpDriverTest
         $msg = Http2Parser::PREFACE . $msg;
 
         for ($mode = 0; $mode <= 1; $mode++) {
-            [$driver, $parser] = $this->setupDriver(function (Request $req) use (&$request, &$parser) {
-                $request = $req;
-            });
-
-            $parseResult = null;
-
             if ($mode === 1) {
-                for ($i = 0, $length = \strlen($msg); $i < $length; $i++) {
-                    $future = $parser->send($msg[$i]);
-                    while ($future instanceof Future) {
-                        $future = $parser->send(null);
-                    }
-                }
+                $input = streamChunks($msg);
             } else {
-                $future = $parser->send($msg);
-                while ($future instanceof Future) {
-                    $future = $parser->send("");
-                }
+                $input = new ReadableBuffer($msg);
             }
+
+            $driver = new Http2Driver(new ClosureRequestHandler(function ($req) use (&$request) {
+                $request = $req;
+
+                return new Response;
+            }), $this->createMock(ErrorHandler::class), new NullLogger, new Options);
+
+            $output = new WritableBuffer();
+
+            async(fn () => $driver->handleClient($this->createClientMock(), $input, $output));
+
+            delay(0.005);
 
             /** @var Request $request */
             self::assertInstanceOf(Request::class, $request);
@@ -158,7 +163,7 @@ class Http2DriverTest extends HttpDriverTest
             "test" => ["successful"],
         ];
         $msg = self::packFrame(\pack("N", 100), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
-        $msg .= self::packHeader($headers, false, 1);
+        $msg .= self::packHeader($headers);
 
         $expectations = [
             "protocol" => "2",
@@ -224,66 +229,6 @@ class Http2DriverTest extends HttpDriverTest
         $return[] = [$msg, $expectations];
 
         return $return;
-    }
-
-    public function setupDriver(\Closure $onMessage = null, Options $options = null): array
-    {
-        $driver = new class($options ?? new Options) implements HttpDriver {
-            public array $frames = [];
-
-            private Http2Driver $driver;
-
-            public function __construct($options)
-            {
-                $this->driver = new Http2Driver($options, new NullLogger);
-            }
-
-            public function setup(Client $client, \Closure $onMessage, \Closure $write): \Generator
-            {
-                return $this->driver->setup($client, $onMessage, function ($data) use ($write) {
-                    $type = \ord($data[3]);
-                    $flags = \ord($data[4]);
-                    $stream = \unpack("N", \substr($data, 5, 4))[1];
-                    $data = \substr($data, 9);
-
-                    if ($type === Http2Parser::RST_STREAM || $type === Http2Parser::GOAWAY) {
-                        AsyncTestCase::fail("RST_STREAM or GOAWAY frame received");
-                    }
-
-                    if ($type === Http2Parser::WINDOW_UPDATE) {
-                        return Future::complete(null); // we don't test this as we always give a far too large window currently ;-)
-                    }
-
-                    $this->frames[] = [$data, $type, $flags, $stream];
-
-                    return Future::complete();
-                });
-            }
-
-            public function write(Request $request, Response $response): void
-            {
-                $this->driver->write($request, $response);
-            }
-
-            public function stop(): void
-            {
-                $this->driver->stop();
-            }
-
-            public function getPendingRequestCount(): int
-            {
-                return $this->driver->getPendingRequestCount();
-            }
-        };
-
-        $parser = $driver->setup(
-            $this->createClientMock(),
-            $onMessage ?? function () {
-            },
-            $this->createCallback(0)
-        );
-
-        return [$driver, $parser];
     }
 
     public function testWrite(): void

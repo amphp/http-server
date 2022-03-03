@@ -67,7 +67,10 @@
     "autoload-dev": {
         "psr-4": {
             "Amp\\Http\\Server\\Test\\": "test"
-        }
+        },
+        "files": [
+            "test/functions.php"
+        ]
     },
     "extra": {
         "branch-alias": {

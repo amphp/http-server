@@ -135,7 +135,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
 
-        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         $parser = (new Http2Parser($this))->parse($this->settings);
 
@@ -168,7 +168,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             return; // Client closed the stream or connection.
         }
 
-        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
         $deferred = new DeferredFuture;
@@ -470,7 +470,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
         }
 
-        $stream->pendingResponse = async($this->handleRequest(...), $request);
+        $stream->pendingResponse = async($this->handleRequest(...), $request, '');
     }
 
     private function writeFrame(string $data, int $type, int $flags, int $stream = 0): void
@@ -497,7 +497,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $delta = \min($this->clientWindow, $stream->clientWindow);
         $length = \strlen($stream->buffer);
 
-        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         if ($delta >= $length) {
             $this->clientWindow -= $length;
@@ -677,9 +677,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         if (!$this->pinged) {
             // Ensure there are a few extra seconds for request after first ping.
-            $this->client->updateExpirationTime(
-                \max($this->client->getExpirationTime(), \time() + 5)
-            );
+            // TODO: $this->client->updateExpirationTime(
+            // TODO:     \max($this->client->getExpirationTime(), \time() + 5)
+            // TODO: );
         }
 
         $this->pinged++;
@@ -790,7 +790,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         // Header frames can be received on previously opened streams (trailer headers).
         $this->remoteStreamId = \max($streamId, $this->remoteStreamId);
 
-        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         if (isset($this->trailerDeferreds[$streamId]) && $stream->state & Http2Stream::RESERVED) {
             if (!$ended) {
@@ -909,7 +909,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             );
 
             $this->streamIdMap[\spl_object_hash($request)] = $streamId;
-            $stream->pendingResponse = async($this->handleRequest(...), $request);
+            $stream->pendingResponse = async($this->handleRequest(...), $request, '');
 
             return;
         }
@@ -988,13 +988,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         );
 
         $this->streamIdMap[\spl_object_hash($request)] = $streamId;
-        $stream->pendingResponse = async($this->handleRequest(...), $request);
+        $stream->pendingResponse = async($this->handleRequest(...), $request, '');
     }
 
     public function handleData(int $streamId, string $data): void
     {
         $length = \strlen($data);
-        $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
 
         if (!isset($this->streams[$streamId], $this->bodyQueues[$streamId], $this->trailerDeferreds[$streamId])) {
             if ($streamId > 0 && $streamId <= $this->remoteStreamId) {
