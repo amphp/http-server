@@ -98,6 +98,8 @@ class Http2DriverTest extends HttpDriverTest
 
     private array $requests = [];
 
+    private array $pushes = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -110,7 +112,13 @@ class Http2DriverTest extends HttpDriverTest
                 $this->requestSuspension = null;
             }
 
-            return new Response;
+            $response = new Response;
+
+            foreach ($this->pushes as $push) {
+                $response->push($push);
+            }
+
+            return $response;
         }), $this->createMock(ErrorHandler::class), new NullLogger, new Options);
 
         $this->input = new ReadableBuffer('');
@@ -129,6 +137,11 @@ class Http2DriverTest extends HttpDriverTest
         $this->requestSuspension = EventLoop::getSuspension();
 
         return $this->requestSuspension->suspend();
+    }
+
+    protected function whenClientIsHandled(): void
+    {
+        $this->driver->handleClient($this->createClientMock(), $this->input, $this->output);
     }
 
     /**
@@ -557,52 +570,6 @@ class Http2DriverTest extends HttpDriverTest
         self::assertEquals(3, $stream);
     }
 
-    public function testClosingStreamYieldsFalseFromWriter(): void
-    {
-        $driver = new Http2Driver(new Options, new NullLogger);
-
-        $parser = $driver->setup(
-            $this->createClientMock(),
-            function (Request $read) use (&$request): Future {
-                $request = $read;
-                return Future::complete();
-            },
-            fn () => Future::complete(),
-        );
-
-        $parser->send(Http2Parser::PREFACE);
-
-        $headers = [
-            ":authority" => "localhost",
-            ":path" => "/",
-            ":scheme" => "http",
-            ":method" => "GET",
-        ];
-        $parser->send(self::packHeader($headers));
-
-        // $onMessage callback should be invoked.
-        self::assertInstanceOf(Request::class, $request);
-
-        $queue = new Queue();
-        $writer = async(fn () => $driver->write(
-            $request,
-            new Response(Status::OK, [], new ReadableIterableStream($queue->pipe()))
-        ));
-
-        $queue->pushAsync("{data}")->ignore();
-
-        $parser->send(self::packFrame(
-            \pack("N", Http2Parser::REFUSED_STREAM),
-            Http2Parser::RST_STREAM,
-            Http2Parser::NO_FLAG,
-            1
-        ));
-
-        $queue->pushAsync("{data}")->ignore();
-
-        $writer->await(); // Will throw if the writer is not complete.
-    }
-
     public function testPush(): void
     {
         /** @noinspection PhpInternalEntityUsedInspection */
@@ -610,20 +577,7 @@ class Http2DriverTest extends HttpDriverTest
             self::markTestSkipped('Not supported with nghttp2, disable ffi for this test.');
         }
 
-        $driver = new Http2Driver(new Options, new NullLogger);
-
         $requests = [];
-
-        $parser = $driver->setup(
-            $this->createClientMock(),
-            function (Request $read) use (&$requests) {
-                $requests[] = $read;
-                return Future::complete();
-            },
-            fn () => Future::complete(),
-        );
-
-        $parser->send(Http2Parser::PREFACE);
 
         $headers = [
             ":authority" => "localhost",
@@ -632,16 +586,12 @@ class Http2DriverTest extends HttpDriverTest
             ":method" => "GET",
         ];
 
-        $parser->send(self::packHeader($headers));
+        $this->givenInput(new ReadableBuffer(Http2Parser::PREFACE . self::packHeader($headers)));
+        $this->givenPush("/absolute/path");
+        $this->givenPush("relative/path");
+        $this->givenPush("path/with/query?key=value");
 
-        $response = new Response(Status::CREATED);
-        $response->push("/absolute/path");
-        $response->push("relative/path");
-        $response->push("path/with/query?key=value");
-
-        self::assertInstanceOf(Request::class, $requests[0]);
-
-        $driver->write($requests[0], $response);
+        $request = $this->whenRequestIsReceived();
 
         $paths = ["/base", "/absolute/path", "/base/relative/path", "/base/path/with/query"];
 
@@ -657,37 +607,28 @@ class Http2DriverTest extends HttpDriverTest
 
     public function testPingFlood(): void
     {
-        $driver = new Http2Driver(new Options, new NullLogger);
-
         $client = $this->createClientMock();
         $client->expects(self::atLeastOnce())
             ->method('close');
 
-        $lastWrite = null;
-
-        $parser = $driver->setup(
-            $client,
-            $this->createCallback(0),
-            function (string $data) use (&$lastWrite): Future {
-                $lastWrite = $data;
-                return Future::complete();
-            }
-        );
-
-        $parser->send(Http2Parser::PREFACE);
-
-        $buffer = "";
+        $buffer = Http2Parser::PREFACE;
         $ping = "aaaaaaaa";
         for ($i = 0; $i < 1024; ++$i) {
             $buffer .= self::packFrame($ping++, Http2Parser::PING, Http2Parser::NO_FLAG);
         }
 
-        $parser->send($buffer);
+        $this->givenInput(new ReadableBuffer($buffer));
 
-        self::assertSame(
-            \bin2hex(self::packFrame(\pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM), Http2Parser::GOAWAY,
-                Http2Parser::NO_FLAG)),
-            \bin2hex($lastWrite)
+        $this->whenClientIsHandled();
+
+        self::assertTrue($this->output->isClosed());
+        self::assertStringEndsWith(
+            \bin2hex(self::packFrame(
+                \pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM),
+                Http2Parser::GOAWAY,
+                Http2Parser::NO_FLAG
+            )),
+            \bin2hex($this->output->buffer())
         );
     }
 
@@ -733,5 +674,10 @@ class Http2DriverTest extends HttpDriverTest
         delay(0.1);
 
         $parser->send(self::packFrame("body-data", Http2Parser::DATA, Http2Parser::END_STREAM, 1));
+    }
+
+    protected function givenPush(string $uri): void
+    {
+        $this->pushes[] = $uri;
     }
 }

@@ -153,6 +153,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->shutdown(null, $exception);
         } finally {
             $this->client->close();
+            $this->readableStream->close();
+            $this->writableStream->close();
         }
     }
 
@@ -390,6 +392,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             }
 
             $this->client->close();
+            $this->readableStream->close();
+            $this->writableStream->close();
         }
     }
 
