@@ -134,6 +134,11 @@ final class Http1Driver extends AbstractHttpDriver
 
         try {
             do {
+                if ($this->http2driver) {
+                    $this->http2driver->handleClientWithBuffer($buffer, $this->readableStream);
+                    return;
+                }
+
                 $contentLength = null;
                 $isChunked = false;
 
@@ -385,12 +390,7 @@ final class Http1Driver extends AbstractHttpDriver
                         $h2cSettings
                     );
 
-                    // TODO MOve
-                    $this->http2driver->handleClient(
-                        $this->client,
-                        new ReadableStreamChain(new ReadableBuffer($buffer), $this->readableStream),
-                        $this->writableStream,
-                    );
+                    $this->http2driver->initializeWriting($this->client, $this->writableStream);
 
                     // Remove headers that are not related to the HTTP/2 request.
                     foreach ($parsedHeaders as $index => [$key, $value]) {

@@ -918,6 +918,7 @@ class Http1DriverTest extends HttpDriverTest
         $driver = new Http1Driver(
             new ClosureRequestHandler(function (Request $req) use (&$request) {
                 $request = $req;
+                return new Response;
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
@@ -927,12 +928,14 @@ class Http1DriverTest extends HttpDriverTest
         $driver->handleClient(
             $this->createClientMock(),
             new ReadableBuffer($payload),
-            new WritableBuffer(),
+            $buffer = new WritableBuffer(),
         );
 
-        // TODO
         $expected = [
             "HTTP/1.1 101 Switching Protocols",
+            "connection: upgrade",
+            "upgrade: h2c",
+            "",
             Http2DriverTest::packFrame(\pack(
                 "nNnNnNnN",
                 Http2Parser::INITIAL_WINDOW_SIZE,
@@ -943,9 +946,11 @@ class Http1DriverTest extends HttpDriverTest
                 $options->getHeaderSizeLimit(),
                 Http2Parser::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
-            ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG),
+            ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
+            . Http2DriverTest::packFrame("", Http2Parser::SETTINGS, Http2Parser::ACK)
         ];
 
+        self::assertSame(implode("\r\n", $expected), $buffer->buffer());
         self::assertSame("foo.bar", $request->getUri()->getHost());
         self::assertSame("/path", $request->getUri()->getPath());
         self::assertSame("2", $request->getProtocolVersion());

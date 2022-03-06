@@ -136,12 +136,63 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
 
-        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        $this->processClientInput(fn() => $this->readPreface());
+    }
 
+    // Provide separate functions for Http2Driver initialization:
+    // The Http1Driver may still be in process of reading a possible request body.
+    // As we want to be able to already start sending HTTP/2 frames before the whole request body has been read, we need to initialize writing early.
+    // Hence we need a separate function for starting reading on the stream.
+    public function initializeWriting(Client $client, WritableStream $writableStream)
+    {
+        \assert(!isset($this->client), "The driver has already been setup");
+
+        $this->client = $client;
+        $this->writableStream = $writableStream;
+    }
+
+    public function handleClientWithBuffer(string $buffer, ReadableStream $readableStream) {
+        $this->readableStream = $readableStream;
+        if ($this->settings !== null) {
+            // Upgraded connections automatically assume an initial stream with ID 1.
+            $this->streams[1] = new Http2Stream(
+                0, // No data will be incoming on this stream.
+                $this->initialWindowSize,
+                $this->initialWindowSize,
+                Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
+            );
+            $this->remainingStreams--;
+
+            // Initial settings frame, sent immediately for upgraded connections.
+            $this->writeFrame(
+                \pack(
+                    "nNnNnNnN",
+                    Http2Parser::INITIAL_WINDOW_SIZE,
+                    $this->options->getBodySizeLimit(),
+                    Http2Parser::MAX_CONCURRENT_STREAMS,
+                    $this->options->getConcurrentStreamLimit(),
+                    Http2Parser::MAX_HEADER_LIST_SIZE,
+                    $this->options->getHeaderSizeLimit(),
+                    Http2Parser::MAX_FRAME_SIZE,
+                    self::DEFAULT_MAX_FRAME_SIZE
+                ),
+                Http2Parser::SETTINGS,
+                Http2Parser::NO_FLAG
+            );
+        }
+
+        $this->readableStream = $readableStream;
+
+        $this->processClientInput(fn() => $buffer);
+    }
+
+    private function processClientInput($parserInput)
+    {
+        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
         $parser = (new Http2Parser($this))->parse($this->settings);
 
         try {
-            $parser->send($this->readPreface());
+            $parser->send($parserInput());
 
             while (null !== $chunk = $this->readableStream->read()) {
                 $parser->send($chunk);
@@ -396,9 +447,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 }
             }
 
-            $this->client->close();
-            $this->readableStream->close();
-            $this->writableStream->close();
+            // otherwise caller is still in process of initializing this driver
+            if (isset($this->readableStream)) {
+                $this->client->close();
+                $this->readableStream->close();
+                $this->writableStream->close();
+            }
         }
     }
 
@@ -586,34 +640,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function readPreface(): string
     {
-        if ($this->settings !== null) {
-            // Upgraded connections automatically assume an initial stream with ID 1.
-            $this->streams[1] = new Http2Stream(
-                0, // No data will be incoming on this stream.
-                $this->initialWindowSize,
-                $this->initialWindowSize,
-                Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
-            );
-            $this->remainingStreams--;
-
-            // Initial settings frame, sent immediately for upgraded connections.
-            $this->writeFrame(
-                \pack(
-                    "nNnNnNnN",
-                    Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->options->getBodySizeLimit(),
-                    Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $this->options->getConcurrentStreamLimit(),
-                    Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $this->options->getHeaderSizeLimit(),
-                    Http2Parser::MAX_FRAME_SIZE,
-                    self::DEFAULT_MAX_FRAME_SIZE
-                ),
-                Http2Parser::SETTINGS,
-                Http2Parser::NO_FLAG
-            );
-        }
-
         $buffer = $this->readableStream->read();
         while (\strlen($buffer) < \strlen(Http2Parser::PREFACE)) {
             $buffer .= $this->readableStream->read();
