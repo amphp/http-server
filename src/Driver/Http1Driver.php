@@ -683,41 +683,45 @@ final class Http1Driver extends AbstractHttpDriver
                         }
                     }
                 } else {
-                    $bodyBufferSize = \strlen($buffer);
+                    do {
+                        $bodyBufferSize = \strlen($buffer);
 
-                    // Note that $bodySizeLimit may change while looping.
-                    while ($bodySize + $bodyBufferSize < \min($bodySizeLimit, $contentLength)) {
-                        if ($bodyBufferSize) {
+                        // Note that $bodySizeLimit may change while looping.
+                        while ($bodySize + $bodyBufferSize < \min($bodySizeLimit, $contentLength)) {
+                            if ($bodyBufferSize) {
+                                $this->updateTimeout();
+                                try {
+                                    $queue->push($buffer);
+                                } catch (DisposedException) {
+                                    // Ignore and continue consuming body.
+                                }
+                                $buffer = '';
+                                $bodySize += $bodyBufferSize;
+                            }
+
+                            $chunk = $readableStream->read();
+                            if ($chunk === null) {
+                                return;
+                            }
+
+                            $buffer .= $chunk;
+                            $bodyBufferSize = \strlen($buffer);
+                        }
+
+                        $remaining = \min($bodySizeLimit, $contentLength) - $bodySize;
+
+                        if ($remaining) {
                             $this->updateTimeout();
                             try {
-                                $queue->push($buffer);
+                                $queue->push(\substr($buffer, 0, $remaining));
                             } catch (DisposedException) {
                                 // Ignore and continue consuming body.
                             }
-                            $buffer = '';
-                            $bodySize += $bodyBufferSize;
+                            $buffer = \substr($buffer, $remaining);
+                            $bodySize += $remaining;
                         }
-
-                        $chunk = $readableStream->read();
-                        if ($chunk === null) {
-                            return;
-                        }
-
-                        $buffer .= $chunk;
-                        $bodyBufferSize = \strlen($buffer);
-                    }
-
-                    $remaining = \min($bodySizeLimit, $contentLength) - $bodySize;
-
-                    if ($remaining) {
-                        $this->updateTimeout();
-                        try {
-                            $queue->push(\substr($buffer, 0, $remaining));
-                        } catch (DisposedException) {
-                            // Ignore and continue consuming body.
-                        }
-                        $buffer = \substr($buffer, $remaining);
-                    }
+                    // handle the case where $bodySizeLimit was increased during the $remaining sequence
+                    } while ($bodySize < \min($bodySizeLimit, $contentLength));
 
                     if ($contentLength > $bodySizeLimit) {
                         throw new ClientException($this->client, "Payload too large", Status::PAYLOAD_TOO_LARGE);

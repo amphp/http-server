@@ -441,7 +441,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             // ignore if no longer writable
         } finally {
             if (!empty($this->streams)) {
-                $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
+                $exception = new ClientException($this->client, $reason?->getMessage() ?? "", $code, $reason);
                 foreach ($this->streams as $id => $stream) {
                     $this->releaseStream($id, $exception);
                 }

@@ -10,6 +10,7 @@ use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Message;
+use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
@@ -161,6 +162,29 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
         self::assertSame($expectations["body"], $body, "body mismatch");
         self::assertSame(80, $request->getUri()->getPort() ?: $defaultPort);
+    }
+
+    public function testOptionsAsteriskRequest(): void
+    {
+        $msg = "OPTIONS * HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        $driver = new Http1Driver(
+            new ClosureRequestHandler(function () {
+                $this->fail("Should not be called");
+            }),
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+            (new Options)->withAllowedMethods(["OPTIONS", "HEAD", "GET", "FOO"]),
+        );
+
+        $driver->handleClient(
+            $this->createClientMock(),
+            new ReadableBuffer($msg),
+            $output = new WritableBuffer,
+        );
+
+        $output->close();
+        self::assertStringStartsWith("HTTP/1.1 204 No Content\r\n", $output->buffer());
+        self::stringContains("\r\nallow: OPTIONS, HEAD, GET, FOO\r\n", $output->buffer());
     }
 
     public function testIdentityBodyParseEmit(): void
@@ -334,14 +358,14 @@ class Http1DriverTest extends HttpDriverTest
 
         // 2 --- OPTIONS request ------------------------------------------------------------------>
 
-        $msg = "OPTIONS * HTTP/1.1\r\nHost: localhost\r\n\r\n";
+        $msg = "OPTIONS / HTTP/1.1\r\nHost: localhost\r\n\r\n";
         $trace = \substr($msg, 0, -2);
 
         $expectations = [
             "trace" => $trace,
             "protocol" => "1.1",
             "method" => "OPTIONS",
-            "uri" => "",
+            "uri" => "/",
             "headers" => ["host" => ["localhost"]],
             "raw-headers" => [["Host", "localhost"]],
             "body" => "",
@@ -689,6 +713,37 @@ class Http1DriverTest extends HttpDriverTest
         return $return;
     }
 
+    public function testClientDisconnectsDuringBufferingWithSizeLimit(): void
+    {
+        $driver = new Http1Driver(
+            new ClosureRequestHandler(function (Request $req) use (&$request, &$exception) {
+                $request = $req;
+
+                $body = $req->getBody();
+                $body->increaseSizeLimit(3);
+
+                try {
+                    /** @var $request */
+                    $request->getBody()->buffer();
+                } catch (ClientException $exception) { }
+            }),
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+            (new Options)->withBodySizeLimit(1),
+        );
+
+        async(fn () => $driver->handleClient(
+            $this->createClientMock(),
+            new ReadableBuffer("POST / HTTP/1.1\r\nHost:localhost\r\nConnection: keep-alive\r\nContent-Length: 3\r\n\r\nab"),
+            new WritableBuffer(),
+        ));
+
+        delay(0.1); // Allow parser generator to continue.
+
+        self::assertInstanceOf(Request::class, $request);
+        self::assertInstanceOf(ClientException::class, $exception);
+    }
+
     public function testPipelinedRequests(): void
     {
         [$payloads, $results] = \array_map(null, ...$this->provideUpgradeBodySizeData());
@@ -717,8 +772,6 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertSame($results[0], $request->getBody()->buffer());
 
-        unset($request);
-
         delay(0.01); // Allow parser generator to continue.
 
         self::assertInstanceOf(Request::class, $request);
@@ -726,8 +779,6 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($results[1], $request->getBody()->buffer());
 
         $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
-
-        unset($request);
 
         delay(0.01); // Allow parser generator to continue.
 
@@ -810,15 +861,13 @@ class Http1DriverTest extends HttpDriverTest
 
     /** @dataProvider provideWriteResponses */
     public function testResponseWrite(
-        Request $request,
+        string $statusLine,
         Response $response,
         string $expectedRegexp,
         bool $expectedClosed
     ): void {
         $driver = new Http1Driver(
-            new ClosureRequestHandler(function (Request $req) use (&$request, $response) {
-                $request = $req;
-
+            new ClosureRequestHandler(function () use ($response) {
                 return $response;
             }),
             $this->createMock(ErrorHandler::class),
@@ -830,7 +879,7 @@ class Http1DriverTest extends HttpDriverTest
 
         async(fn () => $driver->handleClient(
             $this->createClientMock(),
-            new ReadableBuffer("GET / HTTP/1.1\r\nHost: test.local\r\n\r\n"),
+            new ReadableBuffer("$statusLine\r\nHost: test.local\r\n\r\n"),
             $output,
         ));
 
@@ -849,26 +898,26 @@ class Http1DriverTest extends HttpDriverTest
     {
         $data = [
             [
-                new Request($this->createClientMock(), "HEAD", Uri\Http::createFromString('/')),
+                "HEAD / HTTP/1.1",
                 new Response(Status::OK, [], new ReadableBuffer),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=\d{2}\r\ndate: .* GMT\r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/')),
+                "GET / HTTP/1.1",
                 new Response(Status::OK, [], new ReadableBuffer,
                     new Trailers(Future::complete(['test' => 'value']), ['test'])),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/')),
+                "GET / HTTP/1.1",
                 new Response(Status::OK, ["content-length" => 0], new ReadableBuffer),
                 "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString('/'), [], '', '1.0'),
+                "GET / HTTP/1.0",
                 new Response(Status::OK, [], new ReadableBuffer),
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: .* GMT\r\n\r\n",
                 true,
@@ -948,9 +997,11 @@ class Http1DriverTest extends HttpDriverTest
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
             ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
             . Http2DriverTest::packFrame("", Http2Parser::SETTINGS, Http2Parser::ACK)
+            . Http2DriverTest::packFrame(\pack("NN", 1, 0), Http2Parser::GOAWAY, Http2Parser::NO_FLAG)
         ];
 
-        self::assertSame(implode("\r\n", $expected), $buffer->buffer());
+        $expectedStr = implode("\r\n", $expected);
+        self::assertSame($expectedStr, $buffer->buffer());
         self::assertSame("foo.bar", $request->getUri()->getHost());
         self::assertSame("/path", $request->getUri()->getPath());
         self::assertSame("2", $request->getProtocolVersion());
@@ -987,7 +1038,8 @@ class Http1DriverTest extends HttpDriverTest
             $options->getHeaderSizeLimit(),
             Http2Parser::MAX_FRAME_SIZE,
             Http2Driver::DEFAULT_MAX_FRAME_SIZE
-        ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG);
+        ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
+        . Http2DriverTest::packFrame(\pack("NN", 0, 0), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
 
         $this->assertSame($expected, $output->buffer());
     }
