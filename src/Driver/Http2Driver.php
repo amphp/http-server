@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\StreamException;
 use Amp\ByteStream\WritableStream;
 use Amp\DeferredFuture;
 use Amp\Future;
@@ -149,6 +150,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                     return;
                 }
             }
+
+            $this->shutdown();
         } catch (Http2ConnectionException $exception) {
             $this->shutdown(null, $exception);
         } finally {
@@ -383,6 +386,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             }
 
             Future\await($futures);
+        } catch (StreamException) {
+            // ignore if no longer writable
         } finally {
             if (!empty($this->streams)) {
                 $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
