@@ -192,8 +192,8 @@ final class HttpServer
         } catch (ClientException) {
             $clientSocket->close();
         } catch (\Throwable $exception) {
-            \assert($this->logDebug("Exception while handling client {address}", [
-                'address' => $this->socket->getRemoteAddress(),
+            \assert(!$this->getLogger()->debug("Exception while handling client {address}", [
+                'address' => $clientSocket->getRemoteAddress(),
                 'exception' => $exception,
             ]));
 

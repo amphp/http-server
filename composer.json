@@ -60,6 +60,7 @@
             "Amp\\Http\\Server\\": "src"
         },
         "files": [
+            "src/Driver/functions.php",
             "src/Middleware/functions.php",
             "src/functions.php"
         ]

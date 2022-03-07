@@ -112,7 +112,7 @@ class RemoteClientTest extends AsyncTestCase
         $request = new ClientRequest("https://localhost:$port/uri?foo=bar&baz=1&baz=2", "GET");
         $request->setHeader("custom", "header");
 
-        $response = $client->request($request);;
+        $response = $client->request($request);
         self::assertEquals(200, $response->getStatus());
         self::assertEquals(["header"], $response->getHeaderArray("custom"));
         $body = $response->getBody()->buffer();
