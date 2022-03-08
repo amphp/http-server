@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\ResourceStream;
 use Amp\ByteStream\WritableStream;
 use Amp\Cancellation;
 use Amp\Socket\Socket;
@@ -70,12 +71,16 @@ final class UpgradedSocket implements Socket
 
     public function reference(): void
     {
-        // TODO: Remove ResourceStream from Socket?
+        if ($this->writableStream instanceof ResourceStream) {
+            $this->writableStream->reference();
+        }
     }
 
     public function unreference(): void
     {
-        // TODO: Remove ResourceStream from Socket?
+        if ($this->writableStream instanceof ResourceStream) {
+            $this->writableStream->unreference();
+        }
     }
 
     public function getLocalAddress(): SocketAddress
@@ -101,5 +106,12 @@ final class UpgradedSocket implements Socket
     public function isWritable(): bool
     {
         return $this->writableStream->isWritable();
+    }
+
+    public function getResource() {
+        if (!($this->writableStream instanceof ResourceStream)) {
+            throw new \Exception("Cannot get resource from non-socket stream");
+        }
+        return $this->writableStream->getResource();
     }
 }

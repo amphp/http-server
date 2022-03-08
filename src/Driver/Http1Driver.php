@@ -102,10 +102,12 @@ final class Http1Driver extends AbstractHttpDriver
 
     private bool $stopping = false;
 
+    private string $currentBuffer = "";
+
     public function __construct(
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
-        PsrLogger $logger,
+        private PsrLogger $logger,
         Options $options
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger, $options);
@@ -415,7 +417,8 @@ final class Http1Driver extends AbstractHttpDriver
                     }
 
                     $this->pendingResponseCount++;
-                    $this->pendingResponse = async($this->handleRequest(...), $request, $buffer);
+                    $this->currentBuffer = $buffer;
+                    $this->pendingResponse = async($this->handleRequest(...), $request);
                     $request = null; // DO NOT leave a reference to the Request object in the parser!
                     $this->pendingResponse->await(); // Wait for response to be generated.
                     $this->pendingResponseCount--;
@@ -460,6 +463,7 @@ final class Http1Driver extends AbstractHttpDriver
 
                 // Do not await future until body is completely read.
                 $this->pendingResponseCount++;
+                $this->currentBuffer = $buffer;
                 $this->pendingResponse = async($this->handleRequest(...), $request, $buffer);
 
                 // DO NOT leave a reference to the Request, Trailers, or Body objects within the parser!
@@ -786,6 +790,37 @@ final class Http1Driver extends AbstractHttpDriver
             } finally {
                 $deferred->complete();
             }
+
+            if ($response->isUpgraded()) {
+                $this->upgrade($request, $response);
+            }
+        }
+    }
+
+    /**
+     * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
+     */
+    private function upgrade(
+        Request $request,
+        Response $response,
+    ): void {
+        $socket = new UpgradedSocket(
+            $request->getClient(),
+            new ReadableStreamChain(new ReadableBuffer($this->currentBuffer), $this->readableStream),
+            $this->writableStream,
+        );
+
+        try {
+            ($response->getUpgradeHandler())($socket, $request, $response);
+        } catch (\Throwable $exception) {
+            $exceptionClass = $exception::class;
+
+            $this->logger->error(
+                "Unexpected {$exceptionClass} thrown during socket upgrade, closing connection.",
+                ['exception' => $exception]
+            );
+
+            $client->close();
         }
     }
 

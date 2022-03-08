@@ -3,7 +3,9 @@
 namespace Amp\Http\Server\Driver\Internal;
 
 use Amp\ByteStream\ReadableBuffer;
+use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\ReadableStreamChain;
+use Amp\ByteStream\WritableStream;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\HttpDriver;
@@ -57,7 +59,7 @@ abstract class AbstractHttpDriver implements HttpDriver
     /**
      * Respond to a parsed request.
      */
-    final protected function handleRequest(Request $request, string $buffer): void
+    final protected function handleRequest(Request $request): void
     {
         $clientRequest = $request;
         $request = clone $request;
@@ -92,10 +94,6 @@ abstract class AbstractHttpDriver implements HttpDriver
         $this->write($clientRequest, $response);
 
         $this->pendingResponseCount--;
-
-        if ($response->isUpgraded()) {
-            $this->upgrade($response->getUpgradeHandler(), $request, $response, $buffer);
-        }
     }
 
     /**
@@ -121,37 +119,6 @@ abstract class AbstractHttpDriver implements HttpDriver
     protected function getLogger(): LoggerInterface
     {
         return $this->logger;
-    }
-
-    /**
-     * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
-     *
-     * @param string $buffer Remaining buffer read from the socket.
-     */
-    private function upgrade(
-        \Closure $upgrade,
-        Request $request,
-        Response $response,
-        string $buffer
-    ): void {
-        $socket = new UpgradedSocket(
-            $request->getClient(),
-            new ReadableStreamChain(new ReadableBuffer($buffer), $this->socket),
-            $this->socket
-        );
-
-        try {
-            $upgrade($socket, $request, $response);
-        } catch (\Throwable $exception) {
-            $exceptionClass = $exception::class;
-
-            $this->logger->error(
-                "Unexpected {$exceptionClass} thrown during socket upgrade, closing connection.",
-                ['exception' => $exception]
-            );
-
-            $client->close();
-        }
     }
 
     private function handleInvalidMethod(int $status): Response
