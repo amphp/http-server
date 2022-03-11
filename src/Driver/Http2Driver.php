@@ -689,8 +689,17 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     private function readPreface(): string
     {
         $buffer = $this->readableStream->read();
+        if ($buffer === null) {
+            throw new Http2ConnectionException("Invalid preface", Http2Parser::PROTOCOL_ERROR);
+        }
+
         while (\strlen($buffer) < \strlen(Http2Parser::PREFACE)) {
-            $buffer .= $this->readableStream->read();
+            $chunk = $this->readableStream->read();
+            if ($chunk === null) {
+                throw new Http2ConnectionException("Invalid preface", Http2Parser::PROTOCOL_ERROR);
+            }
+
+            $buffer .= $chunk;
         }
 
         if (!\str_starts_with($buffer, Http2Parser::PREFACE)) {
