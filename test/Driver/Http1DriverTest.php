@@ -12,6 +12,7 @@ use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\ErrorHandler;
