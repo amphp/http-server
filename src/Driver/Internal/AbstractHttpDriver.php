@@ -2,14 +2,9 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
-use Amp\ByteStream\ReadableBuffer;
-use Amp\ByteStream\ReadableStream;
-use Amp\ByteStream\ReadableStreamChain;
-use Amp\ByteStream\WritableStream;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\HttpDriver;
-use Amp\Http\Server\Driver\UpgradedSocket;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;

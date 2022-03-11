@@ -69,7 +69,8 @@ class IntegrationTest extends AsyncTestCase
 
     public function testBasicRequest(): void
     {
-        $server = new HttpServer([$this->serverSocket],
+        $server = new HttpServer(
+            [$this->serverSocket],
             new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
                 $request = $req;
                 $body = $request->getBody()->buffer();
@@ -77,7 +78,9 @@ class IntegrationTest extends AsyncTestCase
                 delay(0.2);
 
                 return new Response(Status::OK, ["FOO" => "bar"], "message");
-            }), $this->createMock(PsrLogger::class));
+            }),
+            $this->createMock(PsrLogger::class)
+        );
 
         $server->start();
 
@@ -96,7 +99,8 @@ class IntegrationTest extends AsyncTestCase
 
     public function testStreamRequest(): void
     {
-        $server = new HttpServer([$this->serverSocket],
+        $server = new HttpServer(
+            [$this->serverSocket],
             new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
                 $request = $req;
                 $body = $request->getBody()->buffer();
@@ -104,7 +108,9 @@ class IntegrationTest extends AsyncTestCase
                 delay(0.2);
 
                 return new Response(Status::OK, ["FOO" => "bar"], "message");
-            }), $this->createMock(PsrLogger::class));
+            }),
+            $this->createMock(PsrLogger::class)
+        );
 
         $server->start();
 

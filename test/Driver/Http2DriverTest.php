@@ -25,7 +25,6 @@ use Amp\Http\Status;
 use Amp\Pipeline\ConcurrentIterableIterator;
 use Amp\Pipeline\Queue;
 use Amp\TimeoutCancellation;
-use Amp\TimeoutException;
 use Psr\Log\NullLogger;
 use Revolt\EventLoop;
 use function Amp\async;
@@ -107,7 +106,8 @@ class Http2DriverTest extends HttpDriverTest
         $this->responses = new \SplQueue;
     }
 
-    private function initDriver(Options $options) {
+    private function initDriver(Options $options)
+    {
         $this->driver = new Http2Driver(new ClosureRequestHandler(function ($req) {
             $this->requests[] = $req;
 

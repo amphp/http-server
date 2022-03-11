@@ -3,7 +3,6 @@
 namespace Amp\Http\Server;
 
 use Amp\Http\Status;
-use Psr\Log\LoggerInterface;
 
 /**
  * ErrorHandler instance used by default if none is given.

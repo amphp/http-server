@@ -2,8 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\ReadableStream;
-use Amp\ByteStream\WritableStream;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\RequestHandler;

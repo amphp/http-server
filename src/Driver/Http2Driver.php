@@ -136,7 +136,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
 
-        $this->processClientInput(fn() => $this->readPreface());
+        $this->processClientInput(fn () => $this->readPreface());
     }
 
     // Provide separate functions for Http2Driver initialization:
@@ -151,7 +151,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->writableStream = $writableStream;
     }
 
-    public function handleClientWithBuffer(string $buffer, ReadableStream $readableStream) {
+    public function handleClientWithBuffer(string $buffer, ReadableStream $readableStream)
+    {
         $this->readableStream = $readableStream;
         if ($this->settings !== null) {
             // Upgraded connections automatically assume an initial stream with ID 1.
@@ -183,7 +184,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->readableStream = $readableStream;
 
-        $this->processClientInput(fn() => $buffer);
+        $this->processClientInput(fn () => $buffer);
     }
 
     private function processClientInput($parserInput)
@@ -298,16 +299,28 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 // interleaved between due to HPack. See https://datatracker.ietf.org/doc/html/rfc7540#section-4.3
                 $split = \str_split($rawHeaders, $this->maxFrameSize);
                 $rawHeaders = \array_shift($split);
-                async(fn () => $this->writeFrame($rawHeaders, Http2Parser::HEADERS, Http2Parser::NO_FLAG,
-                    $id))->ignore();
+                async(fn () => $this->writeFrame(
+                    $rawHeaders,
+                    Http2Parser::HEADERS,
+                    Http2Parser::NO_FLAG,
+                    $id
+                ))->ignore();
 
                 $rawHeaders = \array_pop($split);
                 foreach ($split as $msgPart) {
-                    async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG,
-                        $id))->ignore();
+                    async(fn () => $this->writeFrame(
+                        $msgPart,
+                        Http2Parser::CONTINUATION,
+                        Http2Parser::NO_FLAG,
+                        $id
+                    ))->ignore();
                 }
-                async(fn () => $this->writeFrame($rawHeaders, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS,
-                    $id))->await();
+                async(fn () => $this->writeFrame(
+                    $rawHeaders,
+                    Http2Parser::CONTINUATION,
+                    Http2Parser::END_HEADERS,
+                    $id
+                ))->await();
             } else {
                 $this->writeFrame($rawHeaders, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
             }
@@ -361,19 +374,35 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 if (\strlen($headers) > $this->maxFrameSize) {
                     $split = \str_split($headers, $this->maxFrameSize);
                     $headers = \array_shift($split);
-                    async(fn () => $this->writeFrame($headers, Http2Parser::HEADERS, Http2Parser::NO_FLAG,
-                        $id))->ignore();
+                    async(fn () => $this->writeFrame(
+                        $headers,
+                        Http2Parser::HEADERS,
+                        Http2Parser::NO_FLAG,
+                        $id
+                    ))->ignore();
 
                     $headers = \array_pop($split);
                     foreach ($split as $msgPart) {
-                        async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG,
-                            $id))->ignore();
+                        async(fn () => $this->writeFrame(
+                            $msgPart,
+                            Http2Parser::CONTINUATION,
+                            Http2Parser::NO_FLAG,
+                            $id
+                        ))->ignore();
                     }
-                    async(fn () => $this->writeFrame($headers, Http2Parser::CONTINUATION,
-                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id))->await();
+                    async(fn () => $this->writeFrame(
+                        $headers,
+                        Http2Parser::CONTINUATION,
+                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM,
+                        $id
+                    ))->await();
                 } else {
-                    $this->writeFrame($headers, Http2Parser::HEADERS,
-                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM, $id);
+                    $this->writeFrame(
+                        $headers,
+                        Http2Parser::HEADERS,
+                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM,
+                        $id
+                    );
                 }
             }
         } catch (ClientException $exception) {
@@ -519,16 +548,28 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         if (\strlen($headers) >= $this->maxFrameSize) {
             $split = \str_split($headers, $this->maxFrameSize);
             $headers = \array_shift($split);
-            async(fn () => $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::NO_FLAG,
-                $streamId))->ignore();
+            async(fn () => $this->writeFrame(
+                $headers,
+                Http2Parser::PUSH_PROMISE,
+                Http2Parser::NO_FLAG,
+                $streamId
+            ))->ignore();
 
             $headers = \array_pop($split);
             foreach ($split as $msgPart) {
-                async(fn () => $this->writeFrame($msgPart, Http2Parser::CONTINUATION, Http2Parser::NO_FLAG,
-                    $id))->ignore();
+                async(fn () => $this->writeFrame(
+                    $msgPart,
+                    Http2Parser::CONTINUATION,
+                    Http2Parser::NO_FLAG,
+                    $id
+                ))->ignore();
             }
-            async(fn () => $this->writeFrame($headers, Http2Parser::CONTINUATION, Http2Parser::END_HEADERS,
-                $id))->await();
+            async(fn () => $this->writeFrame(
+                $headers,
+                Http2Parser::CONTINUATION,
+                Http2Parser::END_HEADERS,
+                $id
+            ))->await();
         } else {
             $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
         }
@@ -598,8 +639,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->clientWindow -= $delta;
 
             for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
-                $this->writeFrame(\substr($data, $off, $this->maxFrameSize), Http2Parser::DATA, Http2Parser::NO_FLAG,
-                    $id);
+                $this->writeFrame(
+                    \substr($data, $off, $this->maxFrameSize),
+                    Http2Parser::DATA,
+                    Http2Parser::NO_FLAG,
+                    $id
+                );
             }
 
             $this->writeFrame(\substr($data, $off, $delta - $off), Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
@@ -627,8 +672,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         if (isset($this->trailerDeferreds[$id])) {
             $deferred = $this->trailerDeferreds[$id];
             unset($this->trailerDeferreds[$id]);
-            $deferred->error($exception ?? new ClientException($this->client, "Client disconnected",
-                    Http2Parser::CANCEL));
+            $deferred->error($exception ?? new ClientException(
+                $this->client,
+                "Client disconnected",
+                Http2Parser::CANCEL
+            ));
         }
 
         unset($this->streams[$id]);

@@ -726,7 +726,8 @@ class Http1DriverTest extends HttpDriverTest
                 try {
                     /** @var $request */
                     $request->getBody()->buffer();
-                } catch (ClientException $exception) { }
+                } catch (ClientException $exception) {
+                }
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
@@ -820,8 +821,11 @@ class Http1DriverTest extends HttpDriverTest
 
                 $queue = new Queue;
 
-                $response = new Response(Status::OK, ["test" => ["successful"]],
-                    new ReadableIterableStream($queue->pipe()));
+                $response = new Response(
+                    Status::OK,
+                    ["test" => ["successful"]],
+                    new ReadableIterableStream($queue->pipe())
+                );
                 $response->push("/foo");
 
                 foreach (\str_split("foobar") as $c) {
@@ -906,8 +910,12 @@ class Http1DriverTest extends HttpDriverTest
             ],
             [
                 "GET / HTTP/1.1",
-                new Response(Status::OK, [], new ReadableBuffer,
-                    new Trailers(Future::complete(['test' => 'value']), ['test'])),
+                new Response(
+                    Status::OK,
+                    [],
+                    new ReadableBuffer,
+                    new Trailers(Future::complete(['test' => 'value']), ['test'])
+                ),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
@@ -1001,7 +1009,7 @@ class Http1DriverTest extends HttpDriverTest
             . Http2DriverTest::packFrame(\pack("NN", 1, 0), Http2Parser::GOAWAY, Http2Parser::NO_FLAG)
         ];
 
-        $expectedStr = implode("\r\n", $expected);
+        $expectedStr = \implode("\r\n", $expected);
         self::assertSame($expectedStr, $buffer->buffer());
         self::assertSame("foo.bar", $request->getUri()->getHost());
         self::assertSame("/path", $request->getUri()->getPath());

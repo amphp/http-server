@@ -371,8 +371,10 @@ final class Http1Driver extends AbstractHttpDriver
                     && $this->getOptions()->isHttp2UpgradeAllowed()
                     && false !== \stripos($headers["connection"][0], "upgrade")
                     && \strtolower($headers["upgrade"][0]) === "h2c"
-                    && false !== $h2cSettings = \base64_decode(\strtr($headers["http2-settings"][0], "-_", "+/"),
-                        true)
+                    && false !== $h2cSettings = \base64_decode(
+                        \strtr($headers["http2-settings"][0], "-_", "+/"),
+                        true
+                    )
                 ) {
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
                     $this->write(
@@ -625,8 +627,11 @@ final class Http1Driver extends AbstractHttpDriver
                                     continue;
                                 }
 
-                                throw new ClientException($this->client, "Payload too large",
-                                    Status::PAYLOAD_TOO_LARGE);
+                                throw new ClientException(
+                                    $this->client,
+                                    "Payload too large",
+                                    Status::PAYLOAD_TOO_LARGE
+                                );
                             } while ($bodySizeLimit < $bodySize + $chunkLengthRemaining);
                         }
 
@@ -724,7 +729,7 @@ final class Http1Driver extends AbstractHttpDriver
                             $buffer = \substr($buffer, $remaining);
                             $bodySize += $remaining;
                         }
-                    // handle the case where $bodySizeLimit was increased during the $remaining sequence
+                        // handle the case where $bodySizeLimit was increased during the $remaining sequence
                     } while ($bodySize < \min($bodySizeLimit, $contentLength));
 
                     if ($contentLength > $bodySizeLimit) {
@@ -756,18 +761,18 @@ final class Http1Driver extends AbstractHttpDriver
                 $queue = $this->bodyQueue;
                 $this->bodyQueue = null;
                 $queue->error($exception ?? new ClientException(
-                        $this->client,
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    $this->client,
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
             }
 
             if (isset($trailerDeferred)) {
                 $trailerDeferred->error($exception ?? new ClientException(
-                        $this->client,
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    $this->client,
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
                 $trailerDeferred = null;
             }
         }

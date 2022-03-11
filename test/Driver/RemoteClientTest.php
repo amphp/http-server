@@ -3,8 +3,6 @@
 namespace Amp\Http\Server\Test\Driver;
 
 use Amp\ByteStream\ReadableBuffer;
-use Amp\ByteStream\ReadableIterableStream;
-use Amp\ByteStream\ReadableStream;
 use Amp\Cancellation;
 use Amp\Http\Client\Connection\DefaultConnectionFactory;
 use Amp\Http\Client\Connection\UnlimitedConnectionPool;
@@ -21,25 +19,20 @@ use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\HttpServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use Amp\Pipeline\Queue;
 use Amp\Socket;
 use Amp\Socket\Certificate;
 use Amp\Socket\ClientTlsContext;
 use Amp\Socket\ConnectContext;
 use Amp\Socket\ServerTlsContext;
-use League\Uri;
 use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Psr\Log\NullLogger;
-use function Amp\async;
 use function Amp\delay;
-use const Amp\Process\IS_WINDOWS;
 
 class RemoteClientTest extends AsyncTestCase
 {
