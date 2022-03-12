@@ -63,12 +63,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     private ReadableStream $readableStream;
     private WritableStream $writableStream;
 
-    private readonly TimeoutQueue $timeoutQueue;
-
-    private readonly Options $options;
-
-    private readonly PsrLogger $logger;
-
     private ?string $settings;
 
     private int $serverWindow = self::DEFAULT_WINDOW_SIZE;
@@ -113,17 +107,14 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     public function __construct(
         RequestHandler $requestHandler,
-        TimeoutQueue $timeoutQueue,
+        private readonly TimeoutQueue $timeoutQueue,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
-        ?string $settings = null
+        ?string $settings = null,
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger, $options);
 
-        $this->timeoutQueue = $timeoutQueue;
-        $this->options = $options;
-        $this->logger = $logger;
         $this->settings = $settings;
 
         $this->remainingStreams = $this->options->getConcurrentStreamLimit();

@@ -53,8 +53,8 @@ final class Http1Driver extends AbstractHttpDriver
         RequestHandler $requestHandler,
         private readonly TimeoutQueue $timeoutQueue,
         ErrorHandler $errorHandler,
-        private PsrLogger $logger,
-        Options $options
+        PsrLogger $logger,
+        Options $options,
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger, $options);
 
@@ -66,13 +66,13 @@ final class Http1Driver extends AbstractHttpDriver
     {
         \assert(!isset($this->client));
 
-        $this->timeoutQueue->addStream($client, (string) $client->getId(), $this->getOptions()->getHttp1Timeout());
+        $this->timeoutQueue->addStream($client, (string) $client->getId(), $this->options->getHttp1Timeout());
 
         $this->client = $client;
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
 
-        $headerSizeLimit = $this->getOptions()->getHeaderSizeLimit();
+        $headerSizeLimit = $this->options->getHeaderSizeLimit();
 
         $buffer = $readableStream->read();
         if ($buffer === null) {
@@ -129,14 +129,14 @@ final class Http1Driver extends AbstractHttpDriver
                 [, $method, $target, $protocol] = $matches;
 
                 if ($protocol !== "1.1" && $protocol !== "1.0") {
-                    if ($protocol === "2.0" && $this->getOptions()->isHttp2UpgradeAllowed()) {
+                    if ($protocol === "2.0" && $this->options->isHttp2UpgradeAllowed()) {
                         // Internal upgrade to HTTP/2.
                         $this->http2driver = new Http2Driver(
-                            $this->getRequestHandler(),
+                            $this->requestHandler,
                             $this->timeoutQueue,
-                            $this->getErrorHandler(),
-                            $this->getLogger(),
-                            $this->getOptions(),
+                            $this->errorHandler,
+                            $this->logger,
+                            $this->options,
                         );
 
                         $this->http2driver->handleClient(
@@ -314,7 +314,7 @@ final class Http1Driver extends AbstractHttpDriver
                 if ($protocol === "1.1"
                     && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
                     && !$this->client->isEncrypted()
-                    && $this->getOptions()->isHttp2UpgradeAllowed()
+                    && $this->options->isHttp2UpgradeAllowed()
                     && false !== \stripos($headers["connection"][0], "upgrade")
                     && \strtolower($headers["upgrade"][0]) === "h2c"
                     && false !== $h2cSettings = \base64_decode(
@@ -333,11 +333,11 @@ final class Http1Driver extends AbstractHttpDriver
 
                     // Internal upgrade
                     $this->http2driver = new Http2Driver(
-                        $this->getRequestHandler(),
+                        $this->requestHandler,
                         $this->timeoutQueue,
-                        $this->getErrorHandler(),
-                        $this->getLogger(),
-                        $this->getOptions(),
+                        $this->errorHandler,
+                        $this->logger,
+                        $this->options,
                         $h2cSettings
                     );
 
@@ -378,7 +378,7 @@ final class Http1Driver extends AbstractHttpDriver
                 // HTTP/1.x clients only ever have a single body emitter.
                 $this->bodyQueue = $queue = new Queue();
                 $trailerDeferred = new DeferredFuture;
-                $bodySizeLimit = $this->getOptions()->getBodySizeLimit();
+                $bodySizeLimit = $this->options->getBodySizeLimit();
 
                 $body = new RequestBody(
                     new ReadableIterableStream($queue->pipe()),
@@ -801,7 +801,7 @@ final class Http1Driver extends AbstractHttpDriver
 
     private function updateTimeout(): void
     {
-        $this->timeoutQueue->update((string)$this->client->getId(), \time() + $this->getOptions()->getHttp1Timeout());
+        $this->timeoutQueue->update((string) $this->client->getId(), $this->options->getHttp1Timeout());
     }
 
     /**
@@ -812,8 +812,6 @@ final class Http1Driver extends AbstractHttpDriver
         \assert(isset($this->client), "The driver has not been setup; call setup first");
 
         $lastWrite->await(); // Prevent sending multiple responses at once.
-
-        $this->updateTimeout();
 
         $shouldClose = false;
 
@@ -863,7 +861,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
         $body = $response->getBody();
-        $streamThreshold = $this->getOptions()->getStreamThreshold();
+        $streamThreshold = $this->options->getStreamThreshold();
 
         try {
             while (null !== $chunk = $body->read()) {
@@ -927,7 +925,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         \assert($status >= 400 && $status < 500);
 
-        $response = $this->getErrorHandler()->handleError($status, $message);
+        $response = $this->errorHandler->handleError($status, $message);
         $response->setHeader("connection", "close");
 
         $lastWrite = $this->lastWrite;
@@ -972,7 +970,7 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["connection"] = ["close"];
         } else {
             $headers["connection"] = ["keep-alive"];
-            $headers["keep-alive"] = ["timeout=" . $this->getOptions()->getHttp1Timeout()];
+            $headers["keep-alive"] = ["timeout=" . $this->options->getHttp1Timeout()];
         }
 
         $headers["date"] = [formatDateHeader()];

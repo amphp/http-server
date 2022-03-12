@@ -12,7 +12,6 @@ use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Psr\Log\LoggerInterface;
-use Psr\Log\NullLogger;
 
 abstract class AbstractHttpDriver implements HttpDriver
 {
@@ -37,17 +36,17 @@ abstract class AbstractHttpDriver implements HttpDriver
 
     private static function getDefaultErrorHandler(): ErrorHandler
     {
-        return self::$defaultErrorHandler ??= new DefaultErrorHandler(new NullLogger());
+        return self::$defaultErrorHandler ??= new DefaultErrorHandler();
     }
 
     private int $pendingRequestHandlerCount = 0;
     private int $pendingResponseCount = 0;
 
-    public function __construct(
-        private RequestHandler $requestHandler,
-        private ErrorHandler $errorHandler,
-        private LoggerInterface $logger,
-        private Options $options,
+    protected function __construct(
+        protected readonly RequestHandler $requestHandler,
+        protected readonly ErrorHandler $errorHandler,
+        protected readonly LoggerInterface $logger,
+        protected readonly Options $options,
     ) {
     }
 
@@ -95,26 +94,6 @@ abstract class AbstractHttpDriver implements HttpDriver
      * Write the given response to the client using the write callback provided to `setup()`.
      */
     abstract protected function write(Request $request, Response $response): void;
-
-    protected function getRequestHandler(): RequestHandler
-    {
-        return $this->requestHandler;
-    }
-
-    protected function getErrorHandler(): ErrorHandler
-    {
-        return $this->errorHandler;
-    }
-
-    protected function getOptions(): Options
-    {
-        return $this->options;
-    }
-
-    protected function getLogger(): LoggerInterface
-    {
-        return $this->logger;
-    }
 
     private function handleInvalidMethod(int $status): Response
     {
