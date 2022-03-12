@@ -46,7 +46,7 @@ final class TimeoutCache
             return;
         }
 
-        $entry = new class ($id, $expiresAt) {
+        $entry = new class($id, $expiresAt) {
             public function __construct(
                 public readonly string $id,
                 public int $expiration

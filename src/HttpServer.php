@@ -70,7 +70,7 @@ final class HttpServer
         $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
         $this->driverFactory = $driverFactory ??
-            new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options,);
+            new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options, );
     }
 
     /**

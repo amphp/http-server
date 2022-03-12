@@ -712,18 +712,18 @@ final class Http1Driver extends AbstractHttpDriver
                 $queue = $this->bodyQueue;
                 $this->bodyQueue = null;
                 $queue->error($exception ?? new ClientException(
-                        $this->client,
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    $this->client,
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
             }
 
             if (isset($trailerDeferred)) {
                 $trailerDeferred->error($exception ?? new ClientException(
-                        $this->client,
-                        "Client disconnected",
-                        Status::REQUEST_TIMEOUT
-                    ));
+                    $this->client,
+                    "Client disconnected",
+                    Status::REQUEST_TIMEOUT
+                ));
                 $trailerDeferred = null;
             }
         }
