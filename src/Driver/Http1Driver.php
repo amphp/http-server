@@ -371,10 +371,9 @@ final class Http1Driver extends AbstractHttpDriver
 
                     $this->pendingResponseCount++;
                     $this->currentBuffer = $buffer;
-                    $this->pendingResponse = async($this->handleRequest(...), $request);
-                    $request = null; // DO NOT leave a reference to the Request object in the parser!
-                    $this->pendingResponse->await(); // Wait for response to be generated.
+                    $this->handleRequest($request);
                     $this->pendingResponseCount--;
+                    $request = null; // DO NOT leave a reference to the Request object in the parser!
 
                     continue;
                 }
@@ -704,8 +703,7 @@ final class Http1Driver extends AbstractHttpDriver
         } catch (ClientException $exception) {
             if ($this->bodyQueue === null || !$this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
-                $this->pendingResponse = $this->sendErrorResponse($exception);
-                $this->pendingResponse->await(); // Set $this->pendingResponse for finally block.
+                $this->sendErrorResponse($exception)->await();
             }
         } finally {
             $this->pendingResponse->finally(fn () => $this->removeTimeout())->ignore();
