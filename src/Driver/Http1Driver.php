@@ -25,66 +25,11 @@ use Amp\Pipeline\DisposedException;
 use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
-use Revolt\EventLoop;
 use function Amp\async;
 use function Amp\Http\formatDateHeader;
 
 final class Http1Driver extends AbstractHttpDriver
 {
-    private static array $clients = [];
-
-    private static TimeoutCache $timeoutCache;
-    private static string $timeoutId;
-
-    private static function getTimeoutCache(): TimeoutCache
-    {
-        if (!isset(self::$timeoutCache)) {
-            self::$timeoutId = EventLoop::disable(EventLoop::repeat(1, self::checkTimeouts(...)));
-        }
-
-        return self::$timeoutCache ??= new TimeoutCache;
-    }
-
-    private static function checkTimeouts(): void
-    {
-        $now = \time();
-
-        while ($id = self::$timeoutCache->extract($now)) {
-            \assert(isset(self::$clients[$id]), "Timeout cache contains an invalid client ID");
-
-            $client = self::$clients[$id];
-
-            if ($client->isWaitingOnResponse()) {
-                self::$timeoutCache->update($id, $now + 1);
-                continue;
-            }
-
-            // Client is either idle or taking too long to send request, so simply close the connection.
-            $client->close();
-        }
-    }
-
-    private static function addClient(Client $client): void
-    {
-        self::getTimeoutCache(); // init timeoutId if necessary
-
-        if (\count(self::$clients) === 0) {
-            EventLoop::enable(self::$timeoutId);
-        }
-
-        self::$clients[$client->getId()] = $client;
-
-        $client->onClose(static function (Client $client) {
-            self::$timeoutCache->clear($client->getId());
-
-            unset(self::$clients[$client->getId()]);
-
-            if (\count(self::$clients)) {
-                EventLoop::disable(self::$timeoutId);
-            }
-        });
-    }
-
     private ?Http2Driver $http2driver = null;
 
     private Client $client;
@@ -106,6 +51,7 @@ final class Http1Driver extends AbstractHttpDriver
 
     public function __construct(
         RequestHandler $requestHandler,
+        private readonly TimeoutQueue $timeoutQueue,
         ErrorHandler $errorHandler,
         private PsrLogger $logger,
         Options $options
@@ -120,14 +66,13 @@ final class Http1Driver extends AbstractHttpDriver
     {
         \assert(!isset($this->client));
 
-        self::addClient($client);
+        $this->timeoutQueue->addStream($client, (string) $client->getId(), $this->getOptions()->getHttp1Timeout());
 
         $this->client = $client;
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
 
         $headerSizeLimit = $this->getOptions()->getHeaderSizeLimit();
-        $this->updateTimeout();
 
         $buffer = $readableStream->read();
         if ($buffer === null) {
@@ -188,6 +133,7 @@ final class Http1Driver extends AbstractHttpDriver
                         // Internal upgrade to HTTP/2.
                         $this->http2driver = new Http2Driver(
                             $this->getRequestHandler(),
+                            $this->timeoutQueue,
                             $this->getErrorHandler(),
                             $this->getLogger(),
                             $this->getOptions(),
@@ -388,6 +334,7 @@ final class Http1Driver extends AbstractHttpDriver
                     // Internal upgrade
                     $this->http2driver = new Http2Driver(
                         $this->getRequestHandler(),
+                        $this->timeoutQueue,
                         $this->getErrorHandler(),
                         $this->getLogger(),
                         $this->getOptions(),
@@ -453,7 +400,7 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException(
                         $this->client,
                         "Invalid header field in trailers",
-                        0,
+                        Status::BAD_REQUEST,
                         $exception
                     );
                 }
@@ -757,6 +704,8 @@ final class Http1Driver extends AbstractHttpDriver
             }
             return;
         } finally {
+            $this->timeoutQueue->removeStream((string) $this->client->getId());
+
             if ($this->bodyQueue !== null) {
                 $queue = $this->bodyQueue;
                 $this->bodyQueue = null;
@@ -852,7 +801,7 @@ final class Http1Driver extends AbstractHttpDriver
 
     private function updateTimeout(): void
     {
-        self::getTimeoutCache()->update($this->client->getId(), \time() + $this->getOptions()->getHttp1Timeout());
+        $this->timeoutQueue->update((string)$this->client->getId(), \time() + $this->getOptions()->getHttp1Timeout());
     }
 
     /**

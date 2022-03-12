@@ -63,9 +63,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     private ReadableStream $readableStream;
     private WritableStream $writableStream;
 
-    private Options $options;
+    private readonly TimeoutQueue $timeoutQueue;
 
-    private PsrLogger $logger;
+    private readonly Options $options;
+
+    private readonly PsrLogger $logger;
 
     private ?string $settings;
 
@@ -111,6 +113,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     public function __construct(
         RequestHandler $requestHandler,
+        TimeoutQueue $timeoutQueue,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
@@ -118,6 +121,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger, $options);
 
+        $this->timeoutQueue = $timeoutQueue;
         $this->options = $options;
         $this->logger = $logger;
         $this->settings = $settings;
@@ -137,13 +141,17 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->writableStream = $writableStream;
 
         $this->processClientInput(fn () => $this->readPreface());
+
+        $this->timeoutQueue->addStream($client, (string) $client->getId(), $this->options->getHttp2Timeout());
     }
 
-    // Provide separate functions for Http2Driver initialization:
-    // The Http1Driver may still be in process of reading a possible request body.
-    // As we want to be able to already start sending HTTP/2 frames before the whole request body has been read, we need to initialize writing early.
-    // Hence we need a separate function for starting reading on the stream.
-    public function initializeWriting(Client $client, WritableStream $writableStream)
+    /**
+     * Provide separate functions for Http2Driver initialization:
+     * The Http1Driver may still be in process of reading a possible request body.
+     * As we want to be able to already start sending HTTP/2 frames before the whole request body has been read,
+     * we need to initialize writing early. Hence, we need a separate function for starting reading on the stream.
+     */
+    public function initializeWriting(Client $client, WritableStream $writableStream): void
     {
         \assert(!isset($this->client), "The driver has already been setup");
 
@@ -156,12 +164,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->readableStream = $readableStream;
         if ($this->settings !== null) {
             // Upgraded connections automatically assume an initial stream with ID 1.
-            $this->streams[1] = new Http2Stream(
-                0, // No data will be incoming on this stream.
-                $this->initialWindowSize,
-                $this->initialWindowSize,
-                Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
-            );
+            // No date will be incoming on this stream, so body size of 0.
+            $this->createStream(1, 0, Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED);
             $this->remainingStreams--;
 
             // Initial settings frame, sent immediately for upgraded connections.
@@ -189,8 +193,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function processClientInput($parserInput)
     {
-        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
         $parser = (new Http2Parser($this))->parse($this->settings);
+
+        $this->timeoutQueue->addStream(
+            $this->client,
+            (string) $this->client->getId(),
+            $this->options->getHttp2Timeout(),
+        );
 
         try {
             $parser->send($parserInput());
@@ -210,6 +219,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->client->close();
             $this->readableStream->close();
             $this->writableStream->close();
+            $this->timeoutQueue->removeStream((string) $this->client->getId());
         }
     }
 
@@ -225,7 +235,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             return; // Client closed the stream or connection.
         }
 
-        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        $this->updateTimeout($id);
 
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
         $deferred = new DeferredFuture;
@@ -527,12 +537,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $request = new Request($this->client, "GET", $pushUri, $headers, "", "2");
 
-        $this->streams[$id] = $stream = new Http2Stream(
-            0, // No data will be incoming on this stream.
-            $this->initialWindowSize,
-            $this->initialWindowSize,
-            Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED
-        );
+        // No data will be incoming on this stream.
+        $stream = $this->createStream($id, 0, Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED);
 
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
@@ -601,7 +607,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $delta = \min($this->clientWindow, $stream->clientWindow);
         $length = \strlen($stream->buffer);
 
-        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        $this->updateTimeout($id);
 
         if ($delta >= $length) {
             $this->clientWindow -= $length;
@@ -659,9 +665,29 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $stream->deferred->getFuture()->await();
     }
 
+    private function createStream(int $id, int $bodySizeLimit, int $flags = Http2Stream::OPEN): Http2Stream
+    {
+        \assert(!isset($this->streams[$id]));
+
+        $this->timeoutQueue->addStream(
+            $this->client,
+            $this->client->getId() . '-' . $id,
+            $this->options->getHttp2Timeout(),
+        );
+
+        return $this->streams[$id] = new Http2Stream(
+            $bodySizeLimit,
+            $this->initialWindowSize,
+            $this->initialWindowSize,
+            $flags,
+        );
+    }
+
     private function releaseStream(int $id, ClientException $exception = null): void
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
+
+        $this->timeoutQueue->removeStream($this->client->getId() . '-' . $id);
 
         if (isset($this->bodyQueues[$id])) {
             $queue = $this->bodyQueues[$id];
@@ -684,6 +710,15 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         if ($id & 1) { // Client-initiated stream.
             $this->remainingStreams++;
         }
+    }
+
+    private function updateTimeout(int $id): void
+    {
+        $clientId = (string) $this->client->getId();
+        $timeout = $this->options->getHttp2Timeout();
+
+        $this->timeoutQueue->update($clientId, $timeout);
+        $this->timeoutQueue->update($clientId . '-' . $id, $timeout);
     }
 
     private function readPreface(): string
@@ -769,9 +804,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         if (!$this->pinged) {
             // Ensure there are a few extra seconds for request after first ping.
-            // TODO: $this->client->updateExpirationTime(
-            // TODO:     \max($this->client->getExpirationTime(), \time() + 5)
-            // TODO: );
+            $this->timeoutQueue->update((string) $this->client->getId(), 5);
         }
 
         $this->pinged++;
@@ -872,17 +905,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 );
             }
 
-            $stream = $this->streams[$streamId] = new Http2Stream(
-                $this->options->getBodySizeLimit(),
-                $this->initialWindowSize,
-                $this->initialWindowSize
-            );
+            $stream = $this->createStream($streamId, $this->options->getBodySizeLimit());
         }
 
         // Header frames can be received on previously opened streams (trailer headers).
         $this->remoteStreamId = \max($streamId, $this->remoteStreamId);
 
-        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        $this->updateTimeout($streamId);
 
         if (isset($this->trailerDeferreds[$streamId]) && $stream->state & Http2Stream::RESERVED) {
             if (!$ended) {
@@ -1086,7 +1115,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     public function handleData(int $streamId, string $data): void
     {
         $length = \strlen($data);
-        // TODO: $this->client->updateExpirationTime(\time() + $this->options->getHttp2Timeout());
+        $this->updateTimeout($streamId);
 
         if (!isset($this->streams[$streamId], $this->bodyQueues[$streamId], $this->trailerDeferreds[$streamId])) {
             if ($streamId > 0 && $streamId <= $this->remoteStreamId) {
@@ -1248,11 +1277,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             // Open a new stream if the ID has not been seen before, but do not set
             // $this->remoteStreamId. That will be set once the headers are received.
-            $this->streams[$streamId] = new Http2Stream(
-                $this->options->getBodySizeLimit(),
-                $this->initialWindowSize,
-                $this->initialWindowSize
-            );
+            $this->createStream($streamId, $this->options->getBodySizeLimit());
         }
 
         $stream = $this->streams[$streamId];

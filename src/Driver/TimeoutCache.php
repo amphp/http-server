@@ -7,15 +7,15 @@ final class TimeoutCache
     /** @var object[] */
     private array $data = [];
 
-    /** @var int[] */
+    /** @var array<string, int> */
     private array $pointers = [];
 
     /**
-     * @param int $id Client ID.
+     * @param string $id Client ID.
      *
      * @return int|null Expiration time if client ID was found in the cache, null if not found.
      */
-    public function getExpirationTime(int $id): ?int
+    public function getExpirationTime(string $id): ?int
     {
         if (!isset($this->pointers[$id])) {
             return null;
@@ -27,10 +27,10 @@ final class TimeoutCache
     /**
      * Renews the timeout for the given ID.
      *
-     * @param int $id        Client ID.
+     * @param string $id Client ID.
      * @param int $expiresAt New expiration time.
      */
-    public function update(int $id, int $expiresAt): void
+    public function update(string $id, int $expiresAt): void
     {
         if (isset($this->pointers[$id])) {
             $node = $this->pointers[$id];
@@ -46,13 +46,13 @@ final class TimeoutCache
             return;
         }
 
-        $entry = new class {
-            public int $id;
-            public int $expiration;
+        $entry = new class ($id, $expiresAt) {
+            public function __construct(
+                public readonly string $id,
+                public int $expiration
+            ) {
+            }
         };
-
-        $entry->id = $id;
-        $entry->expiration = $expiresAt;
 
         $node = \count($this->data);
         $this->data[$node] = $entry;
@@ -70,7 +70,7 @@ final class TimeoutCache
         }
     }
 
-    public function clear(int $id): void
+    public function clear(string $id): void
     {
         if (!isset($this->pointers[$id])) {
             return;
@@ -96,10 +96,10 @@ final class TimeoutCache
     }
 
     /**
-     * @param int  $node   Rebuild the data array from the given node downward.
+     * @param int $node Rebuild the data array from the given node downward.
      * @param bool $remove Remove the given node from the data array if true.
      */
-    private function rebuild(int $node, bool $remove): int
+    private function rebuild(int $node, bool $remove): string
     {
         $data = $this->data[$node];
         $length = \count($this->data);

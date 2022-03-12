@@ -12,9 +12,10 @@ use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
-use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\DefaultTimeoutQueue;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
+use Amp\Http\Server\Driver\TimeoutQueue;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -30,6 +31,15 @@ use function Amp\delay;
 
 class Http1DriverTest extends HttpDriverTest
 {
+    private TimeoutQueue $timeoutQueue;
+
+    public function setUp(): void
+    {
+        parent::setUp();
+
+        $this->timeoutQueue = new DefaultTimeoutQueue();
+    }
+
     /**
      * @dataProvider provideUnparsableRequests
      */
@@ -41,6 +51,7 @@ class Http1DriverTest extends HttpDriverTest
     ): void {
         $driver = new Http1Driver(
             new ClosureRequestHandler($this->createCallback(0)),
+            $this->timeoutQueue,
             new DefaultErrorHandler(new NullLogger), // Using concrete instance to generate error response.
             new NullLogger,
             $options,
@@ -66,6 +77,7 @@ class Http1DriverTest extends HttpDriverTest
     ): void {
         $driver = new Http1Driver(
             new ClosureRequestHandler($this->createCallback(0)),
+            $this->timeoutQueue,
             new DefaultErrorHandler(new NullLogger), // Using concrete instance to generate error response.
             new NullLogger,
             $options,
@@ -94,6 +106,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function (Request $req) use (&$request) {
                 $request = $req;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             new Options,
@@ -131,6 +144,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function (Request $req) use (&$request) {
                 $request = $req;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             new Options,
@@ -172,6 +186,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function () {
                 $this->fail("Should not be called");
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             (new Options)->withAllowedMethods(["OPTIONS", "HEAD", "GET", "FOO"]),
@@ -205,6 +220,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function (Request $req) use (&$request) {
                 $request = $req;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             new Options,
@@ -267,6 +283,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function (Request $req) use (&$request) {
                 $request = $req;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             new Options,
@@ -682,6 +699,7 @@ class Http1DriverTest extends HttpDriverTest
                 /** @var $request */
                 $body = $request->getBody()->buffer();
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             (new Options)->withBodySizeLimit(4),
@@ -729,6 +747,7 @@ class Http1DriverTest extends HttpDriverTest
                 } catch (ClientException $exception) {
                 }
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             (new Options)->withBodySizeLimit(1),
@@ -757,6 +776,7 @@ class Http1DriverTest extends HttpDriverTest
                 $request = $req;
                 $responses++;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             new Options,
@@ -835,6 +855,7 @@ class Http1DriverTest extends HttpDriverTest
 
                 return $response;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             (new Options)->withHttp1Timeout(60),
@@ -875,6 +896,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function () use ($response) {
                 return $response;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             (new Options)->withHttp1Timeout(60),
@@ -942,6 +964,7 @@ class Http1DriverTest extends HttpDriverTest
     {
         $driver = new Http1Driver(
             new ClosureRequestHandler(fn () => new Response()),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
@@ -978,6 +1001,7 @@ class Http1DriverTest extends HttpDriverTest
                 $request = $req;
                 return new Response;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             $options,
@@ -1024,6 +1048,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function (Request $req) use (&$request) {
                 $request = $req;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             $options,
@@ -1061,6 +1086,7 @@ class Http1DriverTest extends HttpDriverTest
 
                 return new Response();
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             new Options,
@@ -1098,6 +1124,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(function (Request $req) use (&$request) {
                 $request = $req;
             }),
+            $this->timeoutQueue,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
             new Options,

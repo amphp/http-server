@@ -14,7 +14,9 @@ use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Internal\HPackNghttp2;
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\DefaultTimeoutQueue;
 use Amp\Http\Server\Driver\Http2Driver;
+use Amp\Http\Server\Driver\TimeoutQueue;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -99,14 +101,15 @@ class Http2DriverTest extends HttpDriverTest
     {
         parent::setUp();
 
-        $this->initDriver(new Options);
+        $this->initDriver(new Options, new DefaultTimeoutQueue);
         $this->input = new ReadableBuffer('');
+
         $this->output = new Pipe(\PHP_INT_MAX);
         $this->outputReader = new BufferedReader($this->output->getSource());
         $this->responses = new \SplQueue;
     }
 
-    private function initDriver(Options $options)
+    private function initDriver(Options $options, TimeoutQueue $timeoutQueue)
     {
         $this->driver = new Http2Driver(new ClosureRequestHandler(function ($req) {
             $this->requests[] = $req;
@@ -131,7 +134,7 @@ class Http2DriverTest extends HttpDriverTest
             $this->pushes = [];
 
             return $response;
-        }), $this->createMock(ErrorHandler::class), new NullLogger, $options);
+        }), $timeoutQueue, $this->createMock(ErrorHandler::class), new NullLogger, $options);
     }
 
     protected function givenInput(ReadableStream $input): void
@@ -506,7 +509,8 @@ class Http2DriverTest extends HttpDriverTest
             self::markTestSkipped('Not supported with nghttp2, disable ffi for this test.');
         }
 
-        $this->initDriver((new Options)->withStreamThreshold(1)); // Set stream threshold to 1 to force immediate writes to client.
+        // Set stream threshold to 1 to force immediate writes to client.
+        $this->initDriver((new Options)->withStreamThreshold(1), new DefaultTimeoutQueue);
         $input = new Queue;
         $this->givenInput(new ReadableIterableStream($input->pipe()));
         $frames = new ConcurrentIterableIterator($this->whenReceivingFrames());

@@ -10,10 +10,11 @@ use Psr\Log\LoggerInterface;
 final class DefaultHttpDriverFactory implements HttpDriverFactory
 {
     public function __construct(
-        private RequestHandler $requestHandler,
-        private ErrorHandler $errorHandler,
-        private LoggerInterface $logger,
-        private Options $options
+        private readonly RequestHandler $requestHandler,
+        private readonly ErrorHandler $errorHandler,
+        private readonly LoggerInterface $logger,
+        private readonly Options $options,
+        private readonly TimeoutQueue $timeoutQueue = new DefaultTimeoutQueue,
     ) {
     }
 
@@ -27,6 +28,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         if ($client->getTlsInfo()?->getApplicationLayerProtocol() === "h2") {
             return new Http2Driver(
                 $this->requestHandler,
+                $this->timeoutQueue,
                 $this->errorHandler,
                 $this->logger,
                 $this->options
@@ -35,6 +37,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
 
         return new Http1Driver(
             $this->requestHandler,
+            $this->timeoutQueue,
             $this->errorHandler,
             $this->logger,
             $this->options,

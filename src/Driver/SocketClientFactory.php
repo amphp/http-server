@@ -8,7 +8,10 @@ use Amp\TimeoutCancellation;
 
 final class SocketClientFactory implements ClientFactory
 {
-    private float $tlsHandshakeTimeout = 5;
+    public function __construct(
+        private readonly float $tlsHandshakeTimeout = 5,
+    ) {
+    }
 
     public function createClient(Socket $socket): ?Client
     {
