@@ -4,7 +4,7 @@ namespace Amp\Http\Server\Driver;
 
 use Revolt\EventLoop;
 
-class DefaultTimeoutQueue implements TimeoutQueue
+final class DefaultTimeoutQueue implements TimeoutQueue
 {
     private readonly TimeoutCache $timeoutCache;
 
@@ -37,24 +37,15 @@ class DefaultTimeoutQueue implements TimeoutQueue
         EventLoop::cancel($this->callbackId);
     }
 
-    public function addStream(Client $client, string $streamId, int $timeout): void
+    public function update(string $streamId, Client $client, int $timeout): void
     {
         $this->clients[$streamId] = $client;
         $this->timeoutCache->update($streamId, \time() + $timeout);
     }
 
-    public function removeStream(string $streamId): void
+    public function remove(string $streamId): void
     {
         unset($this->clients[$streamId]);
         $this->timeoutCache->clear($streamId);
-    }
-
-    public function update(string $streamId, int $timeout): void
-    {
-        if (!isset($this->clients[$streamId])) {
-            return;
-        }
-
-        $this->timeoutCache->update($streamId, \time() + $timeout);
     }
 }

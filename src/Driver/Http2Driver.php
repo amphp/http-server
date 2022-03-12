@@ -132,8 +132,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->writableStream = $writableStream;
 
         $this->processClientInput(fn () => $this->readPreface());
-
-        $this->timeoutQueue->addStream($client, (string) $client->getId(), $this->options->getHttp2Timeout());
     }
 
     /**
@@ -182,13 +180,15 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->processClientInput(fn () => $buffer);
     }
 
-    private function processClientInput($parserInput)
+    private function processClientInput(\Closure $parserInput): void
     {
+        $this->timeoutQueue->update((string) $this->client->getId(), $this->client, $this->options->getHttp2Timeout());
+
         $parser = (new Http2Parser($this))->parse($this->settings);
 
-        $this->timeoutQueue->addStream(
-            $this->client,
+        $this->timeoutQueue->update(
             (string) $this->client->getId(),
+            $this->client,
             $this->options->getHttp2Timeout(),
         );
 
@@ -207,10 +207,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         } catch (Http2ConnectionException $exception) {
             $this->shutdown(null, $exception);
         } finally {
-            $this->client->close();
-            $this->readableStream->close();
-            $this->writableStream->close();
-            $this->timeoutQueue->removeStream((string) $this->client->getId());
+            $this->timeoutQueue->remove((string) $this->client->getId());
         }
     }
 
@@ -477,12 +474,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 }
             }
 
-            // otherwise caller is still in process of initializing this driver
-            if (isset($this->readableStream)) {
-                $this->client->close();
-                $this->readableStream->close();
-                $this->writableStream->close();
-            }
+            $this->client->close();
+            $this->readableStream->close();
+            $this->writableStream->close();
         }
     }
 
@@ -660,9 +654,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         \assert(!isset($this->streams[$id]));
 
-        $this->timeoutQueue->addStream(
-            $this->client,
+        $this->timeoutQueue->update(
             $this->client->getId() . '-' . $id,
+            $this->client,
             $this->options->getHttp2Timeout(),
         );
 
@@ -678,7 +672,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 
-        $this->timeoutQueue->removeStream($this->client->getId() . '-' . $id);
+        $this->timeoutQueue->remove($this->client->getId() . '-' . $id);
 
         if (isset($this->bodyQueues[$id])) {
             $queue = $this->bodyQueues[$id];
@@ -708,8 +702,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $clientId = (string) $this->client->getId();
         $timeout = $this->options->getHttp2Timeout();
 
-        $this->timeoutQueue->update($clientId, $timeout);
-        $this->timeoutQueue->update($clientId . '-' . $id, $timeout);
+        $this->timeoutQueue->update($clientId, $this->client, $timeout);
+        $this->timeoutQueue->update($clientId . '-' . $id, $this->client, $timeout);
     }
 
     private function readPreface(): string
@@ -795,7 +789,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         if (!$this->pinged) {
             // Ensure there are a few extra seconds for request after first ping.
-            $this->timeoutQueue->update((string) $this->client->getId(), 5);
+            $this->timeoutQueue->update((string) $this->client->getId(), $this->client, 5);
         }
 
         $this->pinged++;

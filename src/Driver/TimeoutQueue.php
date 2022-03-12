@@ -4,9 +4,13 @@ namespace Amp\Http\Server\Driver;
 
 interface TimeoutQueue
 {
-    public function addStream(Client $client, string $streamId, int $timeout): void;
+    /**
+     * Insert or update the timeout for the associated client and stream ID.
+     */
+    public function update(string $streamId, Client $client, int $timeout): void;
 
-    public function removeStream(string $streamId): void;
-
-    public function update(string $streamId, int $timeout): void;
+    /**
+     * Remove the given stream ID.
+     */
+    public function remove(string $streamId): void;
 }

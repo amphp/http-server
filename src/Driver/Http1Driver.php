@@ -66,7 +66,7 @@ final class Http1Driver extends AbstractHttpDriver
     {
         \assert(!isset($this->client));
 
-        $this->timeoutQueue->addStream($client, (string) $client->getId(), $this->options->getHttp1Timeout());
+        $this->updateTimeout();
 
         $this->client = $client;
         $this->readableStream = $readableStream;
@@ -704,7 +704,7 @@ final class Http1Driver extends AbstractHttpDriver
             }
             return;
         } finally {
-            $this->timeoutQueue->removeStream((string) $this->client->getId());
+            $this->removeTimeout();
 
             if ($this->bodyQueue !== null) {
                 $queue = $this->bodyQueue;
@@ -801,7 +801,12 @@ final class Http1Driver extends AbstractHttpDriver
 
     private function updateTimeout(): void
     {
-        $this->timeoutQueue->update((string) $this->client->getId(), $this->options->getHttp1Timeout());
+        $this->timeoutQueue->update((string) $this->client->getId(), $this->client, $this->options->getHttp1Timeout());
+    }
+
+    private function removeTimeout(): void
+    {
+        $this->timeoutQueue->remove((string) $this->client->getId());
     }
 
     /**
@@ -863,6 +868,8 @@ final class Http1Driver extends AbstractHttpDriver
         $body = $response->getBody();
         $streamThreshold = $this->options->getStreamThreshold();
 
+        $this->removeTimeout();
+
         try {
             while (null !== $chunk = $body->read()) {
                 $length = \strlen($chunk);
@@ -876,8 +883,6 @@ final class Http1Driver extends AbstractHttpDriver
                 }
 
                 $buffer .= $chunk;
-
-                $this->updateTimeout();
 
                 if (\strlen($buffer) < $streamThreshold) {
                     continue;
@@ -913,6 +918,8 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->client->close();
             }
         }
+
+        $this->updateTimeout();
     }
 
     /**
