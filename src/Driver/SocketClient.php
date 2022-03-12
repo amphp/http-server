@@ -9,15 +9,15 @@ use Revolt\EventLoop;
 
 final class SocketClient implements Client
 {
-    private int $id;
-
-    private ?TlsInfo $tlsInfo = null;
+    private readonly int $id;
 
     /** @var \Closure[]|null */
     private ?array $onClose = [];
 
-    public function __construct(private Socket $socket)
-    {
+    public function __construct(
+        private readonly Socket $socket,
+        private readonly ?TlsInfo $tlsInfo,
+    ) {
         $this->id = createClientId();
     }
 

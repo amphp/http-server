@@ -15,8 +15,9 @@ final class SocketClientFactory implements ClientFactory
         $context = \stream_context_get_options($socket->getResource());
         if ($socket instanceof EncryptableSocket && isset($context["ssl"])) {
             $socket->setupTls(new TimeoutCancellation($this->tlsHandshakeTimeout));
+            $tlsInfo = $socket->getTlsInfo();
         }
 
-        return new SocketClient($socket);
+        return new SocketClient($socket, $tlsInfo ?? null);
     }
 }
