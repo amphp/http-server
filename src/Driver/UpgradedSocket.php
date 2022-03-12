@@ -111,8 +111,9 @@ final class UpgradedSocket implements Socket
     public function getResource()
     {
         if (!($this->writableStream instanceof ResourceStream)) {
-            throw new \Exception("Cannot get resource from non-socket stream");
+            return null;
         }
+
         return $this->writableStream->getResource();
     }
 }
