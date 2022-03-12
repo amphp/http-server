@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\CancelledException;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\Socket;
 use Amp\TimeoutCancellation;
@@ -17,7 +18,12 @@ final class SocketClientFactory implements ClientFactory
     {
         $context = \stream_context_get_options($socket->getResource());
         if ($socket instanceof EncryptableSocket && isset($context["ssl"])) {
-            $socket->setupTls(new TimeoutCancellation($this->tlsHandshakeTimeout));
+            try {
+                $socket->setupTls(new TimeoutCancellation($this->tlsHandshakeTimeout));
+            } catch (CancelledException) {
+                return null;
+            }
+
             $tlsInfo = $socket->getTlsInfo();
         }
 

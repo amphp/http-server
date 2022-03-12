@@ -69,7 +69,8 @@ final class HttpServer
         $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
-        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options);
+        $this->driverFactory = $driverFactory ??
+            new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options,);
     }
 
     /**
@@ -178,21 +179,19 @@ final class HttpServer
 
     private function accept(Socket\EncryptableSocket $clientSocket): void
     {
-        $client = $this->clientFactory->createClient($clientSocket);
-        if ($client === null) {
-            return;
-        }
-
-        $httpDriver = $this->driverFactory->createHttpDriver($client);
-
         try {
+            $client = $this->clientFactory->createClient($clientSocket);
+            if ($client === null) {
+                return;
+            }
+
+            $httpDriver = $this->driverFactory->createHttpDriver($client);
+
             $httpDriver->handleClient(
                 $client,
                 $clientSocket,
                 $clientSocket,
             );
-        } catch (ClientException) {
-            $clientSocket->close();
         } catch (\Throwable $exception) {
             \assert(!$this->getLogger()->debug("Exception while handling client {address}", [
                 'address' => $clientSocket->getRemoteAddress(),
