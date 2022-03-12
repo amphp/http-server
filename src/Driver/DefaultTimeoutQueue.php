@@ -8,9 +8,9 @@ final class DefaultTimeoutQueue implements TimeoutQueue
 {
     private readonly TimeoutCache $timeoutCache;
 
-    private string $callbackId;
+    private readonly string $callbackId;
 
-    /** @var array<string, array{}> */
+    /** @var array<string, array{Client, int, \Closure(Client, int):void}> */
     private array $callbacks = [];
 
     public function __construct()

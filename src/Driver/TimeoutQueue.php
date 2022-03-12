@@ -7,7 +7,7 @@ interface TimeoutQueue
     /**
      * Insert a client and stream pair. The given closure is invoked when the timeout elapses.
      *
-     * @param \Closure(Client $client, int $streamId):void $onTimeout
+     * @param \Closure(Client, int):void $onTimeout
      */
     public function insert(Client $client, int $streamId, \Closure $onTimeout, int $timeout): void;
 
