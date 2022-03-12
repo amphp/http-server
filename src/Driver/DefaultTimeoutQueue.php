@@ -10,23 +10,25 @@ final class DefaultTimeoutQueue implements TimeoutQueue
 
     private string $callbackId;
 
-    /** @var array<string, Client> */
-    private array $clients = [];
+    /** @var array<string, array{}> */
+    private array $callbacks = [];
 
     public function __construct()
     {
         $this->timeoutCache = $timeoutCache = new TimeoutCache();
 
-        $clients = &$this->clients;
+        $callbacks = &$this->callbacks;
         $this->callbackId = EventLoop::unreference(
-            EventLoop::repeat(1, static function () use (&$clients, $timeoutCache): void {
+            EventLoop::repeat(1, static function () use (&$callbacks, $timeoutCache): void {
                 $now = \time();
 
                 while ($id = $timeoutCache->extract($now)) {
-                    \assert(isset($clients[$id]), "Timeout cache contains an invalid client ID");
+                    \assert(isset($callbacks[$id]), "Timeout cache contains an invalid client ID");
 
                     // Client is either idle or taking too long to send request, so simply close the connection.
-                    $clients[$id]->close();
+                    [$client, $streamId, $onTimeout] = $callbacks[$id];
+
+                    $onTimeout($client, $streamId);
                 }
             })
         );
@@ -37,15 +39,33 @@ final class DefaultTimeoutQueue implements TimeoutQueue
         EventLoop::cancel($this->callbackId);
     }
 
-    public function update(string $streamId, Client $client, int $timeout): void
+    public function insert(Client $client, int $streamId, \Closure $onTimeout, int $timeout): void
     {
-        $this->clients[$streamId] = $client;
-        $this->timeoutCache->update($streamId, \time() + $timeout);
+        $cacheId = $this->makeId($client, $streamId);
+        \assert(!isset($this->callbacks[$cacheId]));
+
+        $this->callbacks[$cacheId] = [$client, $streamId, $onTimeout];
+        $this->timeoutCache->update($cacheId, \time() + $timeout);
     }
 
-    public function remove(string $streamId): void
+    public function update(Client $client, int $streamId, int $timeout): void
     {
-        unset($this->clients[$streamId]);
-        $this->timeoutCache->clear($streamId);
+        $cacheId = $this->makeId($client, $streamId);
+        \assert(isset($this->callbacks[$cacheId]));
+
+        $this->timeoutCache->update($this->makeId($client, $streamId), \time() + $timeout);
+    }
+
+    public function remove(Client $client, int $streamId): void
+    {
+        $cacheId = $this->makeId($client, $streamId);
+
+        $this->timeoutCache->clear($cacheId);
+        unset($this->callbacks[$cacheId]);
+    }
+
+    private function makeId(Client $client, int $streamId): string
+    {
+        return $client->getId() . ':' . $streamId;
     }
 }

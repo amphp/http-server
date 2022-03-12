@@ -66,22 +66,24 @@ final class Http1Driver extends AbstractHttpDriver
     {
         \assert(!isset($this->client));
 
-        $this->updateTimeout();
-
         $this->client = $client;
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
+
+        $this->insertTimeout();
 
         $headerSizeLimit = $this->options->getHeaderSizeLimit();
 
         $buffer = $readableStream->read();
         if ($buffer === null) {
+            $this->removeTimeout();
             return;
         }
 
         try {
             do {
                 if ($this->http2driver) {
+                    $this->removeTimeout();
                     $this->http2driver->handleClientWithBuffer($buffer, $this->readableStream);
                     return;
                 }
@@ -130,6 +132,8 @@ final class Http1Driver extends AbstractHttpDriver
 
                 if ($protocol !== "1.1" && $protocol !== "1.0") {
                     if ($protocol === "2.0" && $this->options->isHttp2UpgradeAllowed()) {
+                        $this->removeTimeout();
+
                         // Internal upgrade to HTTP/2.
                         $this->http2driver = new Http2Driver(
                             $this->requestHandler,
@@ -698,30 +702,30 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->pendingResponseCount--;
             } while (true);
         } catch (ClientException $exception) {
-            if ($this->bodyQueue === null || $this->pendingResponseCount) {
+            if ($this->bodyQueue === null || !$this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
-                $this->sendErrorResponse($exception)->await();
+                $this->pendingResponse = $this->sendErrorResponse($exception);
+                $this->pendingResponse->await(); // Set $this->pendingResponse for finally block.
             }
-            return;
         } finally {
-            $this->removeTimeout();
+            $this->pendingResponse->finally(fn () => $this->removeTimeout())->ignore();
 
             if ($this->bodyQueue !== null) {
                 $queue = $this->bodyQueue;
                 $this->bodyQueue = null;
                 $queue->error($exception ?? new ClientException(
-                    $this->client,
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                ));
+                        $this->client,
+                        "Client disconnected",
+                        Status::REQUEST_TIMEOUT
+                    ));
             }
 
             if (isset($trailerDeferred)) {
                 $trailerDeferred->error($exception ?? new ClientException(
-                    $this->client,
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                ));
+                        $this->client,
+                        "Client disconnected",
+                        Status::REQUEST_TIMEOUT
+                    ));
                 $trailerDeferred = null;
             }
         }
@@ -734,20 +738,21 @@ final class Http1Driver extends AbstractHttpDriver
     {
         if ($this->http2driver) {
             $this->http2driver->write($request, $response);
-        } else {
-            $deferred = new DeferredFuture;
-            $lastWrite = $this->lastWrite;
-            $this->lastWrite = $deferred->getFuture();
+            return;
+        }
 
-            try {
-                $this->send($lastWrite, $response, $request);
-            } finally {
-                $deferred->complete();
-            }
+        $deferred = new DeferredFuture;
+        $lastWrite = $this->lastWrite;
+        $this->lastWrite = $deferred->getFuture();
 
-            if ($response->isUpgraded()) {
-                $this->upgrade($request, $response);
-            }
+        try {
+            $this->send($lastWrite, $response, $request);
+        } finally {
+            $deferred->complete();
+        }
+
+        if ($response->isUpgraded()) {
+            $this->upgrade($request, $response);
         }
     }
 
@@ -799,14 +804,24 @@ final class Http1Driver extends AbstractHttpDriver
         $this->lastWrite->await();
     }
 
+    private function insertTimeout(): void
+    {
+        $this->timeoutQueue->insert(
+            $this->client,
+            0,
+            static fn (Client $client) => $client->close(),
+            $this->options->getHttp1Timeout(),
+        );
+    }
+
     private function updateTimeout(): void
     {
-        $this->timeoutQueue->update((string) $this->client->getId(), $this->client, $this->options->getHttp1Timeout());
+        $this->timeoutQueue->update($this->client, 0, $this->options->getHttp1Timeout());
     }
 
     private function removeTimeout(): void
     {
-        $this->timeoutQueue->remove((string) $this->client->getId());
+        $this->timeoutQueue->remove($this->client, 0);
     }
 
     /**
@@ -868,7 +883,7 @@ final class Http1Driver extends AbstractHttpDriver
         $body = $response->getBody();
         $streamThreshold = $this->options->getStreamThreshold();
 
-        $this->removeTimeout();
+        $this->updateTimeout();
 
         try {
             while (null !== $chunk = $body->read()) {
@@ -889,6 +904,7 @@ final class Http1Driver extends AbstractHttpDriver
                 }
 
                 $this->writableStream->write($buffer);
+                $this->updateTimeout();
                 $buffer = "";
             }
 
@@ -918,8 +934,6 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->client->close();
             }
         }
-
-        $this->updateTimeout();
     }
 
     /**

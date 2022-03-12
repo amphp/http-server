@@ -86,7 +86,7 @@ final class TimeoutCache
      *
      * @return  int|null Client ID removed, or null if no client has expired.
      */
-    public function extract(int $now): ?int
+    public function extract(int $now): ?string
     {
         if (empty($this->data) || $this->data[0]->expiration > $now) {
             return null;
