@@ -161,12 +161,14 @@ final class HttpServer
         $this->logger->info("Started server");
 
         foreach ($this->sockets as $socket) {
+            $this->driverFactory->setupSocketServer($socket);
+
             $scheme = $socket->getBindContext()?->getTlsContext() !== null ? 'https' : 'http';
             $serverName = $socket->getAddress()->toString();
 
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-            async(function () use ($socket) {
+            async(function () use ($socket): void {
                 while ($client = $socket->accept()) {
                     $this->accept($client);
                 }
