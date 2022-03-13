@@ -146,6 +146,7 @@ final class Http1Driver extends AbstractHttpDriver
                         );
 
                         $this->http2driver->handleClient(
+                            $requestHandler,
                             $this->client,
                             new ReadableStreamChain(
                                 new ReadableBuffer("$startLine\r\n$rawHeaders\r\n$buffer"),
@@ -346,7 +347,7 @@ final class Http1Driver extends AbstractHttpDriver
                         $h2cSettings
                     );
 
-                    $this->http2driver->initializeWriting($this->client, $this->writableStream);
+                    $this->http2driver->initializeWriting($requestHandler, $this->client, $this->writableStream);
 
                     // Remove headers that are not related to the HTTP/2 request.
                     foreach ($parsedHeaders as $index => [$key, $value]) {

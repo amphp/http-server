@@ -20,6 +20,7 @@ use Amp\Http\Server\Driver\TimeoutQueue;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
@@ -109,32 +110,9 @@ class Http2DriverTest extends HttpDriverTest
         $this->responses = new \SplQueue;
     }
 
-    private function initDriver(Options $options, TimeoutQueue $timeoutQueue)
+    private function initDriver(Options $options, TimeoutQueue $timeoutQueue): void
     {
-        $this->driver = new Http2Driver(new ClosureRequestHandler(function ($req) {
-            $this->requests[] = $req;
-
-            // Ensure microtasks are running between individual requests
-            delay(0);
-
-            if ($this->requestSuspension) {
-                $this->requestSuspension->resume($req);
-                $this->requestSuspension = null;
-            }
-
-            if ($this->responses->isEmpty()) {
-                $response = new Response;
-            } else {
-                $response = $this->responses->pop();
-            }
-
-            foreach ($this->pushes as $push) {
-                $response->push($push);
-            }
-            $this->pushes = [];
-
-            return $response;
-        }), $timeoutQueue, $this->createMock(ErrorHandler::class), new NullLogger, $options);
+        $this->driver = new Http2Driver($timeoutQueue, $this->createMock(ErrorHandler::class), new NullLogger, $options);
     }
 
     protected function givenInput(ReadableStream $input): void
@@ -144,8 +122,35 @@ class Http2DriverTest extends HttpDriverTest
 
     protected function whenRequestIsReceived(): Request
     {
-        async(fn () => $this->driver->handleClient($this->createClientMock(), $this->input, $this->output->getSink()))
-            ->ignore();
+        async(fn () => $this->driver->handleClient(
+            new ClosureRequestHandler(function (Request $req): Response {
+                $this->requests[] = $req;
+
+                // Ensure microtasks are running between individual requests
+                delay(0);
+
+                if ($this->requestSuspension) {
+                    $this->requestSuspension->resume($req);
+                    $this->requestSuspension = null;
+                }
+
+                if ($this->responses->isEmpty()) {
+                    $response = new Response;
+                } else {
+                    $response = $this->responses->pop();
+                }
+
+                foreach ($this->pushes as $push) {
+                    $response->push($push);
+                }
+                $this->pushes = [];
+
+                return $response;
+            }),
+            $this->createClientMock(),
+            $this->input,
+            $this->output->getSink(),
+        ))->ignore();
 
         $this->requestSuspension = EventLoop::getSuspension();
 
@@ -154,7 +159,12 @@ class Http2DriverTest extends HttpDriverTest
 
     protected function whenClientIsHandled(?Client $client = null): void
     {
-        $this->driver->handleClient($client ?? $this->createClientMock(), $this->input, $this->output->getSink());
+        $this->driver->handleClient(
+            $this->createMock(RequestHandler::class),
+            $client ?? $this->createClientMock(),
+            $this->input,
+            $this->output->getSink(),
+        );
     }
 
     /**
@@ -301,6 +311,7 @@ class Http2DriverTest extends HttpDriverTest
             $queue->complete();
         });
 
+        $request = async(fn () => $this->whenRequestIsReceived());
         $this->givenNextResponse($response);
 
         $frames = new ConcurrentIterableIterator($this->whenReceivingFrames());
@@ -370,6 +381,8 @@ class Http2DriverTest extends HttpDriverTest
             'stream' => 1,
             'buffer' => $hpackBuffer,
         ], $frames->getValue());
+
+        $request->await();
     }
 
     public function testWriterAbortAfterHeaders(): void
@@ -404,6 +417,7 @@ class Http2DriverTest extends HttpDriverTest
             $queue->error(new \Exception());
         });
 
+        $request = async(fn () => $this->whenRequestIsReceived());
         $this->givenNextResponse($response);
 
         $frames = new ConcurrentIterableIterator($this->whenReceivingFrames());
@@ -470,6 +484,8 @@ class Http2DriverTest extends HttpDriverTest
             'stream' => 1,
             'buffer' => \pack("N", Http2Parser::INTERNAL_ERROR),
         ], $frames->getValue());
+
+        $request->await();
     }
 
     public function testPingPong(): void
@@ -511,6 +527,8 @@ class Http2DriverTest extends HttpDriverTest
 
         // Set stream threshold to 1 to force immediate writes to client.
         $this->initDriver((new Options)->withStreamThreshold(1), new DefaultTimeoutQueue);
+        $request = async(fn () => $this->whenRequestIsReceived());
+
         $input = new Queue;
         $this->givenInput(new ReadableIterableStream($input->pipe()));
         $frames = new ConcurrentIterableIterator($this->whenReceivingFrames());
@@ -552,7 +570,7 @@ class Http2DriverTest extends HttpDriverTest
             ["content-type" => "text/html; charset=utf-8"],
             new ReadableIterableStream($queue->pipe())
         ));
-        $request = $this->whenRequestIsReceived();
+        $request->await();
 
         $hpack = new HPack;
         $hpackBuffer = $hpack->encode([
@@ -675,7 +693,7 @@ class Http2DriverTest extends HttpDriverTest
         $queue->push("*");
         $wasEmpty = false;
         try {
-            EventLoop::defer(function () {}); // timeoutcancellation is unreferenced...
+            EventLoop::defer(fn () => null); // TimeoutCancellation is unreferenced...
             $frames->continue(new TimeoutCancellation(0));
         } catch (CancelledException) {
             $wasEmpty = true;
@@ -806,8 +824,12 @@ class Http2DriverTest extends HttpDriverTest
 
     private function whenReceivingFrames(): iterable
     {
-        async(fn () => $this->driver->handleClient($this->createClientMock(), $this->input, $this->output->getSink()))
-            ->ignore();
+        async(fn () => $this->driver->handleClient(
+            $this->createMock(RequestHandler::class),
+            $this->createClientMock(),
+            $this->input,
+            $this->output->getSink(),
+        ))->ignore();
 
         while (true) {
             $frameHeader = $this->outputReader->readLength(9);

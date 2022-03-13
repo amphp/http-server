@@ -42,20 +42,18 @@ class IntegrationTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage('Argument #1 ($sockets) can\'t be an empty array');
 
-        new HttpServer([], new ClosureRequestHandler(function () {
-            return new Response;
-        }), $this->createMock(PsrLogger::class));
+        new HttpServer([], $this->createMock(PsrLogger::class));
     }
 
     public function testShutdownWaitsOnUnfinishedResponses(): void
     {
-        $server = new HttpServer([$this->serverSocket], new ClosureRequestHandler(function () {
+        $server = new HttpServer([$this->serverSocket], $this->createMock(PsrLogger::class));
+
+        $server->start(new ClosureRequestHandler(function () {
             delay(0.2);
 
             return new Response(Status::NO_CONTENT);
-        }), $this->createMock(PsrLogger::class));
-
-        $server->start();
+        }));
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/"));
 
@@ -71,18 +69,17 @@ class IntegrationTest extends AsyncTestCase
     {
         $server = new HttpServer(
             [$this->serverSocket],
-            new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
-                $request = $req;
-                $body = $request->getBody()->buffer();
-
-                delay(0.2);
-
-                return new Response(Status::OK, ["FOO" => "bar"], "message");
-            }),
             $this->createMock(PsrLogger::class)
         );
 
-        $server->start();
+        $server->start(new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
+            $request = $req;
+            $body = $request->getBody()->buffer();
+
+            delay(0.2);
+
+            return new Response(Status::OK, ["FOO" => "bar"], "message");
+        }));
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
 
@@ -101,18 +98,17 @@ class IntegrationTest extends AsyncTestCase
     {
         $server = new HttpServer(
             [$this->serverSocket],
-            new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
-                $request = $req;
-                $body = $request->getBody()->buffer();
-
-                delay(0.2);
-
-                return new Response(Status::OK, ["FOO" => "bar"], "message");
-            }),
             $this->createMock(PsrLogger::class)
         );
 
-        $server->start();
+        $server->start(new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
+            $request = $req;
+            $body = $request->getBody()->buffer();
+
+            delay(0.2);
+
+            return new Response(Status::OK, ["FOO" => "bar"], "message");
+        }));
 
         $queue = new Queue();
 
@@ -144,13 +140,9 @@ class IntegrationTest extends AsyncTestCase
      */
     public function testPreRequestHandlerFailure(ClientRequest $request, int $status): void
     {
-        $server = new HttpServer(
-            [$this->serverSocket],
-            new ClosureRequestHandler($this->createCallback(0)),
-            $this->createMock(PsrLogger::class)
-        );
+        $server = new HttpServer([$this->serverSocket], $this->createMock(PsrLogger::class));
 
-        $server->start();
+        $server->start(new ClosureRequestHandler($this->createCallback(0)));
 
         $request->setUri($this->getAuthority());
 
@@ -174,11 +166,11 @@ class IntegrationTest extends AsyncTestCase
 
     public function testError(): void
     {
-        $server = new HttpServer([$this->serverSocket], new ClosureRequestHandler(function (Request $req) {
-            throw new \Exception;
-        }), $this->createMock(PsrLogger::class));
+        $server = new HttpServer([$this->serverSocket], $this->createMock(PsrLogger::class));
 
-        $server->start();
+        $server->start(new ClosureRequestHandler(function (Request $req) {
+            throw new \Exception;
+        }));
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
 

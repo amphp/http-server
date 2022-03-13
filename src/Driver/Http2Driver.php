@@ -151,10 +151,15 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
      * As we want to be able to already start sending HTTP/2 frames before the whole request body has been read,
      * we need to initialize writing early. Hence, we need a separate function for starting reading on the stream.
      */
-    public function initializeWriting(Client $client, WritableStream $writableStream): void
+    public function initializeWriting(
+        RequestHandler $requestHandler,
+        Client $client,
+        WritableStream $writableStream,
+    ): void
     {
         \assert(!isset($this->client), "The driver has already been setup");
 
+        $this->requestHandler = $requestHandler;
         $this->client = $client;
         $this->writableStream = $writableStream;
     }
