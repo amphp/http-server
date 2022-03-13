@@ -7,12 +7,12 @@ use Psr\Log\LoggerInterface as PsrLogger;
 interface HttpServer
 {
     /**
-     * @param \Closure(ServerLifecycle):void $onStart
+     * @param \Closure(HttpServer):void $onStart
      */
     public function onStart(\Closure $onStart): void;
 
     /**
-     * @param \Closure(ServerLifecycle):void $onStop
+     * @param \Closure(HttpServer):void $onStop
      */
     public function onStop(\Closure $onStop): void;
 
