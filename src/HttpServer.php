@@ -11,7 +11,7 @@ use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
 use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\async;
+use Revolt\EventLoop;
 
 final class HttpServer
 {
@@ -70,7 +70,7 @@ final class HttpServer
         $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
         $this->driverFactory = $driverFactory ??
-            new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options, );
+            new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options);
     }
 
     /**
@@ -169,9 +169,9 @@ final class HttpServer
 
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-            async(function () use ($socket): void {
+            EventLoop::queue(function () use ($socket): void {
                 while ($client = $socket->accept()) {
-                    $this->accept($client);
+                    EventLoop::queue(fn () => $this->accept($client));
                 }
             });
         }
