@@ -39,8 +39,7 @@
         "league/uri": "^6",
         "psr/http-message": "^1",
         "psr/log": "^1|^2|^3",
-        "cash/lrucache": "^1",
-        "revolt/event-loop": "dev-main as 0.2.4"
+        "cash/lrucache": "^1"
     },
     "require-dev": {
         "amphp/phpunit-util": "^3",

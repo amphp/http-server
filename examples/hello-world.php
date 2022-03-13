@@ -24,7 +24,7 @@ $context = (new Socket\BindContext)
         ->withTlsContext(
             (new Socket\ServerTlsContext)
                         ->withDefaultCertificate($cert)
-                        //->withApplicationLayerProtocols(['h2', 'http/1.1'])
+                        ->withApplicationLayerProtocols(['h2', 'http/1.1'])
         );
 
 $servers = [
