@@ -13,6 +13,7 @@ use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
 use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
+use Revolt\EventLoop;
 use function Amp\async;
 
 final class HttpSocketServer implements HttpServer
@@ -160,9 +161,9 @@ final class HttpSocketServer implements HttpServer
 
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-            async(function () use ($requestHandler, $socket): void {
+            EventLoop::queue(function () use ($requestHandler, $socket): void {
                 while ($client = $socket->accept()) {
-                    $this->accept($requestHandler, $client);
+                    EventLoop::queue(fn () => $this->accept($requestHandler, $client));
                 }
             });
         }
