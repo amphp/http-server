@@ -21,14 +21,14 @@ final class HttpServer implements ServerLifecycle
 
     private readonly Options $options;
 
-    private ErrorHandler $errorHandler;
+    private readonly ErrorHandler $errorHandler;
 
-    private ClientFactory $clientFactory;
+    private readonly ClientFactory $clientFactory;
 
-    private HttpDriverFactory $driverFactory;
+    private readonly HttpDriverFactory $driverFactory;
 
     /** @var SocketServer[] */
-    private array $sockets;
+    private readonly array $sockets;
 
     /** @var list<\Closure(ServerLifecycle):void> */
     private array $onStart = [];
@@ -67,48 +67,6 @@ final class HttpServer implements ServerLifecycle
             new DefaultHttpDriverFactory($this->errorHandler, $this->logger, $this->options);
 
         $this->onStart((new PerformanceRecommender())->onStart(...));
-    }
-
-    /**
-     * Define a custom HTTP driver factory.
-     *
-     * @throws \Error If the server has started.
-     */
-    public function setDriverFactory(HttpDriverFactory $driverFactory): void
-    {
-        if ($this->status !== HttpServerStatus::Stopped) {
-            throw new \Error("Cannot set the driver factory after the server has started");
-        }
-
-        $this->driverFactory = $driverFactory;
-    }
-
-    /**
-     * Define a custom Client factory.
-     *
-     * @throws \Error If the server has started.
-     */
-    public function setClientFactory(ClientFactory $clientFactory): void
-    {
-        if ($this->status !== HttpServerStatus::Stopped) {
-            throw new \Error("Cannot set the client factory after the server has started");
-        }
-
-        $this->clientFactory = $clientFactory;
-    }
-
-    /**
-     * Set the error handler instance to be used for generating error responses.
-     *
-     * @throws \Error If the server has started.
-     */
-    public function setErrorHandler(ErrorHandler $errorHandler): void
-    {
-        if ($this->status !== HttpServerStatus::Stopped) {
-            throw new \Error("Cannot set the error handler after the server has started");
-        }
-
-        $this->errorHandler = $errorHandler;
     }
 
     /**
