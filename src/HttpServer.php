@@ -15,7 +15,7 @@ use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 
-final class HttpServer implements ServerLifecycle
+final class HttpServer implements HttpServerLifecycle
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 

@@ -4,7 +4,7 @@ namespace Amp\Http\Server;
 
 use Psr\Log\LoggerInterface as PsrLogger;
 
-interface ServerLifecycle
+interface HttpServerLifecycle
 {
     /**
      * @param \Closure(ServerLifecycle):void $onStart
