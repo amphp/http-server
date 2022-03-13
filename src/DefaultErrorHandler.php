@@ -30,7 +30,7 @@ final class DefaultErrorHandler implements ErrorHandler
         }
 
         $response = new Response($statusCode, [
-            "content-type" => "text/html; charset=utf-8"
+            "content-type" => "text/html; charset=utf-8",
         ], $this->cache[$statusCode]);
 
         $response->setStatus($statusCode, $reason);

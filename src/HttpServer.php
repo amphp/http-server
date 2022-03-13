@@ -11,7 +11,7 @@ use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket;
 use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
-use function Amp\async;
+use Revolt\EventLoop;
 
 final class HttpServer
 {
@@ -69,7 +69,8 @@ final class HttpServer
         $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
-        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory;
+        $this->driverFactory = $driverFactory ??
+            new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options);
     }
 
     /**
@@ -161,14 +162,16 @@ final class HttpServer
         $this->logger->info("Started server");
 
         foreach ($this->sockets as $socket) {
+            $this->driverFactory->setupSocketServer($socket);
+
             $scheme = $socket->getBindContext()?->getTlsContext() !== null ? 'https' : 'http';
             $serverName = $socket->getAddress()->toString();
 
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-            async(function () use ($socket) {
+            EventLoop::queue(function () use ($socket): void {
                 while ($client = $socket->accept()) {
-                    $this->accept($client);
+                    EventLoop::queue(fn () => $this->accept($client));
                 }
             });
         }
@@ -176,19 +179,27 @@ final class HttpServer
 
     private function accept(Socket\EncryptableSocket $clientSocket): void
     {
-        $client = $this->clientFactory->createClient(
-            $clientSocket,
-            $this->requestHandler,
-            $this->errorHandler,
-            $this->logger,
-            $this->options,
-        );
+        try {
+            $client = $this->clientFactory->createClient($clientSocket);
+            if ($client === null) {
+                return;
+            }
 
-        if ($client === null) {
-            return;
+            $httpDriver = $this->driverFactory->createHttpDriver($client);
+
+            $httpDriver->handleClient(
+                $client,
+                $clientSocket,
+                $clientSocket,
+            );
+        } catch (\Throwable $exception) {
+            \assert(!$this->getLogger()->debug("Exception while handling client {address}", [
+                'address' => $clientSocket->getRemoteAddress(),
+                'exception' => $exception,
+            ]));
+
+            $clientSocket->close();
         }
-
-        $client->start($this->driverFactory);
     }
 
     /**
