@@ -4,7 +4,7 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
-use Amp\Http\Server\HttpServer;
+use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
@@ -21,11 +21,8 @@ use function Amp\trapSignal;
 $cert = new Socket\Certificate(__DIR__ . '/../test/server.pem');
 
 $context = (new Socket\BindContext)
-        ->withTlsContext(
-            (new Socket\ServerTlsContext)
-                        ->withDefaultCertificate($cert)
-                        ->withApplicationLayerProtocols(['h2', 'http/1.1'])
-        );
+        ->withTlsContext((new Socket\ServerTlsContext)
+                ->withDefaultCertificate($cert));
 
 $servers = [
         Socket\listen("0.0.0.0:1337"),
@@ -40,13 +37,13 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new ClosureRequestHandler(static function (Request $request): Response {
+$server = new HttpSocketServer($servers, $logger);
+
+$server->start(new ClosureRequestHandler(static function (Request $request): Response {
     return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8",
     ], "Hello, World!");
-}), $logger);
-
-$server->start();
+}));
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);

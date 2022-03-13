@@ -43,7 +43,6 @@ abstract class AbstractHttpDriver implements HttpDriver
     private int $pendingResponseCount = 0;
 
     protected function __construct(
-        protected readonly RequestHandler $requestHandler,
         protected readonly ErrorHandler $errorHandler,
         protected readonly LoggerInterface $logger,
         protected readonly Options $options,
@@ -53,7 +52,7 @@ abstract class AbstractHttpDriver implements HttpDriver
     /**
      * Respond to a parsed request.
      */
-    final protected function handleRequest(Request $request): void
+    final protected function handleRequest(RequestHandler $requestHandler, Request $request): void
     {
         $clientRequest = $request;
         $request = clone $request;
@@ -73,7 +72,7 @@ abstract class AbstractHttpDriver implements HttpDriver
                     "allow" => \implode(", ", $this->options->getAllowedMethods()),
                 ]);
             } else {
-                $response = $this->requestHandler->handleRequest($request);
+                $response = $requestHandler->handleRequest($request);
             }
         } catch (\Throwable $exception) {
             if ($exception instanceof ClientException) {

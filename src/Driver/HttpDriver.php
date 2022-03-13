@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\WritableStream;
+use Amp\Http\Server\RequestHandler;
 
 interface HttpDriver
 {
@@ -15,7 +16,12 @@ interface HttpDriver
     /**
      * Set up the driver.
      */
-    public function handleClient(Client $client, ReadableStream $readableStream, WritableStream $writableStream): void;
+    public function handleClient(
+        RequestHandler $requestHandler,
+        Client $client,
+        ReadableStream $readableStream,
+        WritableStream $writableStream,
+    ): void;
 
     /**
      * @return int Number of requests that are being read by the parser.

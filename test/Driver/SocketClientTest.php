@@ -9,17 +9,9 @@ use Amp\Http\Client\Connection\UnlimitedConnectionPool;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
-use Amp\Http\Server\DefaultErrorHandler;
-use Amp\Http\Server\Driver\Client;
-use Amp\Http\Server\Driver\HttpDriver;
-use Amp\Http\Server\Driver\HttpDriverFactory;
-use Amp\Http\Server\Driver\SocketClient;
-use Amp\Http\Server\Driver\TimeoutCache;
-use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\HttpServer;
+use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
@@ -30,11 +22,10 @@ use Amp\Socket\ClientTlsContext;
 use Amp\Socket\ConnectContext;
 use Amp\Socket\ServerTlsContext;
 use League\Uri\Components\Query;
-use Psr\Log\LoggerInterface as PsrLogger;
 use Psr\Log\NullLogger;
 use function Amp\delay;
 
-class RemoteClientTest extends AsyncTestCase
+class SocketClientTest extends AsyncTestCase
 {
     public function startServer(callable $handler): array
     {
@@ -50,8 +41,8 @@ class RemoteClientTest extends AsyncTestCase
 
         $options = (new Options)->withDebugMode();
 
-        $server = new HttpServer($servers, $handler, new NullLogger, $options);
-        $server->start();
+        $server = new HttpSocketServer($servers, new NullLogger, $options);
+        $server->start($handler);
 
         return [$servers[0]->getAddress()->toString(), $server];
     }
@@ -138,92 +129,5 @@ class RemoteClientTest extends AsyncTestCase
         delay(0.1);
 
         $server->stop();
-    }
-
-    protected function tryRequest(Request $request, callable $requestHandler): array
-    {
-        $driver = $this->createMock(HttpDriver::class);
-
-        $driver->expects(self::once())
-            ->method("setup")
-            ->willReturnCallback(static function (Client $client, callable $queue) use (&$emit) {
-                $emit = $queue;
-                yield;
-            });
-
-        $driver->method("write")
-            ->willReturnCallback(function (Request $request, Response $written) use (&$response, &$body) {
-                $response = $written;
-                $body = "";
-                while (null !== $part = $response->getBody()->read()) {
-                    $body .= $part;
-                }
-            });
-
-        $factory = $this->createMock(HttpDriverFactory::class);
-        $factory->method('selectDriver')
-            ->willReturn($driver);
-
-        $options = (new Options)
-            ->withDebugMode();
-
-        [$server, $client] = Socket\createSocketPair();
-
-        $client = new SocketClient(
-            $client,
-            new ClosureRequestHandler($requestHandler),
-            new DefaultErrorHandler,
-            $this->createMock(PsrLogger::class),
-            $options,
-            new TimeoutCache
-        );
-
-        $client->start($factory);
-
-        delay(0.1); // Tick event loop a few times to resolve promises.
-
-        $emit($request);
-
-        delay(0.1); // Tick event loop a few times to resolve promises.
-
-        $client->stop(0.1);
-
-        return [$response, $body];
-    }
-
-    protected function startClient(callable $parser, $socket): SocketClient
-    {
-        $driver = $this->createMock(HttpDriver::class);
-
-        $driver->method("setup")
-            ->willReturnCallback(function (
-                Client $client,
-                callable $onMessage,
-                callable $writer
-            ) use ($parser) {
-                yield from $parser($writer);
-            });
-
-        $factory = $this->createMock(HttpDriverFactory::class);
-        $factory->method('selectDriver')
-            ->willReturn($driver);
-
-        $options = (new Options)
-            ->withDebugMode();
-
-        $client = new SocketClient(
-            Socket\ResourceSocket::fromServerSocket($socket),
-            $this->createMock(RequestHandler::class),
-            $this->createMock(ErrorHandler::class),
-            $this->createMock(PsrLogger::class),
-            $options,
-            new TimeoutCache
-        );
-
-        $client->start($factory);
-
-        delay(0.1); // Tick event loop a few times to resolve promises.
-
-        return $client;
     }
 }
