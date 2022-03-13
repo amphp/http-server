@@ -32,19 +32,19 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new ClosureRequestHandler(function (Request $request): Response {
+$server = new HttpServer($servers, $logger, (new Options)->withoutCompression());
+
+$server->start(new ClosureRequestHandler(function (Request $request): Response {
     // We stream the response here, one line every 100 ms.
     return new Response(Status::OK, [
-        "content-type" => "text/plain; charset=utf-8",
+            "content-type" => "text/plain; charset=utf-8",
     ], new ReadableIterableStream((function () {
         for ($i = 0; $i < 30; $i++) {
             delay(0.1);
             yield "Line {$i}\r\n";
         }
     })()));
-}), $logger, (new Options)->withoutCompression());
-
-$server->start();
+}));
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);

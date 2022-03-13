@@ -29,7 +29,9 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new ClosureRequestHandler(function (Request $request): Response {
+$server = new HttpServer($servers, $logger);
+
+$server->start(new ClosureRequestHandler(function (Request $request): Response {
     static $counter = 0;
 
     // We can keep state between requests, but if you're using multiple server processes,
@@ -37,11 +39,9 @@ $server = new HttpServer($servers, new ClosureRequestHandler(function (Request $
     // Note: You might see the counter increase by more than one per reload, because browser
     // might try to load a favicon.ico or similar.
     return new Response(Status::OK, [
-        "content-type" => "text/plain; charset=utf-8",
+            "content-type" => "text/plain; charset=utf-8",
     ], "You're visitor #" . (++$counter) . ".");
-}), $logger);
-
-$server->start();
+}));
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);

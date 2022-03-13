@@ -26,11 +26,11 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new ClosureRequestHandler(function () {
-    throw new \Exception("Something went wrong :-(");
-}), $logger);
+$server = new HttpServer($servers, $logger);
 
-$server->start();
+$server->start(new ClosureRequestHandler(function () {
+    throw new \Exception("Something went wrong :-(");
+}));
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);

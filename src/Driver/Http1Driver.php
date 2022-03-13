@@ -50,20 +50,23 @@ final class Http1Driver extends AbstractHttpDriver
     private string $currentBuffer = "";
 
     public function __construct(
-        RequestHandler $requestHandler,
         private readonly TimeoutQueue $timeoutQueue,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
     ) {
-        parent::__construct($requestHandler, $errorHandler, $logger, $options);
+        parent::__construct($errorHandler, $logger, $options);
 
         $this->lastWrite = Future::complete();
         $this->pendingResponse = Future::complete();
     }
 
-    public function handleClient(Client $client, ReadableStream $readableStream, WritableStream $writableStream): void
-    {
+    public function handleClient(
+        RequestHandler $requestHandler,
+        Client $client,
+        ReadableStream $readableStream,
+        WritableStream $writableStream,
+    ): void {
         \assert(!isset($this->client));
 
         $this->client = $client;
@@ -136,7 +139,6 @@ final class Http1Driver extends AbstractHttpDriver
 
                         // Internal upgrade to HTTP/2.
                         $this->http2driver = new Http2Driver(
-                            $this->requestHandler,
                             $this->timeoutQueue,
                             $this->errorHandler,
                             $this->logger,
@@ -337,7 +339,6 @@ final class Http1Driver extends AbstractHttpDriver
 
                     // Internal upgrade
                     $this->http2driver = new Http2Driver(
-                        $this->requestHandler,
                         $this->timeoutQueue,
                         $this->errorHandler,
                         $this->logger,
@@ -371,7 +372,7 @@ final class Http1Driver extends AbstractHttpDriver
 
                     $this->pendingResponseCount++;
                     $this->currentBuffer = $buffer;
-                    $this->handleRequest($request);
+                    $this->handleRequest($requestHandler, $request);
                     $this->pendingResponseCount--;
                     $request = null; // DO NOT leave a reference to the Request object in the parser!
 
@@ -416,7 +417,7 @@ final class Http1Driver extends AbstractHttpDriver
                 // Do not await future until body is completely read.
                 $this->pendingResponseCount++;
                 $this->currentBuffer = $buffer;
-                $this->pendingResponse = async($this->handleRequest(...), $request, $buffer);
+                $this->pendingResponse = async($this->handleRequest(...), $requestHandler, $request);
 
                 // DO NOT leave a reference to the Request, Trailers, or Body objects within the parser!
                 $request = null;
@@ -761,11 +762,13 @@ final class Http1Driver extends AbstractHttpDriver
         Request $request,
         Response $response,
     ): void {
-        $socket = new UpgradedSocket(
-            $request->getClient(),
-            new ReadableStreamChain(new ReadableBuffer($this->currentBuffer), $this->readableStream),
-            $this->writableStream,
-        );
+        $client = $request->getClient();
+
+        $stream = $this->currentBuffer === ''
+            ? $this->readableStream
+            : new ReadableStreamChain(new ReadableBuffer($this->currentBuffer), $this->readableStream);
+
+        $socket = new UpgradedSocket($client, $stream, $this->writableStream);
 
         try {
             ($response->getUpgradeHandler())($socket, $request, $response);

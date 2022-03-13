@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server;
 
+use Amp\CompositeException;
+use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
@@ -13,11 +15,11 @@ use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 
-final class HttpServer
+final class HttpServer implements ServerLifecycle
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 
-    private Options $options;
+    private readonly Options $options;
 
     private ErrorHandler $errorHandler;
 
@@ -28,16 +30,20 @@ final class HttpServer
     /** @var SocketServer[] */
     private array $sockets;
 
+    /** @var list<\Closure(ServerLifecycle):void> */
+    private array $onStart = [];
+
+    /** @var list<\Closure(ServerLifecycle):void> */
+    private array $onStop = [];
+
     /**
      * @param SocketServer[] $sockets
-     * @param RequestHandler $requestHandler
      * @param PsrLogger $logger
      * @param Options|null $options Null creates an Options object with all default options.
      */
     public function __construct(
         array $sockets,
-        private RequestHandler $requestHandler,
-        private PsrLogger $logger,
+        private readonly PsrLogger $logger,
         ?Options $options = null,
         ?ErrorHandler $errorHandler = null,
         ?HttpDriverFactory $driverFactory = null,
@@ -54,23 +60,13 @@ final class HttpServer
         }
 
         $this->options = $options ?? new Options;
-
-        if ($this->options->isCompressionEnabled()) {
-            if (!\extension_loaded('zlib')) {
-                $this->logger->warning(
-                    "The zlib extension is not loaded which prevents using compression. " .
-                    "Either activate the zlib extension or disable compression in the server's options."
-                );
-            } else {
-                $this->requestHandler = Middleware\stack($this->requestHandler, new CompressionMiddleware);
-            }
-        }
-
         $this->sockets = $sockets;
         $this->clientFactory = $clientFactory ?? new SocketClientFactory;
         $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
         $this->driverFactory = $driverFactory ??
-            new DefaultHttpDriverFactory($this->requestHandler, $this->errorHandler, $this->logger, $this->options);
+            new DefaultHttpDriverFactory($this->errorHandler, $this->logger, $this->options);
+
+        $this->onStart((new PerformanceRecommender())->onStart(...));
     }
 
     /**
@@ -147,19 +143,56 @@ final class HttpServer
         return $this->logger;
     }
 
+    public function onStart(\Closure $onStart): void
+    {
+        $this->onStart[] = $onStart;
+    }
+
+    public function onStop(\Closure $onStop): void
+    {
+        $this->onStop[] = $onStop;
+    }
+
     /**
      * Start the server.
      */
-    public function start(): void
+    public function start(RequestHandler $requestHandler): void
     {
         if ($this->status !== HttpServerStatus::Stopped) {
             throw new \Error("Cannot start server: " . $this->status->getLabel());
         }
 
-        $this->status = HttpServerStatus::Started;
+        if ($this->options->isCompressionEnabled()) {
+            if (!\extension_loaded('zlib')) {
+                $this->logger->warning(
+                    "The zlib extension is not loaded which prevents using compression. " .
+                    "Either activate the zlib extension or disable compression in the server's options."
+                );
+            } else {
+                $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
+            }
+        }
 
-        (new PerformanceRecommender())->onStart($this);
+        $this->logger->debug("Starting server");
+        $this->status = HttpServerStatus::Starting;
+
+        $futures = [];
+        foreach ($this->onStart as $onStart) {
+            $futures[] = async($onStart, $this);
+        }
+
+        [$exceptions] = Future\awaitAll($futures);
+
+        if (!empty($exceptions)) {
+            try {
+                $this->stop();
+            } finally {
+                throw new CompositeException($exceptions, "Server lifecycle onStart failure");
+            }
+        }
+
         $this->logger->info("Started server");
+        $this->status = HttpServerStatus::Started;
 
         foreach ($this->sockets as $socket) {
             $this->driverFactory->setupSocketServer($socket);
@@ -169,15 +202,15 @@ final class HttpServer
 
             $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-            EventLoop::queue(function () use ($socket): void {
+            EventLoop::queue(function () use ($requestHandler, $socket): void {
                 while ($client = $socket->accept()) {
-                    EventLoop::queue(fn () => $this->accept($client));
+                    EventLoop::queue(fn () => $this->accept($requestHandler, $client));
                 }
             });
         }
     }
 
-    private function accept(Socket\EncryptableSocket $clientSocket): void
+    private function accept(RequestHandler $requestHandler, Socket\EncryptableSocket $clientSocket): void
     {
         try {
             $client = $this->clientFactory->createClient($clientSocket);
@@ -188,15 +221,16 @@ final class HttpServer
             $httpDriver = $this->driverFactory->createHttpDriver($client);
 
             $httpDriver->handleClient(
+                $requestHandler,
                 $client,
                 $clientSocket,
                 $clientSocket,
             );
         } catch (\Throwable $exception) {
-            \assert(!$this->getLogger()->debug("Exception while handling client {address}", [
+            $this->logger->debug("Exception while handling client {address}", [
                 'address' => $clientSocket->getRemoteAddress(),
                 'exception' => $exception,
-            ]));
+            ]);
 
             $clientSocket->close();
         }
@@ -218,11 +252,22 @@ final class HttpServer
         $this->logger->info("Stopping server");
         $this->status = HttpServerStatus::Stopping;
 
+        $futures = [];
+        foreach ($this->onStop as $onStop) {
+            $futures[] = async($onStop, $this);
+        }
+
+        [$exceptions] = Future\awaitAll($futures);
+
         foreach ($this->sockets as $socket) {
             $socket->close();
         }
 
         $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
+
+        if (!empty($exceptions)) {
+            throw new CompositeException($exceptions, "Server lifecycle onStop failure");
+        }
     }
 }

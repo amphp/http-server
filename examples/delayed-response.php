@@ -30,17 +30,17 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, new ClosureRequestHandler(function (Request $request): Response {
+$server = new HttpServer($servers, $logger);
+
+$server->start(new ClosureRequestHandler(function (Request $request): Response {
     // We delay the response here, but this could also be non-blocking I/O.
     // Further requests are still processed concurrently.
     delay(3);
 
     return new Response(Status::OK, [
-        "content-type" => "text/plain; charset=utf-8",
+            "content-type" => "text/plain; charset=utf-8",
     ], "Hello, World!");
-}), $logger);
-
-$server->start();
+}));
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);

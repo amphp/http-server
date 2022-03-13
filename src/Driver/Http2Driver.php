@@ -59,6 +59,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     /** @var string 64-bit for ping. */
     private string $counter = "aaaaaaaa";
 
+    private RequestHandler $requestHandler;
     private Client $client;
     private ReadableStream $readableStream;
     private WritableStream $writableStream;
@@ -106,14 +107,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     private HPack $hpack;
 
     public function __construct(
-        RequestHandler $requestHandler,
         private readonly TimeoutQueue $timeoutQueue,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
         ?string $settings = null,
     ) {
-        parent::__construct($requestHandler, $errorHandler, $logger, $options);
+        parent::__construct($errorHandler, $logger, $options);
 
         $this->settings = $settings;
 
@@ -123,10 +123,16 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->hpack = new HPack;
     }
 
-    public function handleClient(Client $client, ReadableStream $readableStream, WritableStream $writableStream): void
+    public function handleClient(
+        RequestHandler $requestHandler,
+        Client $client,
+        ReadableStream $readableStream,
+        WritableStream $writableStream,
+    ): void
     {
         \assert(!isset($this->client), "The driver has already been setup");
 
+        $this->requestHandler = $requestHandler;
         $this->client = $client;
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
@@ -570,7 +576,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
         }
 
-        $stream->pendingResponse = async($this->handleRequest(...), $request);
+        $stream->pendingResponse = async($this->handleRequest(...), $this->requestHandler, $request);
     }
 
     private function writeFrame(string $data, int $type, int $flags, int $stream = 0): void
@@ -1027,7 +1033,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             );
 
             $this->streamIdMap[\spl_object_hash($request)] = $streamId;
-            $stream->pendingResponse = async($this->handleRequest(...), $request);
+            $stream->pendingResponse = async($this->handleRequest(...), $this->requestHandler, $request);
 
             return;
         }
@@ -1106,7 +1112,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         );
 
         $this->streamIdMap[\spl_object_hash($request)] = $streamId;
-        $stream->pendingResponse = async($this->handleRequest(...), $request);
+        $stream->pendingResponse = async($this->handleRequest(...), $this->requestHandler, $request);
     }
 
     public function handleData(int $streamId, string $data): void
