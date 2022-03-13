@@ -5,7 +5,7 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
 use Amp\ByteStream\ReadableIterableStream;
-use Amp\Http\Server\HttpServer;
+use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
@@ -32,7 +32,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, $logger, (new Options)->withoutCompression());
+$server = new HttpSocketServer($servers, $logger, (new Options)->withoutCompression());
 
 $server->start(new ClosureRequestHandler(function (Request $request): Response {
     // We stream the response here, one line every 100 ms.

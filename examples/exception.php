@@ -4,7 +4,7 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
-use Amp\Http\Server\HttpServer;
+use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
@@ -26,7 +26,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpServer($servers, $logger);
+$server = new HttpSocketServer($servers, $logger);
 
 $server->start(new ClosureRequestHandler(function () {
     throw new \Exception("Something went wrong :-(");

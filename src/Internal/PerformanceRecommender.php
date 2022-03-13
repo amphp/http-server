@@ -2,15 +2,15 @@
 
 namespace Amp\Http\Server\Internal;
 
-use Amp\Http\Server\HttpServerLifecycle;
+use Amp\Http\Server\HttpServer;
 
 final class PerformanceRecommender
 {
-    public function onStart(HttpServerLifecycle $lifecycle): void
+    public function onStart(HttpServer $server): void
     {
-        $logger = $lifecycle->getLogger();
+        $logger = $server->getLogger();
 
-        if ($lifecycle->getOptions()->isInDebugMode()) {
+        if ($server->getOptions()->isInDebugMode()) {
             if (\ini_get("zend.assertions") !== "1") {
                 $logger->warning(
                     "Running in debug mode without assertions enabled will not generate debug level " .

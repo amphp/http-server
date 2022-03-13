@@ -9,7 +9,7 @@ use Amp\Http\Client\Connection\UnlimitedConnectionPool;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
-use Amp\Http\Server\HttpServer;
+use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
@@ -41,7 +41,7 @@ class SocketClientTest extends AsyncTestCase
 
         $options = (new Options)->withDebugMode();
 
-        $server = new HttpServer($servers, new NullLogger, $options);
+        $server = new HttpSocketServer($servers, new NullLogger, $options);
         $server->start($handler);
 
         return [$servers[0]->getAddress()->toString(), $server];
