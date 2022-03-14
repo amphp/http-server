@@ -1,34 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:noNamespaceSchemaLocation="http://schema.phpunit.de/5.7/phpunit.xsd"
-        backupGlobals="false"
-        backupStaticAttributes="false"
-        bootstrap="vendor/autoload.php"
-        colors="true"
-        convertErrorsToExceptions="true"
-        convertNoticesToExceptions="true"
-        convertWarningsToExceptions="true"
-        processIsolation="false"
-        stopOnFailure="false"
->
-    <php>
-        <!-- Needed because @dataProvider uses iterator_to_array() -->
-        <ini name="memory_limit" value="1G" />
-        <ini name="error_reporting" value="-1" />
-    </php>
-    <testsuites>
-        <testsuite name="Amp HTTP Server Test">
-            <directory>test</directory>
-        </testsuite>
-    </testsuites>
-    <filter>
-        <whitelist>
-            <directory suffix=".php">src</directory>
-        </whitelist>
-    </filter>
-    <logging>
-        <log type="coverage-html" target="build/coverage"/>
-        <log type="coverage-clover" target="build/logs/clover.xml"/>
-    </logging>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/9.3/phpunit.xsd" backupGlobals="false" backupStaticAttributes="false" bootstrap="vendor/autoload.php" colors="true" convertErrorsToExceptions="true" convertNoticesToExceptions="true" convertWarningsToExceptions="true" processIsolation="false" stopOnFailure="false">
+  <coverage>
+    <include>
+      <directory suffix=".php">src</directory>
+    </include>
+    <report>
+      <clover outputFile="build/logs/clover.xml"/>
+      <html outputDirectory="build/coverage"/>
+    </report>
+  </coverage>
+  <php>
+    <!-- Needed because @dataProvider uses iterator_to_array() -->
+    <ini name="memory_limit" value="1G"/>
+    <ini name="error_reporting" value="-1"/>
+  </php>
+  <testsuites>
+    <testsuite name="Amp HTTP Server Test">
+      <directory>test</directory>
+    </testsuite>
+  </testsuites>
+  <logging/>
 </phpunit>
