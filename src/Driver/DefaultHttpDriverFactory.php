@@ -19,16 +19,15 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
     ) {
     }
 
-    public function setupSocketServer(SocketServer $server): void
+    public function setUpSocketServer(SocketServer $server): SocketServer
     {
         $resource = $server->getResource();
-        $tlsContext = $server->getBindContext()->getTlsContext();
 
-        if (!$tlsContext || !$resource) {
-            return;
+        if ($resource && $server->getBindContext()?->getTlsContext()) {
+            \stream_context_set_option($resource, 'ssl', 'alpn_protocols', \implode(', ', self::ALPN));
         }
 
-        \stream_context_set_option($resource, 'ssl', 'alpn_protocols', \implode(', ', self::ALPN));
+        return $server;
     }
 
     public function createHttpDriver(Client $client): HttpDriver

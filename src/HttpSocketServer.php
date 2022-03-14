@@ -154,7 +154,7 @@ final class HttpSocketServer implements HttpServer
         $this->status = HttpServerStatus::Started;
 
         foreach ($this->sockets as $socket) {
-            $this->driverFactory->setupSocketServer($socket);
+            $socket = $this->driverFactory->setUpSocketServer($socket);
 
             $scheme = $socket->getBindContext()?->getTlsContext() !== null ? 'https' : 'http';
             $serverName = $socket->getAddress()->toString();

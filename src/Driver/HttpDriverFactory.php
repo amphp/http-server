@@ -8,5 +8,5 @@ interface HttpDriverFactory
 {
     public function createHttpDriver(Client $client): HttpDriver;
 
-    public function setupSocketServer(SocketServer $server): void;
+    public function setUpSocketServer(SocketServer $server): SocketServer;
 }
