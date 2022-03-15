@@ -155,8 +155,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         RequestHandler $requestHandler,
         Client $client,
         WritableStream $writableStream,
-    ): void
-    {
+    ): void {
         \assert(!isset($this->client), "The driver has already been setup");
 
         $this->requestHandler = $requestHandler;
@@ -421,16 +420,21 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             }
         } catch (ClientException $exception) {
             $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used in finally below.
-        } finally {
+        } catch (\Throwable $throwable) {
+            // Will be rethrown after cleanup below.
+        }
+
+        // Cleanup outside finally block since the fiber may suspend to write RST_STREAM frame.
+        try {
             if (!isset($this->streams[$id])) {
                 return;
             }
 
             if ($chunk !== null) {
-                if (isset($buffer) && $buffer !== "") {
+                if (isset($buffer) && ($buffer ?? "") !== "") {
                     $this->writeData($buffer, $id);
                 }
-                $error = $error ?? Http2Parser::INTERNAL_ERROR;
+                $error ??= Http2Parser::INTERNAL_ERROR;
                 $this->writeFrame(\pack("N", $error), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException($this->client, "Stream error", $error));
                 return;
@@ -438,6 +442,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             if ($this->streams[$id]->state & Http2Stream::REMOTE_CLOSED) {
                 $this->releaseStream($id);
+            }
+        } finally {
+            if (isset($throwable)) {
+                throw $throwable;
             }
         }
     }
@@ -674,7 +682,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->timeoutQueue->insert(
                 $this->client,
                 $id,
-                fn () => $this->releaseStream($id),
+                fn () => $this->releaseStream(
+                    $id,
+                    new ClientException($this->client, "Closing stream due to inactivity"),
+                ),
                 $this->options->getHttp2Timeout(),
             );
         }
@@ -687,7 +698,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         );
     }
 
-    private function releaseStream(int $id, ClientException $exception = null): void
+    private function releaseStream(int $id, ?ClientException $exception = null): void
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 

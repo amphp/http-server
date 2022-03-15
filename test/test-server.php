@@ -42,7 +42,7 @@ $server = new HttpSocketServer($servers, $logger);
 $server->start(new ClosureRequestHandler(static function (Request $request) {
     try {
         // Buffer entire body, but timeout after 100ms.
-        $body = async(fn () => $request->getBody()->buffer())->await(new TimeoutCancellation(0.1));
+        $body = $request->getBody()->buffer(new TimeoutCancellation(0.1));
     } catch (ClientException) {
         // Ignore failure to read body due to RST_STREAM frames.
     } catch (CancelledException) {
