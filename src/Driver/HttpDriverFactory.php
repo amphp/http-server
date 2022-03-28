@@ -2,11 +2,15 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Socket\SocketServer;
+use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\RequestHandler;
+use Amp\Socket\SocketServerFactory;
 
-interface HttpDriverFactory
+interface HttpDriverFactory extends SocketServerFactory
 {
-    public function createHttpDriver(Client $client): HttpDriver;
-
-    public function setUpSocketServer(SocketServer $server): SocketServer;
+    public function createHttpDriver(
+        RequestHandler $requestHandler,
+        ErrorHandler $errorHandler,
+        Client $client,
+    ): HttpDriver;
 }

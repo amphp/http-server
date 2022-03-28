@@ -5,12 +5,17 @@ namespace Amp\Http\Server;
 use Amp\CompositeException;
 use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
+use Amp\Http\Server\Driver\ConnectionLimitingClientFactory;
+use Amp\Http\Server\Driver\ConnectionLimitingSocketServerFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
-use Amp\Socket;
+use Amp\Socket\BindContext;
+use Amp\Socket\EncryptableSocket;
+use Amp\Socket\ServerTlsContext;
+use Amp\Socket\SocketAddress;
 use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -22,14 +27,18 @@ final class HttpSocketServer implements HttpServer
 
     private readonly Options $options;
 
-    private readonly ErrorHandler $errorHandler;
+    private readonly HttpDriverFactory $driverFactory;
 
     private readonly ClientFactory $clientFactory;
 
-    private readonly HttpDriverFactory $driverFactory;
+    private ?RequestHandler $requestHandler = null;
+    private ?ErrorHandler $errorHandler = null;
 
-    /** @var SocketServer[] */
-    private readonly array $sockets;
+    /** @var array<string, array{SocketAddress, BindContext|null}> */
+    private array $addresses = [];
+
+    /** @var list<SocketServer> */
+    private array $servers = [];
 
     /** @var list<\Closure(ServerLifecycle):void> */
     private array $onStart = [];
@@ -38,36 +47,39 @@ final class HttpSocketServer implements HttpServer
     private array $onStop = [];
 
     /**
-     * @param SocketServer[] $sockets
-     * @param PsrLogger $logger
      * @param Options|null $options Null creates an Options object with all default options.
      */
     public function __construct(
-        array $sockets,
         private readonly PsrLogger $logger,
         ?Options $options = null,
-        ?ErrorHandler $errorHandler = null,
-        ?HttpDriverFactory $driverFactory = null,
         ?ClientFactory $clientFactory = null,
+        ?HttpDriverFactory $driverFactory = null,
     ) {
-        if (!$sockets) {
-            throw new \ValueError('Argument #1 ($sockets) can\'t be an empty array');
-        }
-
-        foreach ($sockets as $socket) {
-            if (!$socket instanceof SocketServer) {
-                throw new \TypeError(\sprintf('Argument #1 ($sockets) must be of type array<%s>', SocketServer::class));
-            }
-        }
-
         $this->options = $options ?? new Options;
-        $this->sockets = $sockets;
-        $this->clientFactory = $clientFactory ?? new SocketClientFactory;
-        $this->errorHandler = $errorHandler ?? new DefaultErrorHandler;
-        $this->driverFactory = $driverFactory ??
-            new DefaultHttpDriverFactory($this->errorHandler, $this->logger, $this->options);
+
+        $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory(
+                $this->logger,
+                $this->options->getConnectionsPerIpLimit(),
+                new SocketClientFactory($this->options->getTlsSetupTimeout()),
+            );
+
+        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory(
+                $this->logger,
+                $this->options,
+                new ConnectionLimitingSocketServerFactory($this->options->getConnectionLimit()),
+            );
 
         $this->onStart((new PerformanceRecommender())->onStart(...));
+    }
+
+    public function expose(SocketAddress $socketAddress, ?BindContext $bindContext = null): void
+    {
+        $name = $socketAddress->toString();
+        if (isset($this->addresses[$name])) {
+            throw new \Error(\sprintf('Already exposing %s on HTTP server', $name));
+        }
+
+        $this->addresses[$name] = [$socketAddress, $bindContext];
     }
 
     /**
@@ -86,11 +98,24 @@ final class HttpSocketServer implements HttpServer
         return $this->options;
     }
 
+    public function getRequestHandler(): RequestHandler
+    {
+        if (!$this->requestHandler) {
+            throw new \Error('Cannot get the request handler when the server is not running');
+        }
+
+        return $this->requestHandler;
+    }
+
     /**
      * Retrieve the error handler.
      */
     public function getErrorHandler(): ErrorHandler
     {
+        if (!$this->requestHandler) {
+            throw new \Error('Cannot get the error handler when the server is not running');
+        }
+
         return $this->errorHandler;
     }
 
@@ -115,8 +140,12 @@ final class HttpSocketServer implements HttpServer
     /**
      * Start the server.
      */
-    public function start(RequestHandler $requestHandler): void
+    public function start(RequestHandler $requestHandler, ?ErrorHandler $errorHandler = null): void
     {
+        if (empty($this->addresses)) {
+            throw new \Error(\sprintf('No bind addresses specified; Call %s::expose() to add some', self::class));
+        }
+
         if ($this->status !== HttpServerStatus::Stopped) {
             throw new \Error("Cannot start server: " . $this->status->getLabel());
         }
@@ -132,66 +161,77 @@ final class HttpSocketServer implements HttpServer
             }
         }
 
+        $this->requestHandler = $requestHandler;
+        $this->errorHandler = $errorHandler ?? new DefaultErrorHandler();
+
         $this->logger->debug("Starting server");
         $this->status = HttpServerStatus::Starting;
 
-        $futures = [];
-        foreach ($this->onStart as $onStart) {
-            $futures[] = async($onStart, $this);
-        }
+        try {
+            $futures = [];
+            foreach ($this->onStart as $onStart) {
+                $futures[] = async($onStart, $this);
+            }
 
-        [$exceptions] = Future\awaitAll($futures);
+            [$exceptions] = Future\awaitAll($futures);
 
-        if (!empty($exceptions)) {
+            if (!empty($exceptions)) {
+                throw new CompositeException($exceptions, "HTTP server onStart failure");
+            }
+
+            foreach ($this->addresses as [$address, $bindContext]) {
+                $this->servers[] = $this->driverFactory->listen($address, $bindContext);
+            }
+
+            $this->logger->info("Started server");
+            $this->status = HttpServerStatus::Started;
+
+            foreach ($this->servers as $server) {
+                $scheme = $server->getBindContext()?->getTlsContext() !== null ? 'https' : 'http';
+                $serverName = $server->getAddress()->toString();
+
+                $this->logger->info("Listening on {$scheme}://{$serverName}/");
+
+                EventLoop::queue($this->accept(...), $server);
+            }
+        } catch (\Throwable $exception) {
             try {
                 $this->stop();
             } finally {
-                throw new CompositeException($exceptions, "Server lifecycle onStart failure");
+                $this->requestHandler = null;
+                $this->errorHandler = null;
+                throw $exception;
             }
-        }
-
-        $this->logger->info("Started server");
-        $this->status = HttpServerStatus::Started;
-
-        foreach ($this->sockets as $socket) {
-            $socket = $this->driverFactory->setUpSocketServer($socket);
-
-            $scheme = $socket->getBindContext()?->getTlsContext() !== null ? 'https' : 'http';
-            $serverName = $socket->getAddress()->toString();
-
-            $this->logger->info("Listening on {$scheme}://{$serverName}/");
-
-            EventLoop::queue(function () use ($requestHandler, $socket): void {
-                while ($client = $socket->accept()) {
-                    EventLoop::queue(fn () => $this->accept($requestHandler, $client));
-                }
-            });
         }
     }
 
-    private function accept(RequestHandler $requestHandler, Socket\EncryptableSocket $clientSocket): void
+    private function accept(SocketServer $server): void
+    {
+        $tlsContext = $server->getBindContext()?->getTlsContext();
+        while ($socket = $server->accept()) {
+            EventLoop::queue($this->handleClient(...), $socket, $tlsContext);
+        }
+    }
+
+    private function handleClient(EncryptableSocket $socket, ?ServerTlsContext $tlsContext): void
     {
         try {
-            $client = $this->clientFactory->createClient($clientSocket);
-            if ($client === null) {
+            $client = $this->clientFactory->createClient($socket, $tlsContext);
+            if (!$client) {
+                $socket->close();
                 return;
             }
 
-            $httpDriver = $this->driverFactory->createHttpDriver($client);
+            $driver = $this->driverFactory->createHttpDriver($this->requestHandler, $this->errorHandler, $client);
 
-            $httpDriver->handleClient(
-                $requestHandler,
-                $client,
-                $clientSocket,
-                $clientSocket,
-            );
+            $driver->handleClient($client, $socket, $socket);
         } catch (\Throwable $exception) {
             $this->logger->debug("Exception while handling client {address}", [
-                'address' => $clientSocket->getRemoteAddress(),
+                'address' => $socket->getRemoteAddress(),
                 'exception' => $exception,
             ]);
 
-            $clientSocket->close();
+            $socket->close();
         }
     }
 
@@ -218,15 +258,18 @@ final class HttpSocketServer implements HttpServer
 
         [$exceptions] = Future\awaitAll($futures);
 
-        foreach ($this->sockets as $socket) {
-            $socket->close();
+        foreach ($this->servers as $server) {
+            $server->close();
         }
 
         $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
 
+        $this->requestHandler = null;
+        $this->errorHandler = null;
+
         if (!empty($exceptions)) {
-            throw new CompositeException($exceptions, "Server lifecycle onStop failure");
+            throw new CompositeException($exceptions, "HTTP server onStop failure");
         }
     }
 }

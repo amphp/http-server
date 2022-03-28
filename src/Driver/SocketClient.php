@@ -2,21 +2,17 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Socket\Socket;
+use Amp\Socket\EncryptableSocket;
 use Amp\Socket\SocketAddress;
+use Amp\Socket\SocketAddressType;
 use Amp\Socket\TlsInfo;
-use Revolt\EventLoop;
 
 final class SocketClient implements Client
 {
     private readonly int $id;
 
-    /** @var \Closure[]|null */
-    private ?array $onClose = [];
-
     public function __construct(
-        private readonly Socket $socket,
-        private readonly ?TlsInfo $tlsInfo,
+        private readonly EncryptableSocket $socket,
     ) {
         $this->id = createClientId();
     }
@@ -38,46 +34,31 @@ final class SocketClient implements Client
 
     public function isUnix(): bool
     {
-        return $this->getRemoteAddress()->getPort() === null;
+        return $this->getRemoteAddress()->getType() === SocketAddressType::Unix;
     }
 
     public function isEncrypted(): bool
     {
-        return $this->tlsInfo !== null;
+        return $this->socket->getTlsInfo() !== null;
     }
 
     public function getTlsInfo(): ?TlsInfo
     {
-        return $this->tlsInfo;
+        return $this->socket->getTlsInfo();
     }
 
     public function close(): void
     {
-        if ($this->onClose === null) {
-            return; // Client already closed.
-        }
-
-        $onClose = $this->onClose;
-        $this->onClose = null;
-
         $this->socket->close();
-
-        foreach ($onClose as $closure) {
-            EventLoop::queue(fn () => $closure($this));
-        }
     }
 
     public function onClose(\Closure $onClose): void
     {
-        if ($this->onClose === null) {
-            EventLoop::queue(fn () => $onClose($this));
-        } else {
-            $this->onClose[] = $onClose;
-        }
+        $this->socket->onClose($onClose);
     }
 
     public function isClosed(): bool
     {
-        return $this->onClose === null;
+        return $this->socket->isClosed();
     }
 }

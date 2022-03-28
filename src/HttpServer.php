@@ -18,6 +18,8 @@ interface HttpServer
 
     public function getStatus(): HttpServerStatus;
 
+    public function getRequestHandler(): RequestHandler;
+
     public function getErrorHandler(): ErrorHandler;
 
     public function getOptions(): Options;

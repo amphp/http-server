@@ -24,20 +24,18 @@ $context = (new Socket\BindContext)
         ->withTlsContext((new Socket\ServerTlsContext)
                 ->withDefaultCertificate($cert));
 
-$servers = [
-        Socket\listen("0.0.0.0:1337"),
-        Socket\listen("[::]:1337"),
-        Socket\listen("0.0.0.0:1338", $context),
-        Socket\listen("[::]:1338", $context),
-];
-
 $logHandler = new StreamHandler(ByteStream\getStdout());
 $logHandler->pushProcessor(new PsrLogMessageProcessor());
 $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpSocketServer($servers, $logger);
+$server = new HttpSocketServer($logger);
+
+$server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
+$server->expose(new Socket\InternetAddress("[::]", 1337));
+$server->expose(new Socket\InternetAddress("0.0.0.0", 1338), $context);
+$server->expose(new Socket\InternetAddress("[::]", 1338), $context);
 
 $server->start(new ClosureRequestHandler(static function (Request $request): Response {
     return new Response(Status::OK, [

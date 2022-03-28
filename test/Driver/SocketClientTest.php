@@ -9,6 +9,7 @@ use Amp\Http\Client\Connection\UnlimitedConnectionPool;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
+use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -32,19 +33,36 @@ class SocketClientTest extends AsyncTestCase
         $handler = new ClosureRequestHandler($handler);
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
-        $servers = [
-            Socket\listen(
-                '127.0.0.1:0',
-                (new Socket\BindContext)->withTlsContext($tlsContext)
-            ),
-        ];
-
         $options = (new Options)->withDebugMode();
 
-        $server = new HttpSocketServer($servers, new NullLogger, $options);
-        $server->start($handler);
+        $server = Socket\listen(
+            $address = new Socket\InternetAddress('127.0.0.1', 0),
+            (new Socket\BindContext)->withTlsContext($tlsContext),
+        );
 
-        return [$servers[0]->getAddress()->toString(), $server];
+        $serverFactory = $this->createMock(Socket\SocketServerFactory::class);
+        $serverFactory->method('listen')
+            ->willReturn($server);
+
+        $logger = new NullLogger();
+
+        $httpServer = new HttpSocketServer(
+            new NullLogger,
+            $options,
+            driverFactory: new DefaultHttpDriverFactory(
+                logger: $logger,
+                options: $options,
+                socketServerFactory: $serverFactory,
+            ));
+
+        $httpServer->expose(
+            $address,
+            (new Socket\BindContext)->withTlsContext($tlsContext),
+        );
+
+        $httpServer->start($handler);
+
+        return [$server->getAddress()->toString(), $httpServer];
     }
 
     public function testTrivialHttpRequest(): void

@@ -26,18 +26,16 @@ $cert = new Socket\Certificate(__DIR__ . '/server.pem');
 $context = (new Socket\BindContext)
         ->withTlsContext((new Socket\ServerTlsContext)->withDefaultCertificate($cert));
 
-$servers = [
-        Socket\listen("0.0.0.0:1338", $context),
-        Socket\listen("[::]:1338", $context),
-];
-
 $logHandler = new StreamHandler(new WritableResourceStream(STDOUT));
 $logHandler->setFormatter(new ConsoleFormatter);
 $logHandler->setLevel(Logger::INFO);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpSocketServer($servers, $logger);
+$server = new HttpSocketServer($logger);
+
+$server->expose(new Socket\InternetAddress("0.0.0.0", 1338), $context);
+$server->expose(new Socket\InternetAddress("[::]", 1338), $context);
 
 $server->start(new ClosureRequestHandler(static function (Request $request) {
     try {

@@ -45,9 +45,9 @@ class Http2DriverTest extends HttpDriverTest
 
     public static function packHeader(
         array $headers,
-        bool $continue = false,
-        int $stream = 1,
-        int $split = \PHP_INT_MAX
+        bool  $continue = false,
+        int   $stream = 1,
+        int   $split = \PHP_INT_MAX
     ): string {
         $input = [];
 
@@ -84,18 +84,12 @@ class Http2DriverTest extends HttpDriverTest
     }
 
     private Http2Driver $driver;
-
     private ReadableStream $input;
-
     private Pipe $output;
     private BufferedReader $outputReader;
-
     private ?EventLoop\Suspension $requestSuspension = null;
-
     private \SplQueue $responses;
-
     private array $requests = [];
-
     private array $pushes = [];
 
     protected function setUp(): void
@@ -112,17 +106,8 @@ class Http2DriverTest extends HttpDriverTest
 
     private function initDriver(Options $options, TimeoutQueue $timeoutQueue): void
     {
-        $this->driver = new Http2Driver($timeoutQueue, $this->createMock(ErrorHandler::class), new NullLogger, $options);
-    }
-
-    protected function givenInput(ReadableStream $input): void
-    {
-        $this->input = $input;
-    }
-
-    protected function whenRequestIsReceived(): Request
-    {
-        async(fn () => $this->driver->handleClient(
+        $this->driver = new Http2Driver(
+            $timeoutQueue,
             new ClosureRequestHandler(function (Request $req): Response {
                 $this->requests[] = $req;
 
@@ -147,6 +132,20 @@ class Http2DriverTest extends HttpDriverTest
 
                 return $response;
             }),
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+            $options
+        );
+    }
+
+    protected function givenInput(ReadableStream $input): void
+    {
+        $this->input = $input;
+    }
+
+    protected function whenRequestIsReceived(): Request
+    {
+        async(fn () => $this->driver->handleClient(
             $this->createClientMock(),
             $this->input,
             $this->output->getSink(),
@@ -160,7 +159,6 @@ class Http2DriverTest extends HttpDriverTest
     protected function whenClientIsHandled(?Client $client = null): void
     {
         $this->driver->handleClient(
-            $this->createMock(RequestHandler::class),
             $client ?? $this->createClientMock(),
             $this->input,
             $this->output->getSink(),
@@ -825,7 +823,6 @@ class Http2DriverTest extends HttpDriverTest
     private function whenReceivingFrames(): iterable
     {
         async(fn () => $this->driver->handleClient(
-            $this->createMock(RequestHandler::class),
             $this->createClientMock(),
             $this->input,
             $this->output->getSink(),

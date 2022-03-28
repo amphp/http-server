@@ -7,8 +7,12 @@ use Amp\Http\Client\Body\StreamBody;
 use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
+use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\HttpSocketServer;
+use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
+use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Status;
@@ -21,8 +25,9 @@ use function Amp\delay;
 
 class IntegrationTest extends AsyncTestCase
 {
-    private Socket\SocketServer $serverSocket;
     private HttpClient $httpClient;
+
+    private HttpSocketServer $server;
 
     protected function setUp(): void
     {
@@ -30,6 +35,15 @@ class IntegrationTest extends AsyncTestCase
 
         $this->serverSocket = Socket\listen("tcp://127.0.0.1:0");
         $this->httpClient = HttpClientBuilder::buildDefault();
+
+        $serverFactory = $this->createMock(Socket\SocketServerFactory::class);
+        $serverFactory->method('listen')
+            ->willReturn($this->serverSocket);
+
+        $driverFactory = new DefaultHttpDriverFactory($this->createMock(PsrLogger::class), new Options(), $serverFactory);
+
+        $this->server = new HttpSocketServer($this->createMock(PsrLogger::class), driverFactory: $driverFactory);
+        $this->server->expose($this->serverSocket->getAddress());
     }
 
     private function getAuthority(): string
@@ -37,19 +51,18 @@ class IntegrationTest extends AsyncTestCase
         return "http://localhost:" . $this->serverSocket->getAddress()->getPort();
     }
 
-    public function testEmptySocketArray(): void
+    public function testNeverCallingExpose(): void
     {
         $this->expectException(\Error::class);
-        $this->expectExceptionMessage('Argument #1 ($sockets) can\'t be an empty array');
+        $this->expectExceptionMessage('No bind addresses specified');
 
-        new HttpSocketServer([], $this->createMock(PsrLogger::class));
+        $server = new HttpSocketServer($this->createMock(PsrLogger::class));
+        $server->start($this->createMock(RequestHandler::class));
     }
 
     public function testShutdownWaitsOnUnfinishedResponses(): void
     {
-        $server = new HttpSocketServer([$this->serverSocket], $this->createMock(PsrLogger::class));
-
-        $server->start(new ClosureRequestHandler(function () {
+        $this->server->start(new ClosureRequestHandler(function () {
             delay(0.2);
 
             return new Response(Status::NO_CONTENT);
@@ -60,19 +73,14 @@ class IntegrationTest extends AsyncTestCase
         // Ensure client already connected and sent request
         delay(0.1);
 
-        $server->stop();
+        $this->server->stop();
 
         self::assertSame(Status::NO_CONTENT, $response->getStatus());
     }
 
     public function testBasicRequest(): void
     {
-        $server = new HttpSocketServer(
-            [$this->serverSocket],
-            $this->createMock(PsrLogger::class)
-        );
-
-        $server->start(new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
+        $this->server->start(new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
             $request = $req;
             $body = $request->getBody()->buffer();
 
@@ -96,12 +104,7 @@ class IntegrationTest extends AsyncTestCase
 
     public function testStreamRequest(): void
     {
-        $server = new HttpSocketServer(
-            [$this->serverSocket],
-            $this->createMock(PsrLogger::class)
-        );
-
-        $server->start(new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
+        $this->server->start(new ClosureRequestHandler(function (Request $req) use (&$request, &$body) {
             $request = $req;
             $body = $request->getBody()->buffer();
 
@@ -140,9 +143,7 @@ class IntegrationTest extends AsyncTestCase
      */
     public function testPreRequestHandlerFailure(ClientRequest $request, int $status): void
     {
-        $server = new HttpSocketServer([$this->serverSocket], $this->createMock(PsrLogger::class));
-
-        $server->start(new ClosureRequestHandler($this->createCallback(0)));
+        $this->server->start(new ClosureRequestHandler($this->createCallback(0)));
 
         $request->setUri($this->getAuthority());
 
@@ -166,9 +167,7 @@ class IntegrationTest extends AsyncTestCase
 
     public function testError(): void
     {
-        $server = new HttpSocketServer([$this->serverSocket], $this->createMock(PsrLogger::class));
-
-        $server->start(new ClosureRequestHandler(function (Request $req) {
+        $this->server->start(new ClosureRequestHandler(function (Request $req) {
             throw new \Exception;
         }));
 

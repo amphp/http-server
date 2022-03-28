@@ -51,18 +51,18 @@ final class Http1Driver extends AbstractHttpDriver
 
     public function __construct(
         private readonly TimeoutQueue $timeoutQueue,
+        RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
         Options $options,
     ) {
-        parent::__construct($errorHandler, $logger, $options);
+        parent::__construct($requestHandler, $errorHandler, $logger, $options);
 
         $this->lastWrite = Future::complete();
         $this->pendingResponse = Future::complete();
     }
 
     public function handleClient(
-        RequestHandler $requestHandler,
         Client $client,
         ReadableStream $readableStream,
         WritableStream $writableStream,
@@ -140,13 +140,13 @@ final class Http1Driver extends AbstractHttpDriver
                         // Internal upgrade to HTTP/2.
                         $this->http2driver = new Http2Driver(
                             $this->timeoutQueue,
+                            $this->requestHandler,
                             $this->errorHandler,
                             $this->logger,
                             $this->options,
                         );
 
                         $this->http2driver->handleClient(
-                            $requestHandler,
                             $this->client,
                             new ReadableStreamChain(
                                 new ReadableBuffer("$startLine\r\n$rawHeaders\r\n$buffer"),
@@ -341,13 +341,14 @@ final class Http1Driver extends AbstractHttpDriver
                     // Internal upgrade
                     $this->http2driver = new Http2Driver(
                         $this->timeoutQueue,
+                        $this->requestHandler,
                         $this->errorHandler,
                         $this->logger,
                         $this->options,
                         $h2cSettings
                     );
 
-                    $this->http2driver->initializeWriting($requestHandler, $this->client, $this->writableStream);
+                    $this->http2driver->initializeWriting($this->client, $this->writableStream);
 
                     // Remove headers that are not related to the HTTP/2 request.
                     foreach ($parsedHeaders as $index => [$key, $value]) {
@@ -373,7 +374,7 @@ final class Http1Driver extends AbstractHttpDriver
 
                     $this->pendingResponseCount++;
                     $this->currentBuffer = $buffer;
-                    $this->handleRequest($requestHandler, $request);
+                    $this->handleRequest($request);
                     $this->pendingResponseCount--;
                     $request = null; // DO NOT leave a reference to the Request object in the parser!
 
@@ -418,7 +419,7 @@ final class Http1Driver extends AbstractHttpDriver
                 // Do not await future until body is completely read.
                 $this->pendingResponseCount++;
                 $this->currentBuffer = $buffer;
-                $this->pendingResponse = async($this->handleRequest(...), $requestHandler, $request);
+                $this->pendingResponse = async($this->handleRequest(...), $request);
 
                 // DO NOT leave a reference to the Request, Trailers, or Body objects within the parser!
                 $request = null;

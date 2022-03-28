@@ -2,11 +2,11 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Socket\Socket;
+use Amp\ByteStream\Closable;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 
-interface Client
+interface Client extends Closable
 {
     /**
      * Integer ID of this client.
@@ -37,21 +37,4 @@ interface Client
      * If the client is encrypted a TlsInfo object is returned, otherwise null.
      */
     public function getTlsInfo(): ?TlsInfo;
-
-    /**
-     * Attaches a callback invoked with this client closes. The callback is passed this object as the first parameter.
-     *
-     * @param \Closure(Client):void $onClose
-     */
-    public function onClose(\Closure $onClose): void;
-
-    /**
-     * Forcefully closes the client connection.
-     */
-    public function close(): void;
-
-    /**
-     * @return bool {@code true} if the connection has been closed, {@code false} otherwise.
-     */
-    public function isClosed(): bool;
 }

@@ -98,6 +98,11 @@ final class UpgradedSocket implements Socket
         return !$this->isReadable() && !$this->isWritable();
     }
 
+    public function onClose(\Closure $onClose): void
+    {
+        $this->readableStream->onClose($onClose);
+    }
+
     public function isReadable(): bool
     {
         return $this->readBuffer !== '' || $this->readableStream->isReadable();

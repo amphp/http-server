@@ -35,7 +35,7 @@
         "amphp/hpack": "^3",
         "amphp/http": "^1.6",
         "amphp/pipeline": "^1",
-        "amphp/socket": "^2-dev",
+        "amphp/socket": "^2",
         "league/uri": "^6",
         "psr/http-message": "^1",
         "psr/log": "^1|^2|^3",

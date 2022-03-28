@@ -3,7 +3,8 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Client\SocketException;
-use Amp\Socket\Socket;
+use Amp\Socket\EncryptableSocket;
+use Amp\Socket\ServerTlsContext;
 
 interface ClientFactory
 {
@@ -12,5 +13,5 @@ interface ClientFactory
      *
      * @throws SocketException
      */
-    public function createClient(Socket $socket): ?Client;
+    public function createClient(EncryptableSocket $socket): ?Client;
 }

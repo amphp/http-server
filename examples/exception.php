@@ -15,18 +15,16 @@ use function Amp\trapSignal;
 
 // Run this script, then visit http://localhost:1337/ in your browser.
 
-$servers = [
-    Socket\listen("0.0.0.0:1337"),
-    Socket\listen("[::]:1337"),
-];
-
 $logHandler = new StreamHandler(ByteStream\getStdout());
 $logHandler->pushProcessor(new PsrLogMessageProcessor());
 $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpSocketServer($servers, $logger);
+$server = new HttpSocketServer($logger);
+
+$server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
+$server->expose(new Socket\InternetAddress("[::]", 1337));
 
 $server->start(new ClosureRequestHandler(function () {
     throw new \Exception("Something went wrong :-(");
