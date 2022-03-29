@@ -36,10 +36,10 @@ final class HttpSocketServer implements HttpServer
     /** @var list<SocketServer> */
     private array $servers = [];
 
-    /** @var list<\Closure(ServerLifecycle):void> */
+    /** @var list<\Closure(HttpServer):void> */
     private array $onStart = [];
 
-    /** @var list<\Closure(ServerLifecycle):void> */
+    /** @var list<\Closure(HttpServer):void> */
     private array $onStop = [];
 
     public function __construct(
