@@ -143,7 +143,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->writableStream = $writableStream;
 
         $this->timeoutQueue->insert($this->client, 0, fn () => $this->shutdown(
-            null,
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
         ), $this->streamTimeout);
 
@@ -173,7 +172,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->readableStream = $readableStream;
 
         $this->timeoutQueue->insert($this->client, 0, fn () => $this->shutdown(
-            null,
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
         ), $this->streamTimeout);
 
@@ -223,7 +221,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             $this->shutdown();
         } catch (Http2ConnectionException $exception) {
-            $this->shutdown(null, $exception);
+            $this->shutdown($exception);
         } finally {
             $this->timeoutQueue->remove($this->client, 0);
         }
@@ -453,17 +451,20 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     }
 
     /**
-     * @param int|null $lastId ID of last processed frame. Null to use the last opened frame ID or 0 if no streams have
      *     been opened.
      */
-    private function shutdown(?int $lastId = null, ?\Throwable $reason = null): void
+    private function shutdown(?\Throwable $reason = null): void
     {
+        if ($this->stopping) {
+            return;
+        }
+
         $this->stopping = true;
 
         try {
             $futures = [];
             foreach ($this->streams as $id => $stream) {
-                if ($lastId && $id > $lastId) {
+                if ($id > $this->remoteStreamId) {
                     break;
                 }
 
@@ -473,14 +474,21 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             }
 
             $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
-            $lastId ??= ($id ?? 0);
-            $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
+            $this->writeFrame(\pack("NN", $this->remoteStreamId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
+
+            \assert($this->logger->debug(\sprintf(
+                    "Shutting down HTTP/2 client connection @ %s #%d; last-id: %d; reason: %s",
+                    $this->client->getRemoteAddress()->toString(),
+                    $this->client->getId(),
+                    $this->remoteStreamId,
+                    $reason ? $reason->getMessage() : 'none',
+                )) || true);
 
             Future\await($futures);
 
             $futures = [];
             foreach ($this->streams as $id => $stream) {
-                if ($lastId && $id > $lastId) {
+                if ($id > $this->remoteStreamId) {
                     break;
                 }
 
@@ -849,7 +857,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->logger->notice($message);
         }
 
-        $this->shutdown($lastId, new Http2ConnectionException($message, $error));
+        $this->shutdown(new Http2ConnectionException($message, $error));
     }
 
     public function handleStreamWindowIncrement(int $streamId, int $windowSize): void
@@ -1397,7 +1405,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         ]);
 
         $this->shutdown(
-            null,
             new ClientException($this->client, "HTTP/2 connection error", $exception->getCode(), $exception)
         );
     }
