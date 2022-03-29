@@ -68,6 +68,18 @@ final class HttpSocketServer implements HttpServer
     }
 
     /**
+     * @return SocketServer[]
+     */
+    public function getServers(): array
+    {
+        if ($this->status !== HttpServerStatus::Started) {
+            throw new \Error('Cannot get the list of socket servers when the HTTP server is not running');
+        }
+
+        return $this->servers;
+    }
+
+    /**
      * Retrieve the current server status.
      */
     public function getStatus(): HttpServerStatus
@@ -278,6 +290,7 @@ final class HttpSocketServer implements HttpServer
 
         $this->requestHandler = null;
         $this->errorHandler = null;
+        $this->servers = [];
 
         if (!empty($exceptions)) {
             throw new CompositeException($exceptions, "HTTP server onStop failure");

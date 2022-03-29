@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server;
 
+use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 interface HttpServer
@@ -15,6 +16,11 @@ interface HttpServer
      * @param \Closure(HttpServer):void $onStop
      */
     public function onStop(\Closure $onStop): void;
+
+    /**
+     * @return list<SocketServer>
+     */
+    public function getServers(): array;
 
     public function getStatus(): HttpServerStatus;
 
