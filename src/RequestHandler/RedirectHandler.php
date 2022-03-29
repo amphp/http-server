@@ -36,7 +36,7 @@ final class RedirectHandler implements RequestHandler
     {
         $requestUri = $request->getUri();
 
-        $path = $this->uri->getPath() . '/' . ltrim($requestUri->getPath(), '/');
+        $path = $this->uri->getPath() . '/' . \ltrim($requestUri->getPath(), '/');
 
         return redirectTo(
             $this->uri

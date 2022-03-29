@@ -20,8 +20,8 @@ final class MovedResourceHandler implements RequestHandler
      */
     public function __construct(
         private readonly string $path,
-        private readonly int $statusCode = Status::PERMANENT_REDIRECT)
-    {
+        private readonly int $statusCode = Status::PERMANENT_REDIRECT
+    ) {
         if ($this->path === "") {
             throw new \Error("Empty path in provided URI");
         }

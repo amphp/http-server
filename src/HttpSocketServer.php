@@ -6,10 +6,8 @@ use Amp\CompositeException;
 use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\ConnectionLimitingClientFactory;
-use Amp\Http\Server\Driver\ConnectionLimitingSocketServerFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriverFactory;
-use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
@@ -24,8 +22,6 @@ use function Amp\async;
 final class HttpSocketServer implements HttpServer
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
-
-    private readonly Options $options;
 
     private readonly HttpDriverFactory $driverFactory;
 
@@ -46,28 +42,14 @@ final class HttpSocketServer implements HttpServer
     /** @var list<\Closure(ServerLifecycle):void> */
     private array $onStop = [];
 
-    /**
-     * @param Options|null $options Null creates an Options object with all default options.
-     */
     public function __construct(
         private readonly PsrLogger $logger,
-        ?Options $options = null,
         ?ClientFactory $clientFactory = null,
         ?HttpDriverFactory $driverFactory = null,
+        private readonly bool $enableCompression = false,
     ) {
-        $this->options = $options ?? new Options;
-
-        $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory(
-                $this->logger,
-                $this->options->getConnectionsPerIpLimit(),
-                new SocketClientFactory($this->options->getTlsSetupTimeout()),
-            );
-
-        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory(
-                $this->logger,
-                $this->options,
-                new ConnectionLimitingSocketServerFactory($this->options->getConnectionLimit()),
-            );
+        $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory($this->logger);
+        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory($this->logger);
 
         $this->onStart((new PerformanceRecommender())->onStart(...));
     }
@@ -88,14 +70,6 @@ final class HttpSocketServer implements HttpServer
     public function getStatus(): HttpServerStatus
     {
         return $this->status;
-    }
-
-    /**
-     * Retrieve the server options object.
-     */
-    public function getOptions(): Options
-    {
-        return $this->options;
     }
 
     public function getRequestHandler(): RequestHandler
@@ -150,7 +124,7 @@ final class HttpSocketServer implements HttpServer
             throw new \Error("Cannot start server: " . $this->status->getLabel());
         }
 
-        if ($this->options->isCompressionEnabled()) {
+        if ($this->enableCompression) {
             if (!\extension_loaded('zlib')) {
                 $this->logger->warning(
                     "The zlib extension is not loaded which prevents using compression. " .

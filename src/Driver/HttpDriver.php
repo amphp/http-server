@@ -7,6 +7,16 @@ use Amp\ByteStream\WritableStream;
 
 interface HttpDriver
 {
+    public const DEFAULT_CONNECTION_TIMEOUT = 60;
+    public const DEFAULT_STREAM_TIMEOUT = 15;
+
+    public const DEFAULT_STREAM_THRESHOLD = 8192;
+
+    public const DEFAULT_HEADER_SIZE_LIMIT = 32768;
+    public const DEFAULT_BODY_SIZE_LIMIT = 131072;
+
+    public const DEFAULT_ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
+
     /**
      * @return string[] A list of supported application-layer protocols (ALPNs).
      */

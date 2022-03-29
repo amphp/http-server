@@ -8,9 +8,7 @@ use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
-use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\HttpSocketServer;
-use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
@@ -40,7 +38,7 @@ class IntegrationTest extends AsyncTestCase
         $serverFactory->method('listen')
             ->willReturn($this->serverSocket);
 
-        $driverFactory = new DefaultHttpDriverFactory($this->createMock(PsrLogger::class), new Options(), $serverFactory);
+        $driverFactory = new DefaultHttpDriverFactory($this->createMock(PsrLogger::class), $serverFactory);
 
         $this->server = new HttpSocketServer($this->createMock(PsrLogger::class), driverFactory: $driverFactory);
         $this->server->expose($this->serverSocket->getAddress());

@@ -11,7 +11,6 @@ use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\HttpSocketServer;
-use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
@@ -33,8 +32,6 @@ class SocketClientTest extends AsyncTestCase
         $handler = new ClosureRequestHandler($handler);
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
-        $options = (new Options)->withDebugMode();
-
         $server = Socket\listen(
             $address = new Socket\InternetAddress('127.0.0.1', 0),
             (new Socket\BindContext)->withTlsContext($tlsContext),
@@ -48,12 +45,11 @@ class SocketClientTest extends AsyncTestCase
 
         $httpServer = new HttpSocketServer(
             new NullLogger,
-            $options,
             driverFactory: new DefaultHttpDriverFactory(
                 logger: $logger,
-                options: $options,
                 socketServerFactory: $serverFactory,
-            ));
+            )
+        );
 
         $httpServer->expose(
             $address,

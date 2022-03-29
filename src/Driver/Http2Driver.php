@@ -18,7 +18,6 @@ use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\AbstractHttpDriver;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Options;
 use Amp\Http\Server\Push;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
@@ -35,6 +34,8 @@ use function Amp\Http\formatDateHeader;
 
 final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 {
+    public const DEFAULT_CONCURRENT_STREAM_LIMIT = 100;
+
     public const DEFAULT_MAX_FRAME_SIZE = 1 << 14;
     public const DEFAULT_WINDOW_SIZE = (1 << 16) - 1;
 
@@ -110,15 +111,22 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
-        Options $options,
+        private readonly int $streamTimeout = self::DEFAULT_STREAM_TIMEOUT,
+        private readonly int $connectionTimeout = self::DEFAULT_CONNECTION_TIMEOUT,
+        private readonly int $headerSizeLimit = self::DEFAULT_HEADER_SIZE_LIMIT,
+        private readonly int $bodySizeLimit = self::DEFAULT_BODY_SIZE_LIMIT,
+        private readonly int $streamThreshold = self::DEFAULT_STREAM_THRESHOLD,
+        private readonly int $concurrentStreamLimit = self::DEFAULT_CONCURRENT_STREAM_LIMIT,
+        array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
+        private readonly bool $pushEnabled = true,
         ?string $settings = null,
     ) {
-        parent::__construct($requestHandler, $errorHandler, $logger, $options);
+        parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
 
         $this->settings = $settings;
 
-        $this->remainingStreams = $this->options->getConcurrentStreamLimit();
-        $this->allowsPush = $this->options->isPushEnabled();
+        $this->remainingStreams = $concurrentStreamLimit;
+        $this->allowsPush = $pushEnabled;
 
         $this->hpack = new HPack;
     }
@@ -127,8 +135,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         Client $client,
         ReadableStream $readableStream,
         WritableStream $writableStream,
-    ): void
-    {
+    ): void {
         \assert(!isset($this->client), "The driver has already been setup");
 
         $this->client = $client;
@@ -138,7 +145,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->timeoutQueue->insert($this->client, 0, fn () => $this->shutdown(
             null,
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
-        ), $this->options->getHttp2Timeout());
+        ), $this->streamTimeout);
 
         $this->processClientInput(fn () => $this->readPreface());
     }
@@ -168,7 +175,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->timeoutQueue->insert($this->client, 0, fn () => $this->shutdown(
             null,
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
-        ), $this->options->getHttp2Timeout());
+        ), $this->streamTimeout);
 
         if ($this->settings !== null) {
             // Upgraded connections automatically assume an initial stream with ID 1.
@@ -181,11 +188,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 \pack(
                     "nNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->options->getBodySizeLimit(),
+                    $this->bodySizeLimit,
                     Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $this->options->getConcurrentStreamLimit(),
+                    $this->concurrentStreamLimit,
                     Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $this->options->getHeaderSizeLimit(),
+                    $this->headerSizeLimit,
                     Http2Parser::MAX_FRAME_SIZE,
                     self::DEFAULT_MAX_FRAME_SIZE
                 ),
@@ -343,12 +350,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             $buffer = "";
             $body = $response->getBody();
-            $streamThreshold = $this->options->getStreamThreshold();
 
             while (null !== $chunk = $body->read()) {
                 $buffer .= $chunk;
 
-                if (\strlen($buffer) < $streamThreshold) {
+                if (\strlen($buffer) < $this->streamThreshold) {
                     continue;
                 }
 
@@ -682,7 +688,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                     $id,
                     new ClientException($this->client, "Closing stream due to inactivity"),
                 ),
-                $this->options->getHttp2Timeout(),
+                $this->streamTimeout,
             );
         }
 
@@ -727,12 +733,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function updateTimeout(int $id): void
     {
-        $timeout = $this->options->getHttp2Timeout();
-
-        $this->timeoutQueue->update($this->client, 0, $timeout);
+        $this->timeoutQueue->update($this->client, 0, $this->connectionTimeout);
 
         if ($id & 1) {
-            $this->timeoutQueue->update($this->client, $id, $timeout);
+            $this->timeoutQueue->update($this->client, $id, $this->streamTimeout);
         }
     }
 
@@ -764,11 +768,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 \pack(
                     "nNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->options->getBodySizeLimit(),
+                    $this->bodySizeLimit,
                     Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $this->options->getConcurrentStreamLimit(),
+                    $this->concurrentStreamLimit,
                     Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $this->options->getHeaderSizeLimit(),
+                    $this->headerSizeLimit,
                     Http2Parser::MAX_FRAME_SIZE,
                     self::DEFAULT_MAX_FRAME_SIZE
                 ),
@@ -920,7 +924,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 );
             }
 
-            $stream = $this->createStream($streamId, $this->options->getBodySizeLimit());
+            $stream = $this->createStream($streamId, $this->bodySizeLimit);
         }
 
         // Header frames can be received on previously opened streams (trailer headers).
@@ -1068,7 +1072,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             }
         );
 
-        $bodySizeLimit = $this->options->getBodySizeLimit();
+        $bodySizeLimit = $this->bodySizeLimit;
 
         if ($this->serverWindow <= $bodySizeLimit >> 1) {
             $increment = $bodySizeLimit - $this->serverWindow;
@@ -1292,7 +1296,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             // Open a new stream if the ID has not been seen before, but do not set
             // $this->remoteStreamId. That will be set once the headers are received.
-            $this->createStream($streamId, $this->options->getBodySizeLimit());
+            $this->createStream($streamId, $this->bodySizeLimit);
         }
 
         $stream = $this->streams[$streamId];
@@ -1349,7 +1353,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                         );
                     }
 
-                    $this->allowsPush = ((bool) $value) && $this->options->isPushEnabled();
+                    $this->allowsPush = ((bool) $value) && $this->pushEnabled;
                     break;
 
                 case Http2Parser::MAX_FRAME_SIZE:

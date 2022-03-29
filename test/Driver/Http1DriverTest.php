@@ -15,9 +15,9 @@ use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\DefaultTimeoutQueue;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
+use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\TimeoutQueue;
 use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
@@ -47,14 +47,12 @@ class Http1DriverTest extends HttpDriverTest
         string $unparsable,
         int $errCode,
         string $errMsg,
-        Options $options
     ): void {
         $driver = new Http1Driver(
             $this->timeoutQueue,
             new ClosureRequestHandler($this->createCallback(0)),
             new DefaultErrorHandler(), // Using concrete instance to generate error response.
             new NullLogger,
-            $options,
         );
 
         $client = $this->createClientMock();
@@ -73,14 +71,12 @@ class Http1DriverTest extends HttpDriverTest
         string $unparsable,
         int $errCode,
         string $errMsg,
-        Options $options
     ): void {
         $driver = new Http1Driver(
             $this->timeoutQueue,
             new ClosureRequestHandler($this->createCallback(0)),
             new DefaultErrorHandler(), // Using concrete instance to generate error response.
             new NullLogger,
-            $options,
         );
 
         $client = $this->createClientMock();
@@ -111,7 +107,6 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            new Options,
         );
 
         $input = new ReadableBuffer($msg);
@@ -151,7 +146,6 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            new Options,
         );
 
         $input = new ReadableIterableStream((static function () use ($msg) {
@@ -193,7 +187,7 @@ class Http1DriverTest extends HttpDriverTest
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            (new Options)->withAllowedMethods(["OPTIONS", "HEAD", "GET", "FOO"]),
+            allowedMethods: ["OPTIONS", "HEAD", "GET", "FOO"],
         );
 
         $driver->handleClient(
@@ -229,7 +223,6 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            new Options,
         );
 
         $input = new ReadableIterableStream((static function () use ($msg) {
@@ -294,7 +287,6 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            new Options,
         );
 
         $input = new ReadableIterableStream((static function () use ($msg, $chunkSize) {
@@ -572,28 +564,25 @@ class Http1DriverTest extends HttpDriverTest
         $msg = "dajfalkjf jslfhalsdjf\r\n\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 1 -------------------------------------------------------------------------------------->
 
         $msg = "test   \r\n\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 2 -------------------------------------------------------------------------------------->
 
         $msg =
             "GET /someurl.html HTTP/1.0\r\n" .
             "Host: localhost\r\n" .
-            "X-My-Header: " . \str_repeat("x", 1024) . "r\n" .
+            "X-My-Header: " . \str_repeat("x", 65536) . "r\n" .
             "\r\n";
         $errCode = 431;
         $errMsg = "Bad Request: header size violation";
-        $opts = (new Options)->withHeaderSizeLimit(128);
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 3 -------------------------------------------------------------------------------------->
 
@@ -605,8 +594,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: Invalid header syntax: Obsolete line folding";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 4 -------------------------------------------------------------------------------------->
 
@@ -617,8 +605,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: Invalid header syntax: Obsolete line folding";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 5 -------------------------------------------------------------------------------------->
 
@@ -629,8 +616,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: Invalid header syntax";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 6 -------------------------------------------------------------------------------------->
 
@@ -640,8 +626,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid request line";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 7 -------------------------------------------------------------------------------------->
 
@@ -651,8 +636,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: target host mis-matched to host header";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 8 -------------------------------------------------------------------------------------->
 
@@ -662,8 +646,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid connect target";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 9 -------------------------------------------------------------------------------------->
 
@@ -673,8 +656,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: authority-form only valid for CONNECT requests";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // 10 ------------------------------------------------------------------------------------->
 
@@ -684,8 +666,7 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid host header";
-        $opts = new Options;
-        $return[] = [$msg, $errCode, $errMsg, $opts];
+        $return[] = [$msg, $errCode, $errMsg];
 
         // x -------------------------------------------------------------------------------------->
 
@@ -712,9 +693,8 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            (new Options)->withBodySizeLimit(4),
+            bodySizeLimit: 4,
         );
-
 
         async(fn () => $driver->handleClient(
             $this->createClientMock(),
@@ -763,7 +743,7 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            (new Options)->withBodySizeLimit(1),
+            bodySizeLimit: 1,
         );
 
         async(fn () => $driver->handleClient(
@@ -794,7 +774,6 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            new Options,
         );
 
         async(fn () => $driver->handleClient(
@@ -875,7 +854,7 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            (new Options)->withHttp1Timeout(60),
+            connectionTimeout: 60,
         );
 
         $output = new WritableBuffer;
@@ -916,7 +895,7 @@ class Http1DriverTest extends HttpDriverTest
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            (new Options)->withHttp1Timeout(60),
+            connectionTimeout: 60,
         );
 
         $output = new WritableBuffer;
@@ -984,7 +963,7 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(fn () => new Response()),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            (new Options)->withStreamThreshold(1), // Set stream threshold to 1 to force immediate writes to client.
+            streamThreshold: 1,
         );
 
         $output = new WritableBuffer();
@@ -1011,8 +990,6 @@ class Http1DriverTest extends HttpDriverTest
             "http2-settings: $settings\r\n" .
             "\r\n";
 
-        $options = (new Options)->withHttp2Upgrade();
-
         $requestHandler = new ClosureRequestHandler(function (Request $req) use (&$request) {
             $request = $req;
             return new Response;
@@ -1023,9 +1000,8 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            $options,
+            allowHttp2Upgrade: true,
         );
-
 
         $driver->handleClient(
             $this->createClientMock(),
@@ -1041,11 +1017,11 @@ class Http1DriverTest extends HttpDriverTest
             Http2DriverTest::packFrame(\pack(
                 "nNnNnNnN",
                 Http2Parser::INITIAL_WINDOW_SIZE,
-                $options->getBodySizeLimit(),
+                HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
                 Http2Parser::MAX_CONCURRENT_STREAMS,
-                $options->getConcurrentStreamLimit(),
+                Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
                 Http2Parser::MAX_HEADER_LIST_SIZE,
-                $options->getHeaderSizeLimit(),
+                HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
                 Http2Parser::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
             ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
@@ -1062,8 +1038,6 @@ class Http1DriverTest extends HttpDriverTest
 
     public function testNativeHttp2(): void
     {
-        $options = (new Options)->withHttp2Upgrade();
-
         $requestHandler = new ClosureRequestHandler(function (Request $req) use (&$request) {
             $request = $req;
         });
@@ -1073,7 +1047,7 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            $options,
+            allowHttp2Upgrade: true,
         );
 
         $output = new WritableBuffer;
@@ -1087,11 +1061,11 @@ class Http1DriverTest extends HttpDriverTest
         $expected = Http2DriverTest::packFrame(\pack(
             "nNnNnNnN",
             Http2Parser::INITIAL_WINDOW_SIZE,
-            $options->getBodySizeLimit(),
+            HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
             Http2Parser::MAX_CONCURRENT_STREAMS,
-            $options->getConcurrentStreamLimit(),
+            Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
             Http2Parser::MAX_HEADER_LIST_SIZE,
-            $options->getHeaderSizeLimit(),
+            HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
             Http2Parser::MAX_FRAME_SIZE,
             Http2Driver::DEFAULT_MAX_FRAME_SIZE
         ), Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
@@ -1113,7 +1087,6 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            new Options,
         );
 
         $message = "POST / HTTP/1.1\r\n" .
@@ -1153,7 +1126,6 @@ class Http1DriverTest extends HttpDriverTest
             $requestHandler,
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            new Options,
         );
 
         $message =

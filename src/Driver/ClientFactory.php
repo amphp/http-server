@@ -4,7 +4,6 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Client\SocketException;
 use Amp\Socket\EncryptableSocket;
-use Amp\Socket\ServerTlsContext;
 
 interface ClientFactory
 {

@@ -6,7 +6,6 @@ use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
@@ -46,7 +45,7 @@ abstract class AbstractHttpDriver implements HttpDriver
         protected readonly RequestHandler $requestHandler,
         protected readonly ErrorHandler $errorHandler,
         protected readonly LoggerInterface $logger,
-        protected readonly Options $options,
+        protected readonly array $allowedMethods = HttpDriver::DEFAULT_ALLOWED_METHODS,
     ) {
     }
 
@@ -64,13 +63,13 @@ abstract class AbstractHttpDriver implements HttpDriver
         try {
             $method = $request->getMethod();
 
-            if (!\in_array($method, $this->options->getAllowedMethods(), true)) {
+            if (!\in_array($method, $this->allowedMethods, true)) {
                 $response = $this->handleInvalidMethod(
                     isset(self::KNOWN_METHODS[$method]) ? Status::METHOD_NOT_ALLOWED : Status::NOT_IMPLEMENTED
                 );
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = new Response(Status::NO_CONTENT, [
-                    "allow" => \implode(", ", $this->options->getAllowedMethods()),
+                    "allow" => \implode(", ", $this->allowedMethods),
                 ]);
             } else {
                 $response = $this->requestHandler->handleRequest($request);
@@ -98,7 +97,7 @@ abstract class AbstractHttpDriver implements HttpDriver
     private function handleInvalidMethod(int $status): Response
     {
         $response = $this->errorHandler->handleError($status);
-        $response->setHeader("allow", \implode(", ", $this->options->getAllowedMethods()));
+        $response->setHeader("allow", \implode(", ", $this->allowedMethods));
         return $response;
     }
 

@@ -22,7 +22,5 @@ interface HttpServer
 
     public function getErrorHandler(): ErrorHandler;
 
-    public function getOptions(): Options;
-
     public function getLogger(): PsrLogger;
 }

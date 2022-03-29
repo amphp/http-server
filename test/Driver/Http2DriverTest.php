@@ -16,11 +16,10 @@ use Amp\Http\Internal\HPackNghttp2;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\DefaultTimeoutQueue;
 use Amp\Http\Server\Driver\Http2Driver;
+use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\TimeoutQueue;
 use Amp\Http\Server\ErrorHandler;
-use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
@@ -96,7 +95,7 @@ class Http2DriverTest extends HttpDriverTest
     {
         parent::setUp();
 
-        $this->initDriver(new Options, new DefaultTimeoutQueue);
+        $this->initDriver();
         $this->input = new ReadableBuffer('');
 
         $this->output = new Pipe(\PHP_INT_MAX);
@@ -104,7 +103,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->responses = new \SplQueue;
     }
 
-    private function initDriver(Options $options, TimeoutQueue $timeoutQueue): void
+    private function initDriver(array $options = [], TimeoutQueue $timeoutQueue = new DefaultTimeoutQueue): void
     {
         $this->driver = new Http2Driver(
             $timeoutQueue,
@@ -134,7 +133,7 @@ class Http2DriverTest extends HttpDriverTest
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            $options
+            ...$options,
         );
     }
 
@@ -323,11 +322,11 @@ class Http2DriverTest extends HttpDriverTest
             'buffer' => \pack(
                 "nNnNnNnN",
                 Http2Parser::INITIAL_WINDOW_SIZE,
-                (new Options)->getBodySizeLimit(),
+                HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
                 Http2Parser::MAX_CONCURRENT_STREAMS,
-                (new Options)->getConcurrentStreamLimit(),
+                Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
                 Http2Parser::MAX_HEADER_LIST_SIZE,
-                (new Options)->getHeaderSizeLimit(),
+                HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
                 Http2Parser::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
             ),
@@ -429,11 +428,11 @@ class Http2DriverTest extends HttpDriverTest
             'buffer' => \pack(
                 "nNnNnNnN",
                 Http2Parser::INITIAL_WINDOW_SIZE,
-                (new Options)->getBodySizeLimit(),
+                HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
                 Http2Parser::MAX_CONCURRENT_STREAMS,
-                (new Options)->getConcurrentStreamLimit(),
+                Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
                 Http2Parser::MAX_HEADER_LIST_SIZE,
-                (new Options)->getHeaderSizeLimit(),
+                HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
                 Http2Parser::MAX_FRAME_SIZE,
                 Http2Driver::DEFAULT_MAX_FRAME_SIZE
             ),
@@ -524,7 +523,7 @@ class Http2DriverTest extends HttpDriverTest
         }
 
         // Set stream threshold to 1 to force immediate writes to client.
-        $this->initDriver((new Options)->withStreamThreshold(1), new DefaultTimeoutQueue);
+        $this->initDriver(['streamThreshold' => 1]);
         $request = async(fn () => $this->whenRequestIsReceived());
 
         $input = new Queue;

@@ -16,7 +16,6 @@ use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Amp\TimeoutCancellation;
 use Monolog\Logger;
-use function Amp\async;
 use function Amp\trapSignal;
 
 // Used for testing against h2spec (https://github.com/summerwind/h2spec)
