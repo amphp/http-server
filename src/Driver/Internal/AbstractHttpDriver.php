@@ -55,13 +55,13 @@ abstract class AbstractHttpDriver implements HttpDriver
     final protected function handleRequest(Request $request): void
     {
         \assert($this->logger->debug(\sprintf(
-                "%s %s HTTP/%s @ %s #%d",
-                $request->getMethod(),
-                $request->getUri(),
-                $request->getProtocolVersion(),
-                $request->getClient()->getRemoteAddress()->toString(),
-                $request->getClient()->getId(),
-            )) || true);
+            "%s %s HTTP/%s @ %s #%d",
+            $request->getMethod(),
+            $request->getUri(),
+            $request->getProtocolVersion(),
+            $request->getClient()->getRemoteAddress()->toString(),
+            $request->getClient()->getId(),
+        )) || true);
 
         $clientRequest = $request;
         $request = clone $request;

@@ -478,12 +478,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->writeFrame(\pack("NN", $this->remoteStreamId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
 
             \assert($this->logger->debug(\sprintf(
-                    "Shutting down HTTP/2 client connection @ %s #%d; last-id: %d; reason: %s",
-                    $this->client->getRemoteAddress()->toString(),
-                    $this->client->getId(),
-                    $this->remoteStreamId,
-                    $reason ? $reason->getMessage() : 'none',
-                )) || true);
+                "Shutting down HTTP/2 client connection @ %s #%d; last-id: %d; reason: %s",
+                $this->client->getRemoteAddress()->toString(),
+                $this->client->getId(),
+                $this->remoteStreamId,
+                $reason ? $reason->getMessage() : 'none',
+            )) || true);
 
             Future\await($futures);
 

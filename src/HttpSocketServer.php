@@ -222,11 +222,11 @@ final class HttpSocketServer implements HttpServer
             );
 
             \assert($this->logger->debug(\sprintf(
-                    "Handling requests from %s #%d using %s",
-                    $client->getRemoteAddress()->toString(),
-                    $id,
-                    \get_class($driver),
-                )) || true);
+                "Handling requests from %s #%d using %s",
+                $client->getRemoteAddress()->toString(),
+                $id,
+                \get_class($driver),
+            )) || true);
 
             try {
                 $driver->handleClient($client, $socket, $socket);
@@ -235,10 +235,10 @@ final class HttpSocketServer implements HttpServer
             }
 
             \assert($this->logger->debug(\sprintf(
-                    "Client %s #%d closed",
-                    $client->getRemoteAddress()->toString(),
-                    $id,
-                )) || true);
+                "Client %s #%d closed",
+                $client->getRemoteAddress()->toString(),
+                $id,
+            )) || true);
         } catch (\Throwable $exception) {
             $this->logger->error("Exception while handling client {address}", [
                 'address' => $socket->getRemoteAddress(),
