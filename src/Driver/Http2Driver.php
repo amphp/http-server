@@ -179,6 +179,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             // Upgraded connections automatically assume an initial stream with ID 1.
             // No date will be incoming on this stream, so body size of 0.
             $this->createStream(1, 0, Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED);
+            $this->remoteStreamId = \max(1, $this->remoteStreamId);
             $this->remainingStreams--;
 
             // Initial settings frame, sent immediately for upgraded connections.
@@ -552,7 +553,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         // $id is the new stream ID for the pushed response, $streamId is the original request stream ID.
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
-        $this->remoteStreamId = \max($id, $this->remoteStreamId);
 
         $request = new Request($this->client, "GET", $pushUri, $headers, "", "2");
 

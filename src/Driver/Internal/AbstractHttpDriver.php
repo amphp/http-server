@@ -88,7 +88,7 @@ abstract class AbstractHttpDriver implements HttpDriver
                 throw $exception;
             }
 
-            $response = $this->handleInternalServerError($request);
+            $response = $this->handleInternalServerError($request, $exception);
         } finally {
             $this->pendingRequestHandlerCount--;
         }
