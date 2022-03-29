@@ -48,6 +48,8 @@ final class Http1Driver extends AbstractHttpDriver
 
     private string $currentBuffer = "";
 
+    private bool $continue = true;
+
     public function __construct(
         private readonly TimeoutQueue $timeoutQueue,
         RequestHandler $requestHandler,
@@ -72,6 +74,12 @@ final class Http1Driver extends AbstractHttpDriver
         WritableStream $writableStream,
     ): void {
         \assert(!isset($this->client));
+
+        \assert($this->logger->debug(\sprintf(
+            "Handling requests from %s #%d using HTTP/1.x driver",
+            $client->getRemoteAddress()->toString(),
+            $client->getId(),
+        )) || true);
 
         $this->client = $client;
         $this->readableStream = $readableStream;
@@ -718,7 +726,7 @@ final class Http1Driver extends AbstractHttpDriver
 
                 $this->pendingResponse->await(); // Wait for response to be generated.
                 $this->pendingResponseCount--;
-            } while (true);
+            } while ($this->continue);
         } catch (ClientException $exception) {
             if ($this->bodyQueue === null || !$this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
@@ -745,6 +753,12 @@ final class Http1Driver extends AbstractHttpDriver
                 ));
                 $trailerDeferred = null;
             }
+
+            \assert($this->logger->debug(\sprintf(
+                "Stopping HTTP/1.x parser @ %s #%d",
+                $this->client->getRemoteAddress()->toString(),
+                $this->client->getId(),
+            )) || true);
         }
     }
 
@@ -764,23 +778,25 @@ final class Http1Driver extends AbstractHttpDriver
 
         try {
             $this->send($lastWrite, $response, $request);
+
+            if ($response->isUpgraded()) {
+                $this->upgrade($request, $response);
+            }
         } finally {
             $deferred->complete();
-        }
-
-        if ($response->isUpgraded()) {
-            $this->upgrade($request, $response);
         }
     }
 
     /**
      * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
      */
-    private function upgrade(
-        Request $request,
-        Response $response,
-    ): void {
+    private function upgrade(Request $request, Response $response): void
+    {
+        $this->continue = false;
+
         $client = $request->getClient();
+
+        $this->removeTimeout();
 
         $stream = $this->currentBuffer === ''
             ? $this->readableStream

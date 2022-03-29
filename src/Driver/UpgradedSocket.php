@@ -20,6 +20,11 @@ final class UpgradedSocket implements Socket
     ) {
     }
 
+    public function getClient(): Client
+    {
+        return $this->client;
+    }
+
     public function read(?Cancellation $cancellation = null, ?int $limit = null): ?string
     {
         if ($this->readBuffer !== '') {

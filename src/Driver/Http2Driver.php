@@ -207,6 +207,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function processClientInput(\Closure $parserInput): void
     {
+        \assert($this->logger->debug(\sprintf(
+            "Handling requests from %s #%d using HTTP/2 driver",
+            $this->client->getRemoteAddress()->toString(),
+            $this->client->getId(),
+        )) || true);
+
         $parser = (new Http2Parser($this))->parse($this->settings);
 
         try {
@@ -478,7 +484,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->writeFrame(\pack("NN", $this->remoteStreamId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
 
             \assert($this->logger->debug(\sprintf(
-                "Shutting down HTTP/2 client connection @ %s #%d; last-id: %d; reason: %s",
+                "Shutting down HTTP/2 client @ %s #%d; last-id: %d; reason: %s",
                 $this->client->getRemoteAddress()->toString(),
                 $this->client->getId(),
                 $this->remoteStreamId,
