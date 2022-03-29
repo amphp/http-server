@@ -12,11 +12,14 @@ final class ConnectionLimitingClientFactory implements ClientFactory
     /** @var Client[] */
     private array $clientsPerIp = [];
 
+    private readonly ClientFactory $delegate;
+
     public function __construct(
         private readonly PsrLogger $logger,
         private readonly int $connectionsPerIpLimit = 10,
-        private readonly ClientFactory $delegate = new SocketClientFactory,
+        ?ClientFactory $delegate = null,
     ) {
+        $this->delegate = $delegate ?? new SocketClientFactory($this->logger);
     }
 
     public function createClient(EncryptableSocket $socket): ?Client

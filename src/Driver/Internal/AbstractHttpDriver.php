@@ -54,6 +54,15 @@ abstract class AbstractHttpDriver implements HttpDriver
      */
     final protected function handleRequest(Request $request): void
     {
+        \assert($this->logger->debug(\sprintf(
+                "%s %s HTTP/%s @ %s #%d",
+                $request->getMethod(),
+                $request->getUri(),
+                $request->getProtocolVersion(),
+                $request->getClient()->getRemoteAddress()->toString(),
+                $request->getClient()->getId(),
+            )) || true);
+
         $clientRequest = $request;
         $request = clone $request;
 
@@ -104,20 +113,30 @@ abstract class AbstractHttpDriver implements HttpDriver
     /**
      * Used if an exception is thrown from a request handler.
      */
-    private function handleInternalServerError(Request $request): Response
+    private function handleInternalServerError(Request $request, \Throwable $exception): Response
     {
         $status = Status::INTERNAL_SERVER_ERROR;
+
+        $this->logger->error(
+            \sprintf(
+                "Unexpected %s thrown from %s::handleRequest(), falling back to error handler.",
+                $exception::class,
+                $this->requestHandler::class,
+            ),
+            ['exception' => $exception],
+        );
 
         try {
             return $this->errorHandler->handleError($status, null, $request);
         } catch (\Throwable $exception) {
-            $exceptionClass = $exception::class;
-            $errorHandlerClass = $this->errorHandler::class;
-
             // If the error handler throws, fallback to returning the default error page.
             $this->logger->error(
-                "Unexpected {$exceptionClass} thrown from {$errorHandlerClass}::handleError(), falling back to default error handler.",
-                ['exception' => $exception]
+                \sprintf(
+                    "Unexpected %s thrown from %s::handleError(), falling back to default error handler.",
+                    $exception::class,
+                    $this->errorHandler::class,
+                ),
+                ['exception' => $exception],
             );
 
             // The default error handler will never throw, otherwise there's a bug

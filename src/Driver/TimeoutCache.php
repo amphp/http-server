@@ -84,7 +84,7 @@ final class TimeoutCache
      *
      * @param int $now Return a Client ID only if the expiration is less than or equal to $now.
      *
-     * @return  int|null Client ID removed, or null if no client has expired.
+     * @return string|null Client ID removed, or null if no client has expired.
      */
     public function extract(int $now): ?string
     {

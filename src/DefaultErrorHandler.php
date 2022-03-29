@@ -24,14 +24,17 @@ final class DefaultErrorHandler implements ErrorHandler
             $this->cache[$statusCode] = \str_replace(
                 ["{code}", "{reason}"],
                 // Using standard reason in HTML for caching purposes.
-                \array_map("htmlspecialchars", [$statusCode, Status::getReason($statusCode)]),
+                \array_map(\htmlspecialchars(...), [$statusCode, Status::getReason($statusCode)]),
                 $errorHtml
             );
         }
 
-        $response = new Response($statusCode, [
-            "content-type" => "text/html; charset=utf-8",
-        ], $this->cache[$statusCode]);
+        $response = new Response(
+            headers: [
+                "content-type" => "text/html; charset=utf-8",
+            ],
+            body: $this->cache[$statusCode],
+        );
 
         $response->setStatus($statusCode, $reason);
 
