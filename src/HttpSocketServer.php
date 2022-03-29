@@ -7,12 +7,12 @@ use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\ConnectionLimitingClientFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
+use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\EncryptableSocket;
-use Amp\Socket\ServerTlsContext;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\SocketServer;
 use Psr\Log\LoggerInterface as PsrLogger;
@@ -35,6 +35,9 @@ final class HttpSocketServer implements HttpServer
 
     /** @var list<SocketServer> */
     private array $servers = [];
+
+    /** @var array<int, HttpDriver> */
+    private array $drivers = [];
 
     /** @var list<\Closure(HttpServer):void> */
     private array $onStart = [];
@@ -86,7 +89,7 @@ final class HttpSocketServer implements HttpServer
      */
     public function getErrorHandler(): ErrorHandler
     {
-        if (!$this->requestHandler) {
+        if (!$this->errorHandler) {
             throw new \Error('Cannot get the error handler when the server is not running');
         }
 
@@ -161,7 +164,7 @@ final class HttpSocketServer implements HttpServer
             $this->status = HttpServerStatus::Started;
 
             foreach ($this->servers as $server) {
-                $scheme = $server->getBindContext()?->getTlsContext() !== null ? 'https' : 'http';
+                $scheme = $server->getBindContext()->getTlsContext() !== null ? 'https' : 'http';
                 $serverName = $server->getAddress()->toString();
 
                 $this->logger->info("Listening on {$scheme}://{$serverName}/");
@@ -181,24 +184,38 @@ final class HttpSocketServer implements HttpServer
 
     private function accept(SocketServer $server): void
     {
-        $tlsContext = $server->getBindContext()?->getTlsContext();
         while ($socket = $server->accept()) {
-            EventLoop::queue($this->handleClient(...), $socket, $tlsContext);
+            EventLoop::queue($this->handleClient(...), $socket);
         }
     }
 
-    private function handleClient(EncryptableSocket $socket, ?ServerTlsContext $tlsContext): void
+    private function handleClient(EncryptableSocket $socket): void
     {
         try {
-            $client = $this->clientFactory->createClient($socket, $tlsContext);
+            $client = $this->clientFactory->createClient($socket);
             if (!$client) {
                 $socket->close();
                 return;
             }
 
-            $driver = $this->driverFactory->createHttpDriver($this->requestHandler, $this->errorHandler, $client);
+            $id = $client->getId();
 
-            $driver->handleClient($client, $socket, $socket);
+            if (!$this->requestHandler || !$this->errorHandler) {
+                $client->close();
+                return;
+            }
+
+            $this->drivers[$id] = $driver = $this->driverFactory->createHttpDriver(
+                $this->requestHandler,
+                $this->errorHandler,
+                $client,
+            );
+
+            try {
+                $driver->handleClient($client, $socket, $socket);
+            } finally {
+                unset($this->drivers[$id]);
+            }
         } catch (\Throwable $exception) {
             $this->logger->debug("Exception while handling client {address}", [
                 'address' => $socket->getRemoteAddress(),
@@ -225,16 +242,25 @@ final class HttpSocketServer implements HttpServer
         $this->logger->info("Stopping server");
         $this->status = HttpServerStatus::Stopping;
 
+        foreach ($this->servers as $server) {
+            $server->close();
+        }
+
         $futures = [];
         foreach ($this->onStop as $onStop) {
             $futures[] = async($onStop, $this);
         }
 
-        [$exceptions] = Future\awaitAll($futures);
+        [$onStopExceptions] = Future\awaitAll($futures);
 
-        foreach ($this->servers as $server) {
-            $server->close();
+        $futures = [];
+        foreach ($this->drivers as $driver) {
+            $futures[] = async($driver->stop(...));
         }
+
+        [$driverExceptions] = Future\awaitAll($futures);
+
+        $exceptions = \array_merge($onStopExceptions, $driverExceptions);
 
         $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
