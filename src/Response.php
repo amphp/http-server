@@ -34,18 +34,18 @@ final class Response extends Message
     private ?Trailers $trailers = null;
 
     /**
-     * @param int $code Status code.
+     * @param int $status Status code.
      * @param string[]|string[][] $headers
      *
      * @throws \Error If one of the arguments is invalid.
      */
     public function __construct(
-        int $code = Status::OK,
+        int $status = Status::OK,
         array $headers = [],
         ReadableStream|string $body = '',
         ?Trailers $trailers = null
     ) {
-        $this->status = $this->validateStatusCode($code);
+        $this->status = $this->validateStatusCode($status);
         $this->reason = Status::getReason($this->status);
 
         $this->setBody($body);
@@ -181,11 +181,11 @@ final class Response extends Message
      * Sets the response status code and reason phrase. Use null for the reason phrase to use the default phrase
      * associated with the status code.
      *
-     * @param int $code 100 - 599
+     * @param int $status 100 - 599
      */
-    public function setStatus(int $code, string $reason = null): void
+    public function setStatus(int $status, string $reason = null): void
     {
-        $this->status = $this->validateStatusCode($code);
+        $this->status = $this->validateStatusCode($status);
         $this->reason = $reason ?? Status::getReason($this->status);
 
         if ($this->upgrade && $this->status !== Status::SWITCHING_PROTOCOLS) {
@@ -232,15 +232,15 @@ final class Response extends Message
     /**
      * @throws \Error
      */
-    private function validateStatusCode(int $code): int
+    private function validateStatusCode(int $status): int
     {
-        if ($code < 100 || $code > 599) {
+        if ($status < 100 || $status > 599) {
             throw new \Error(
                 'Invalid status code. Must be an integer between 100 and 599, inclusive.'
             );
         }
 
-        return $code;
+        return $status;
     }
 
     /**
