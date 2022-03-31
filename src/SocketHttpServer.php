@@ -19,7 +19,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
 
-final class HttpSocketServer implements HttpServer
+final class SocketHttpServer implements HttpServer
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 

@@ -5,10 +5,10 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
 use Amp\ByteStream\ReadableIterableStream;
-use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\SocketHttpServer;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
@@ -26,7 +26,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpSocketServer($logger, enableCompression: false);
+$server = new SocketHttpServer($logger, enableCompression: false);
 
 $server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
 $server->expose(new Socket\InternetAddress("[::]", 1337));

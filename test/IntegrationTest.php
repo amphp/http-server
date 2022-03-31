@@ -8,11 +8,11 @@ use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
-use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\SocketHttpServer;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Pipeline\Queue;
@@ -25,7 +25,7 @@ class IntegrationTest extends AsyncTestCase
 {
     private HttpClient $httpClient;
 
-    private HttpSocketServer $server;
+    private SocketHttpServer $server;
 
     protected function setUp(): void
     {
@@ -40,7 +40,7 @@ class IntegrationTest extends AsyncTestCase
 
         $driverFactory = new DefaultHttpDriverFactory($this->createMock(PsrLogger::class), $serverFactory);
 
-        $this->server = new HttpSocketServer($this->createMock(PsrLogger::class), driverFactory: $driverFactory);
+        $this->server = new SocketHttpServer($this->createMock(PsrLogger::class), driverFactory: $driverFactory);
         $this->server->expose($this->serverSocket->getAddress());
     }
 
@@ -54,7 +54,7 @@ class IntegrationTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage('No bind addresses specified');
 
-        $server = new HttpSocketServer($this->createMock(PsrLogger::class));
+        $server = new SocketHttpServer($this->createMock(PsrLogger::class));
         $server->start($this->createMock(RequestHandler::class));
     }
 

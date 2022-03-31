@@ -4,8 +4,8 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
-use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
+use Amp\Http\Server\SocketHttpServer;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
@@ -21,7 +21,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new HttpSocketServer($logger);
+$server = new SocketHttpServer($logger);
 
 $server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
 $server->expose(new Socket\InternetAddress("[::]", 1337));

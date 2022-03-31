@@ -10,10 +10,10 @@ use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
-use Amp\Http\Server\HttpSocketServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\SocketHttpServer;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket;
@@ -43,7 +43,7 @@ class SocketClientTest extends AsyncTestCase
 
         $logger = new NullLogger();
 
-        $httpServer = new HttpSocketServer(
+        $httpServer = new SocketHttpServer(
             new NullLogger,
             driverFactory: new DefaultHttpDriverFactory(
                 logger: $logger,
