@@ -1,6 +1,6 @@
 <?php
 
-namespace Amp\Http\Server\Driver;
+namespace Amp\Http\Server\Driver\Internal;
 
 final class TimeoutCache
 {
@@ -9,20 +9,6 @@ final class TimeoutCache
 
     /** @var array<string, int> */
     private array $pointers = [];
-
-    /**
-     * @param string $id Client ID.
-     *
-     * @return int|null Expiration time if client ID was found in the cache, null if not found.
-     */
-    public function getExpirationTime(string $id): ?int
-    {
-        if (!isset($this->pointers[$id])) {
-            return null;
-        }
-
-        return $this->data[$this->pointers[$id]]->expiration;
-    }
 
     /**
      * Renews the timeout for the given ID.

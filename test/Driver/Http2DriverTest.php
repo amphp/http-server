@@ -14,10 +14,8 @@ use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Internal\HPackNghttp2;
 use Amp\Http\Server\Driver\Client;
-use Amp\Http\Server\Driver\DefaultTimeoutQueue;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\HttpDriver;
-use Amp\Http\Server\Driver\TimeoutQueue;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
@@ -103,10 +101,9 @@ class Http2DriverTest extends HttpDriverTest
         $this->responses = new \SplQueue;
     }
 
-    private function initDriver(array $options = [], TimeoutQueue $timeoutQueue = new DefaultTimeoutQueue): void
+    private function initDriver(array $options = []): void
     {
         $this->driver = new Http2Driver(
-            $timeoutQueue,
             new ClosureRequestHandler(function (Request $req): Response {
                 $this->requests[] = $req;
 

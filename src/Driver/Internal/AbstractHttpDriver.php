@@ -14,6 +14,13 @@ use Psr\Log\LoggerInterface;
 
 abstract class AbstractHttpDriver implements HttpDriver
 {
+    private static TimeoutQueue $timeoutQueue;
+
+    final protected static function getTimeoutQueue(): TimeoutQueue
+    {
+        return self::$timeoutQueue ??= new TimeoutQueue();
+    }
+
     /**
      * HTTP methods that are *known*.
      *

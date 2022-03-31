@@ -27,7 +27,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         private readonly array $allowedMethods = HttpDriver::DEFAULT_ALLOWED_METHODS,
         private readonly bool $allowHttp2Upgrade = false,
         private readonly bool $pushEnabled = true,
-        private readonly TimeoutQueue $timeoutQueue = new DefaultTimeoutQueue,
     ) {
         $this->socketServerFactory = $socketServerFactory ?? new ConnectionLimitingSocketServerFactory($this->logger);
     }
@@ -46,7 +45,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
     ): HttpDriver {
         if ($client->getTlsInfo()?->getApplicationLayerProtocol() === "h2") {
             return new Http2Driver(
-                timeoutQueue: $this->timeoutQueue,
                 requestHandler: $requestHandler,
                 errorHandler: $errorHandler,
                 logger: $this->logger,
@@ -61,7 +59,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         }
 
         return new Http1Driver(
-            timeoutQueue: $this->timeoutQueue,
             requestHandler: $requestHandler,
             errorHandler: $errorHandler,
             logger: $this->logger,

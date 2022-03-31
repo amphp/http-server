@@ -51,7 +51,6 @@ final class Http1Driver extends AbstractHttpDriver
     private bool $continue = true;
 
     public function __construct(
-        private readonly TimeoutQueue $timeoutQueue,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
@@ -151,7 +150,6 @@ final class Http1Driver extends AbstractHttpDriver
 
                         // Internal upgrade to HTTP/2.
                         $this->http2driver = new Http2Driver(
-                            timeoutQueue: $this->timeoutQueue,
                             requestHandler: $this->requestHandler,
                             errorHandler: $this->errorHandler,
                             logger: $this->logger,
@@ -358,7 +356,6 @@ final class Http1Driver extends AbstractHttpDriver
 
                     // Internal upgrade
                     $this->http2driver = new Http2Driver(
-                        timeoutQueue: $this->timeoutQueue,
                         requestHandler: $this->requestHandler,
                         errorHandler: $this->errorHandler,
                         logger: $this->logger,
@@ -762,6 +759,21 @@ final class Http1Driver extends AbstractHttpDriver
         }
     }
 
+    private function insertTimeout(): void
+    {
+        self::getTimeoutQueue()->insert(
+            $this->client,
+            0,
+            static fn(Client $client) => $client->close(),
+            $this->connectionTimeout,
+        );
+    }
+
+    private function removeTimeout(): void
+    {
+        self::getTimeoutQueue()->remove($this->client, 0);
+    }
+
     /**
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
@@ -785,78 +797,6 @@ final class Http1Driver extends AbstractHttpDriver
         } finally {
             $deferred->complete();
         }
-    }
-
-    /**
-     * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
-     */
-    private function upgrade(Request $request, Response $response): void
-    {
-        $this->continue = false;
-
-        $client = $request->getClient();
-
-        $this->removeTimeout();
-
-        $stream = $this->currentBuffer === ''
-            ? $this->readableStream
-            : new ReadableStreamChain(new ReadableBuffer($this->currentBuffer), $this->readableStream);
-
-        $socket = new UpgradedSocket($client, $stream, $this->writableStream);
-
-        try {
-            ($response->getUpgradeHandler())($socket, $request, $response);
-        } catch (\Throwable $exception) {
-            $exceptionClass = $exception::class;
-
-            $this->logger->error(
-                "Unexpected {$exceptionClass} thrown during socket upgrade, closing connection.",
-                ['exception' => $exception]
-            );
-
-            $client->close();
-        }
-    }
-
-    public function getPendingRequestCount(): int
-    {
-        if ($this->bodyQueue) {
-            return 1;
-        }
-
-        if ($this->http2driver) {
-            return $this->http2driver->getPendingRequestCount();
-        }
-
-        return 0;
-    }
-
-    public function stop(): void
-    {
-        $this->stopping = true;
-
-        $this->pendingResponse->await();
-        $this->lastWrite->await();
-    }
-
-    private function insertTimeout(): void
-    {
-        $this->timeoutQueue->insert(
-            $this->client,
-            0,
-            static fn (Client $client) => $client->close(),
-            $this->connectionTimeout,
-        );
-    }
-
-    private function updateTimeout(): void
-    {
-        $this->timeoutQueue->update($this->client, 0, $this->connectionTimeout);
-    }
-
-    private function removeTimeout(): void
-    {
-        $this->timeoutQueue->remove($this->client, 0);
     }
 
     /**
@@ -971,23 +911,6 @@ final class Http1Driver extends AbstractHttpDriver
     }
 
     /**
-     * Creates an error response from the error handler and sends that response to the client.
-     */
-    private function sendErrorResponse(ClientException $exception): Future
-    {
-        $message = $exception->getMessage();
-        $status = $exception->getCode() ?: Status::BAD_REQUEST;
-
-        \assert($status >= 400 && $status < 500);
-
-        $response = $this->errorHandler->handleError($status, $message);
-        $response->setHeader("connection", "close");
-
-        $lastWrite = $this->lastWrite;
-        return $this->lastWrite = async(fn () => $this->send($lastWrite, $response));
-    }
-
-    /**
      * Filters and updates response headers based on protocol and connection header from the request.
      *
      * @param string $protocol Request protocol.
@@ -1031,6 +954,80 @@ final class Http1Driver extends AbstractHttpDriver
         $headers["date"] = [formatDateHeader()];
 
         return $headers;
+    }
+
+    private function updateTimeout(): void
+    {
+        self::getTimeoutQueue()->update($this->client, 0, $this->connectionTimeout);
+    }
+
+    /**
+     * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
+     */
+    private function upgrade(Request $request, Response $response): void
+    {
+        $this->continue = false;
+
+        $client = $request->getClient();
+
+        $this->removeTimeout();
+
+        $stream = $this->currentBuffer === ''
+            ? $this->readableStream
+            : new ReadableStreamChain(new ReadableBuffer($this->currentBuffer), $this->readableStream);
+
+        $socket = new UpgradedSocket($client, $stream, $this->writableStream);
+
+        try {
+            ($response->getUpgradeHandler())($socket, $request, $response);
+        } catch (\Throwable $exception) {
+            $exceptionClass = $exception::class;
+
+            $this->logger->error(
+                "Unexpected {$exceptionClass} thrown during socket upgrade, closing connection.",
+                ['exception' => $exception]
+            );
+
+            $client->close();
+        }
+    }
+
+    /**
+     * Creates an error response from the error handler and sends that response to the client.
+     */
+    private function sendErrorResponse(ClientException $exception): Future
+    {
+        $message = $exception->getMessage();
+        $status = $exception->getCode() ?: Status::BAD_REQUEST;
+
+        \assert($status >= 400 && $status < 500);
+
+        $response = $this->errorHandler->handleError($status, $message);
+        $response->setHeader("connection", "close");
+
+        $lastWrite = $this->lastWrite;
+        return $this->lastWrite = async(fn() => $this->send($lastWrite, $response));
+    }
+
+    public function getPendingRequestCount(): int
+    {
+        if ($this->bodyQueue) {
+            return 1;
+        }
+
+        if ($this->http2driver) {
+            return $this->http2driver->getPendingRequestCount();
+        }
+
+        return 0;
+    }
+
+    public function stop(): void
+    {
+        $this->stopping = true;
+
+        $this->pendingResponse->await();
+        $this->lastWrite->await();
     }
 
     public function getApplicationLayerProtocols(): array

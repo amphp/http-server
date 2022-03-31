@@ -107,7 +107,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     private HPack $hpack;
 
     public function __construct(
-        private readonly TimeoutQueue $timeoutQueue,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
@@ -142,7 +141,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
 
-        $this->timeoutQueue->insert($this->client, 0, fn () => $this->shutdown(
+        self::getTimeoutQueue()->insert($this->client, 0, fn () => $this->shutdown(
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
         ), $this->streamTimeout);
 
@@ -171,7 +170,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->readableStream = $readableStream;
 
-        $this->timeoutQueue->insert($this->client, 0, fn () => $this->shutdown(
+        self::getTimeoutQueue()->insert($this->client, 0, fn () => $this->shutdown(
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
         ), $this->streamTimeout);
 
@@ -230,7 +229,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         } catch (Http2ConnectionException $exception) {
             $this->shutdown($exception);
         } finally {
-            $this->timeoutQueue->remove($this->client, 0);
+            self::getTimeoutQueue()->remove($this->client, 0);
         }
     }
 
@@ -695,7 +694,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         \assert(!isset($this->streams[$id]));
 
         if ($id & 1) {
-            $this->timeoutQueue->insert(
+            self::getTimeoutQueue()->insert(
                 $this->client,
                 $id,
                 fn () => $this->releaseStream(
@@ -719,7 +718,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 
         if ($id & 1) {
-            $this->timeoutQueue->remove($this->client, $id);
+            self::getTimeoutQueue()->remove($this->client, $id);
         }
 
         if (isset($this->bodyQueues[$id])) {
@@ -747,10 +746,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function updateTimeout(int $id): void
     {
-        $this->timeoutQueue->update($this->client, 0, $this->connectionTimeout);
+        self::getTimeoutQueue()->update($this->client, 0, $this->connectionTimeout);
 
         if ($id & 1) {
-            $this->timeoutQueue->update($this->client, $id, $this->streamTimeout);
+            self::getTimeoutQueue()->update($this->client, $id, $this->streamTimeout);
         }
     }
 
@@ -837,7 +836,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         if (!$this->pinged) {
             // Ensure there are a few extra seconds for request after first ping.
-            $this->timeoutQueue->update($this->client, 0, 5);
+            self::getTimeoutQueue()->update($this->client, 0, 5);
         }
 
         $this->pinged++;
