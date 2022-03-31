@@ -764,7 +764,7 @@ final class Http1Driver extends AbstractHttpDriver
         self::getTimeoutQueue()->insert(
             $this->client,
             0,
-            static fn(Client $client) => $client->close(),
+            static fn (Client $client) => $client->close(),
             $this->connectionTimeout,
         );
     }
@@ -1006,7 +1006,7 @@ final class Http1Driver extends AbstractHttpDriver
         $response->setHeader("connection", "close");
 
         $lastWrite = $this->lastWrite;
-        return $this->lastWrite = async(fn() => $this->send($lastWrite, $response));
+        return $this->lastWrite = async(fn () => $this->send($lastWrite, $response));
     }
 
     public function getPendingRequestCount(): int

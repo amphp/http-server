@@ -4,7 +4,6 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\SocketAddress;
-use Amp\Socket\SocketAddressType;
 use Amp\Socket\TlsInfo;
 
 final class SocketClient implements Client
