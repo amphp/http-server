@@ -32,11 +32,6 @@ final class SocketClient implements Client
         return $this->socket->getLocalAddress();
     }
 
-    public function isUnix(): bool
-    {
-        return $this->getRemoteAddress()->getType() === SocketAddressType::Unix;
-    }
-
     public function isEncrypted(): bool
     {
         return $this->socket->getTlsInfo() !== null;

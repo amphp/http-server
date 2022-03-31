@@ -24,11 +24,6 @@ interface Client extends Closable
     public function getLocalAddress(): SocketAddress;
 
     /**
-     * @return bool `true` if the client is connected via a unix socket
-     */
-    public function isUnix(): bool;
-
-    /**
      * @return bool `true` if the client is encrypted, `false` if plaintext.
      */
     public function isEncrypted(): bool;
