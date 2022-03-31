@@ -24,11 +24,6 @@ interface Client extends Closable
     public function getLocalAddress(): SocketAddress;
 
     /**
-     * @return bool `true` if the client is encrypted, `false` if plaintext.
-     */
-    public function isEncrypted(): bool;
-
-    /**
      * If the client is encrypted a TlsInfo object is returned, otherwise null.
      */
     public function getTlsInfo(): ?TlsInfo;

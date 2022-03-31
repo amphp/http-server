@@ -250,7 +250,7 @@ final class Http1Driver extends AbstractHttpDriver
 
                 $host = $matches[1];
                 $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalAddress()->getPort();
-                $scheme = $this->client->isEncrypted() ? "https" : "http";
+                $scheme = $this->client->getTlsInfo() !== null ? "https" : "http";
                 $query = null;
 
                 try {
@@ -336,7 +336,7 @@ final class Http1Driver extends AbstractHttpDriver
                 // Handle HTTP/2 upgrade request.
                 if ($protocol === "1.1"
                     && isset($headers["upgrade"][0], $headers["http2-settings"][0], $headers["connection"][0])
-                    && !$this->client->isEncrypted()
+                    && !$this->client->getTlsInfo() !== null
                     && $this->allowHttp2Upgrade
                     && false !== \stripos($headers["connection"][0], "upgrade")
                     && \strtolower($headers["upgrade"][0]) === "h2c"
