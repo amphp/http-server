@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+/** @internal */
 final class TimeoutCache
 {
     /** @var object[] */

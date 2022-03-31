@@ -5,6 +5,7 @@ namespace Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\Driver\Client;
 use Revolt\EventLoop;
 
+/** @internal */
 final class TimeoutQueue
 {
     private readonly TimeoutCache $timeoutCache;

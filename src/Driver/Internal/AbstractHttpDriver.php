@@ -12,6 +12,7 @@ use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Psr\Log\LoggerInterface;
 
+/** @internal */
 abstract class AbstractHttpDriver implements HttpDriver
 {
     private static TimeoutQueue $timeoutQueue;

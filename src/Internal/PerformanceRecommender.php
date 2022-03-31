@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Internal;
 
 use Amp\Http\Server\HttpServer;
 
+/** @internal */
 final class PerformanceRecommender
 {
     public function onStart(HttpServer $server): void
