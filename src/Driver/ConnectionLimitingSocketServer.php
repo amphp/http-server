@@ -8,6 +8,7 @@ use Amp\Socket\BindContext;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\SocketServer;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 final class ConnectionLimitingSocketServer implements SocketServer
 {
@@ -17,6 +18,7 @@ final class ConnectionLimitingSocketServer implements SocketServer
 
     public function __construct(
         private readonly SocketServer $delegate,
+        private readonly PsrLogger $logger,
         private readonly int $connectionLimit,
     ) {
     }
@@ -32,6 +34,7 @@ final class ConnectionLimitingSocketServer implements SocketServer
 
         if (++$this->connectionCount >= $this->connectionLimit) {
             $this->deferredFuture = new DeferredFuture();
+            $this->logger->warning("Connection limit of {$this->connectionLimit} reached");
         }
 
         $socket->onClose(function (): void {
