@@ -14,9 +14,11 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
 {
     public const ALPN = ["h2", "http/1.1"];
 
+    private readonly SocketServerFactory $socketServerFactory;
+
     public function __construct(
         private readonly PsrLogger $logger,
-        private readonly SocketServerFactory $socketServerFactory = new ConnectionLimitingSocketServerFactory,
+        ?SocketServerFactory $socketServerFactory = null,
         private readonly int $streamTimeout = HttpDriver::DEFAULT_STREAM_TIMEOUT,
         private readonly int $connectionTimeout = HttpDriver::DEFAULT_CONNECTION_TIMEOUT,
         private readonly int $headerSizeLimit = HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
@@ -27,6 +29,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         private readonly bool $pushEnabled = true,
         private readonly TimeoutQueue $timeoutQueue = new DefaultTimeoutQueue,
     ) {
+        $this->socketServerFactory = $socketServerFactory ?? new ConnectionLimitingSocketServerFactory($this->logger);
     }
 
     public function listen(SocketAddress $address, ?BindContext $bindContext = null): SocketServer

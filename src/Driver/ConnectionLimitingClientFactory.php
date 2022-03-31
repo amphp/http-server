@@ -20,6 +20,8 @@ final class ConnectionLimitingClientFactory implements ClientFactory
         ?ClientFactory $delegate = null,
     ) {
         $this->delegate = $delegate ?? new SocketClientFactory($this->logger);
+
+        $this->logger->notice("Client connections are limited to {$this->connectionsPerIpLimit} per IP address (excluding localhost)");
     }
 
     public function createClient(EncryptableSocket $socket): ?Client
