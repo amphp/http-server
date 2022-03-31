@@ -9,7 +9,7 @@ use Amp\Socket\SocketServer;
 use Amp\Socket\SocketServerFactory;
 use Psr\Log\LoggerInterface as PsrLogger;
 
-class ConnectionLimitingSocketServerFactory implements SocketServerFactory
+final class ConnectionLimitingSocketServerFactory implements SocketServerFactory
 {
     public function __construct(
         private readonly PsrLogger $logger,
