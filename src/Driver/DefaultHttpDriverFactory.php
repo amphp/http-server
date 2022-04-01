@@ -4,21 +4,14 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\RequestHandler;
-use Amp\Socket\BindContext;
-use Amp\Socket\SocketAddress;
-use Amp\Socket\SocketServer;
-use Amp\Socket\SocketServerFactory;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 final class DefaultHttpDriverFactory implements HttpDriverFactory
 {
-    public const ALPN = ["h2", "http/1.1"];
-
-    private readonly SocketServerFactory $socketServerFactory;
+    private const ALPN = ["h2", "http/1.1"];
 
     public function __construct(
         private readonly PsrLogger $logger,
-        ?SocketServerFactory $socketServerFactory = null,
         private readonly int $streamTimeout = HttpDriver::DEFAULT_STREAM_TIMEOUT,
         private readonly int $connectionTimeout = HttpDriver::DEFAULT_CONNECTION_TIMEOUT,
         private readonly int $headerSizeLimit = HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
@@ -28,14 +21,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         private readonly bool $allowHttp2Upgrade = false,
         private readonly bool $pushEnabled = true,
     ) {
-        $this->socketServerFactory = $socketServerFactory ?? new ConnectionLimitingSocketServerFactory($this->logger);
-    }
-
-    public function listen(SocketAddress $address, ?BindContext $bindContext = null): SocketServer
-    {
-        $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(self::ALPN);
-
-        return $this->socketServerFactory->listen($address, $bindContext?->withTlsContext($tlsContext));
     }
 
     public function createHttpDriver(
@@ -69,5 +54,10 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
             allowedMethods: $this->allowedMethods,
             allowHttp2Upgrade: $this->allowHttp2Upgrade,
         );
+    }
+
+    public function getApplicationLayerProtocols(): array
+    {
+        return self::ALPN;
     }
 }

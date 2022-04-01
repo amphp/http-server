@@ -6,6 +6,7 @@ use Amp\CompositeException;
 use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\ConnectionLimitingClientFactory;
+use Amp\Http\Server\Driver\ConnectionLimitingSocketServerFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
@@ -15,6 +16,7 @@ use Amp\Socket\BindContext;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\SocketServer;
+use Amp\Socket\SocketServerFactory;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
@@ -22,6 +24,8 @@ use function Amp\async;
 final class SocketHttpServer implements HttpServer
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
+
+    private readonly SocketServerFactory $serverFactory;
 
     private readonly HttpDriverFactory $driverFactory;
 
@@ -47,10 +51,12 @@ final class SocketHttpServer implements HttpServer
 
     public function __construct(
         private readonly PsrLogger $logger,
+        ?SocketServerFactory $serverFactory = null,
         ?ClientFactory $clientFactory = null,
         ?HttpDriverFactory $driverFactory = null,
         private readonly bool $enableCompression = false,
     ) {
+        $this->serverFactory = $serverFactory ?? new ConnectionLimitingSocketServerFactory($this->logger);
         $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory($this->logger);
         $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory($this->logger);
 
@@ -168,8 +174,16 @@ final class SocketHttpServer implements HttpServer
                 throw new CompositeException($exceptions, "HTTP server onStart failure");
             }
 
+            /**
+             * @var SocketAddress $address
+             * @var BindContext $bindContext
+             */
             foreach ($this->addresses as [$address, $bindContext]) {
-                $this->servers[] = $this->driverFactory->listen($address, $bindContext);
+                $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
+                    $this->driverFactory->getApplicationLayerProtocols(),
+                );
+
+                $this->servers[] = $this->serverFactory->listen($address, $bindContext?->withTlsContext($tlsContext));
             }
 
             $this->logger->info("Started server");
