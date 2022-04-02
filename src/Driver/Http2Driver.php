@@ -458,7 +458,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                     $this->client,
                     $reason?->getMessage() ?? "",
                     \is_int($code) ? $code : Http2Parser::GRACEFUL_SHUTDOWN,
-                    $reason);
+                    $reason
+                );
                 foreach ($this->streams as $id => $stream) {
                     $this->releaseStream($id, $exception);
                 }
