@@ -318,7 +318,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 }
             }
 
-            $this->writeHeaders($this->encodeHeaders($headers), Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
+            $this->writeHeaders($this->encodeHeaders($headers), Http2Parser::HEADERS, 0, $id);
 
             if ($request->getMethod() === "HEAD") {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
@@ -363,7 +363,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 $this->writeHeaders(
                     $this->encodeHeaders($trailers->await()->getHeaders()),
                     Http2Parser::HEADERS,
-                    Http2Parser::END_HEADERS | Http2Parser::END_STREAM,
+                    Http2Parser::END_STREAM,
                     $id,
                 );
             }
@@ -527,7 +527,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->writeHeaders(
             \pack("N", $id) . $this->encodeHeaders($headers),
             Http2Parser::PUSH_PROMISE,
-            Http2Parser::END_HEADERS,
+            0,
             $streamId
         );
 
@@ -619,6 +619,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function writeHeaders(string $headers, int $type, int $flags, int $id): void
     {
+        $flags |= Http2Parser::END_HEADERS;
+
         if (\strlen($headers) > $this->maxFrameSize) {
             // Header frames must be sent as one contiguous block without frames from any other stream being
             // interleaved between due to HPack. See https://datatracker.ietf.org/doc/html/rfc7540#section-4.3
