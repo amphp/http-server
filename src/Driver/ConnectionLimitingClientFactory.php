@@ -9,7 +9,7 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 final class ConnectionLimitingClientFactory implements ClientFactory
 {
-    /** @var Client[] */
+    /** @var array<string, int> */
     private array $clientsPerIp = [];
 
     private readonly ClientFactory $delegate;

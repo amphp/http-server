@@ -256,7 +256,9 @@ final class Response extends Message
 
         foreach ($headers as $line) {
             $cookie = ResponseCookie::fromHeader($line);
-            $this->cookies[$cookie->getName()] = $cookie;
+            if ($cookie) {
+                $this->cookies[$cookie->getName()] = $cookie;
+            }
         }
     }
 
@@ -282,9 +284,6 @@ final class Response extends Message
         return $this->trailers;
     }
 
-    /**
-     * @param Trailers
-     */
     public function setTrailers(Trailers $trailers): void
     {
         $this->trailers = $trailers;

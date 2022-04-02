@@ -15,13 +15,6 @@ use Psr\Log\LoggerInterface;
 /** @internal */
 abstract class AbstractHttpDriver implements HttpDriver
 {
-    private static TimeoutQueue $timeoutQueue;
-
-    final protected static function getTimeoutQueue(): TimeoutQueue
-    {
-        return self::$timeoutQueue ??= new TimeoutQueue();
-    }
-
     /**
      * HTTP methods that are *known*.
      *
@@ -39,7 +32,13 @@ abstract class AbstractHttpDriver implements HttpDriver
         "CONNECT" => true,
     ];
 
-    private static ErrorHandler $defaultErrorHandler;
+    private static ?TimeoutQueue $timeoutQueue = null;
+    private static ?ErrorHandler $defaultErrorHandler = null;
+
+    final protected static function getTimeoutQueue(): TimeoutQueue
+    {
+        return self::$timeoutQueue ??= new TimeoutQueue();
+    }
 
     private static function getDefaultErrorHandler(): ErrorHandler
     {
@@ -62,10 +61,11 @@ abstract class AbstractHttpDriver implements HttpDriver
      */
     final protected function handleRequest(Request $request): void
     {
+        /** @psalm-suppress RedundantCondition */
         \assert($this->logger->debug(\sprintf(
             "%s %s HTTP/%s @ %s #%d",
             $request->getMethod(),
-            $request->getUri(),
+            (string) $request->getUri(),
             $request->getProtocolVersion(),
             $request->getClient()->getRemoteAddress()->toString(),
             $request->getClient()->getId(),

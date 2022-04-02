@@ -86,7 +86,7 @@ final class TimeoutQueue
         $this->timeoutCache->clear($cacheId);
         unset($this->callbacks[$cacheId]);
 
-        if (!$this->callbacks) {
+        if (!$this->callbacks && $this->callbackId !== null) {
             EventLoop::cancel($this->callbackId);
             $this->callbackId = null;
         }

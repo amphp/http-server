@@ -73,9 +73,6 @@ final class SocketHttpServer implements HttpServer
         $this->addresses[$name] = [$socketAddress, $bindContext];
     }
 
-    /**
-     * @return SocketServer[]
-     */
     public function getServers(): array
     {
         if ($this->status !== HttpServerStatus::Started) {
@@ -176,7 +173,7 @@ final class SocketHttpServer implements HttpServer
 
             /**
              * @var SocketAddress $address
-             * @var BindContext $bindContext
+             * @var BindContext|null $bindContext
              */
             foreach ($this->addresses as [$address, $bindContext]) {
                 $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(

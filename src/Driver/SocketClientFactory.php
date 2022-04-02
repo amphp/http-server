@@ -17,7 +17,8 @@ final class SocketClientFactory implements ClientFactory
 
     public function createClient(EncryptableSocket $socket): ?Client
     {
-        \assert($this->logger?->debug(\sprintf(
+        /** @psalm-suppress RedundantCondition */
+        \assert($this->logger->debug(\sprintf(
             "Accepted %s on %s",
             $socket->getRemoteAddress()->toString(),
             $socket->getLocalAddress()->toString(),
@@ -27,6 +28,7 @@ final class SocketClientFactory implements ClientFactory
             try {
                 $socket->setupTls(new TimeoutCancellation($this->tlsHandshakeTimeout));
 
+                /** @psalm-suppress RedundantCondition, PossiblyNullReference */
                 \assert($this->logger->debug(\sprintf(
                     "TLS negotiated with %s (%s with %s, application protocol: %s)",
                     $socket->getRemoteAddress()->toString(),

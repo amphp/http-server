@@ -24,7 +24,7 @@ final class DefaultErrorHandler implements ErrorHandler
             $this->cache[$statusCode] = \str_replace(
                 ["{code}", "{reason}"],
                 // Using standard reason in HTML for caching purposes.
-                \array_map(\htmlspecialchars(...), [$statusCode, Status::getReason($statusCode)]),
+                [$statusCode, Status::getReason($statusCode)],
                 $errorHtml
             );
         }

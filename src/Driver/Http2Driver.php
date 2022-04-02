@@ -26,6 +26,7 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Pipeline\Queue;
+use Amp\Socket\InternetAddress;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -135,6 +136,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         ReadableStream $readableStream,
         WritableStream $writableStream,
     ): void {
+        /** @psalm-suppress RedundantPropertyInitializationCheck */
         \assert(!isset($this->client), "The driver has already been setup");
 
         $this->client = $client;
@@ -158,6 +160,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         Client $client,
         WritableStream $writableStream,
     ): void {
+        /** @psalm-suppress RedundantPropertyInitializationCheck */
         \assert(!isset($this->client), "The driver has already been setup");
 
         $this->client = $client;
@@ -166,6 +169,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     public function handleClientWithBuffer(string $buffer, ReadableStream $readableStream): void
     {
+        /** @psalm-suppress RedundantPropertyInitializationCheck */
         \assert(isset($this->client), "The driver has not been setup");
 
         $this->readableStream = $readableStream;
@@ -206,6 +210,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function processClientInput(\Closure $parserInput): void
     {
+        /** @psalm-suppress RedundantCondition */
         \assert($this->logger->debug(\sprintf(
             "Handling requests from %s #%d using HTTP/2 driver",
             $this->client->getRemoteAddress()->toString(),
@@ -235,6 +240,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     protected function write(Request $request, Response $response): void
     {
+        /** @psalm-suppress RedundantPropertyInitializationCheck */
         \assert(isset($this->client), "The driver has not been setup");
 
         $hash = \spl_object_hash($request);
@@ -312,38 +318,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 }
             }
 
-            $rawHeaders = $this->encodeHeaders($headers);
-
-            if (\strlen($rawHeaders) > $this->maxFrameSize) {
-                // Header frames must be sent as one contiguous block without frames from any other stream being
-                // interleaved between due to HPack. See https://datatracker.ietf.org/doc/html/rfc7540#section-4.3
-                $split = \str_split($rawHeaders, $this->maxFrameSize);
-                $rawHeaders = \array_shift($split);
-                async(fn () => $this->writeFrame(
-                    $rawHeaders,
-                    Http2Parser::HEADERS,
-                    Http2Parser::NO_FLAG,
-                    $id
-                ))->ignore();
-
-                $rawHeaders = \array_pop($split);
-                foreach ($split as $msgPart) {
-                    async(fn () => $this->writeFrame(
-                        $msgPart,
-                        Http2Parser::CONTINUATION,
-                        Http2Parser::NO_FLAG,
-                        $id
-                    ))->ignore();
-                }
-                async(fn () => $this->writeFrame(
-                    $rawHeaders,
-                    Http2Parser::CONTINUATION,
-                    Http2Parser::END_HEADERS,
-                    $id
-                ))->await();
-            } else {
-                $this->writeFrame($rawHeaders, Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
-            }
+            $this->writeHeaders($this->encodeHeaders($headers), Http2Parser::HEADERS, Http2Parser::END_HEADERS, $id);
 
             if ($request->getMethod() === "HEAD") {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
@@ -385,44 +360,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             if ($trailers !== null) {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
-
-                $trailers = $trailers->await();
-
-                $headers = $this->encodeHeaders($trailers->getHeaders());
-
-                if (\strlen($headers) > $this->maxFrameSize) {
-                    $split = \str_split($headers, $this->maxFrameSize);
-                    $headers = \array_shift($split);
-                    async(fn () => $this->writeFrame(
-                        $headers,
-                        Http2Parser::HEADERS,
-                        Http2Parser::NO_FLAG,
-                        $id
-                    ))->ignore();
-
-                    $headers = \array_pop($split);
-                    foreach ($split as $msgPart) {
-                        async(fn () => $this->writeFrame(
-                            $msgPart,
-                            Http2Parser::CONTINUATION,
-                            Http2Parser::NO_FLAG,
-                            $id
-                        ))->ignore();
-                    }
-                    async(fn () => $this->writeFrame(
-                        $headers,
-                        Http2Parser::CONTINUATION,
-                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM,
-                        $id
-                    ))->await();
-                } else {
-                    $this->writeFrame(
-                        $headers,
-                        Http2Parser::HEADERS,
-                        Http2Parser::END_HEADERS | Http2Parser::END_STREAM,
-                        $id
-                    );
-                }
+                $this->writeHeaders(
+                    $this->encodeHeaders($trailers->await()->getHeaders()),
+                    Http2Parser::HEADERS,
+                    Http2Parser::END_HEADERS | Http2Parser::END_STREAM,
+                    $id,
+                );
             }
         } catch (ClientException $exception) {
             $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used in finally below.
@@ -432,12 +375,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         // Cleanup outside finally block since the fiber may suspend to write RST_STREAM frame.
         try {
+            /** @psalm-suppress ParadoxicalCondition Stream may be unset while awaiting above */
             if (!isset($this->streams[$id])) {
                 return;
             }
 
             if ($chunk !== null) {
-                if (isset($buffer) && ($buffer ?? "") !== "") {
+                if (isset($buffer) && $buffer !== "") {
                     $this->writeData($buffer, $id);
                 }
                 $error ??= Http2Parser::INTERNAL_ERROR;
@@ -467,6 +411,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->stopping = true;
 
+        $code = $reason?->getCode() ?? Http2Parser::GRACEFUL_SHUTDOWN;
+
         try {
             $futures = [];
             foreach ($this->streams as $id => $stream) {
@@ -479,9 +425,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 }
             }
 
-            $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
             $this->writeFrame(\pack("NN", $this->remoteStreamId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
 
+            /** @psalm-suppress RedundantCondition */
             \assert($this->logger->debug(\sprintf(
                 "Shutting down HTTP/2 client @ %s #%d; last-id: %d; reason: %s",
                 $this->client->getRemoteAddress()->toString(),
@@ -508,7 +454,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             // ignore if no longer writable
         } finally {
             if (!empty($this->streams)) {
-                $exception = new ClientException($this->client, $reason?->getMessage() ?? "", $code, $reason);
+                $exception = new ClientException(
+                    $this->client,
+                    $reason?->getMessage() ?? "",
+                    \is_int($code) ? $code : Http2Parser::GRACEFUL_SHUTDOWN,
+                    $reason);
                 foreach ($this->streams as $id => $stream) {
                     $this->releaseStream($id, $exception);
                 }
@@ -573,36 +523,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             ":method" => ["GET"],
         ], $headers);
 
-        $headers = \pack("N", $id) . $this->encodeHeaders($headers);
-
-        if (\strlen($headers) >= $this->maxFrameSize) {
-            $split = \str_split($headers, $this->maxFrameSize);
-            $headers = \array_shift($split);
-            async(fn () => $this->writeFrame(
-                $headers,
-                Http2Parser::PUSH_PROMISE,
-                Http2Parser::NO_FLAG,
-                $streamId
-            ))->ignore();
-
-            $headers = \array_pop($split);
-            foreach ($split as $msgPart) {
-                async(fn () => $this->writeFrame(
-                    $msgPart,
-                    Http2Parser::CONTINUATION,
-                    Http2Parser::NO_FLAG,
-                    $id
-                ))->ignore();
-            }
-            async(fn () => $this->writeFrame(
-                $headers,
-                Http2Parser::CONTINUATION,
-                Http2Parser::END_HEADERS,
-                $id
-            ))->await();
-        } else {
-            $this->writeFrame($headers, Http2Parser::PUSH_PROMISE, Http2Parser::END_HEADERS, $streamId);
-        }
+        $this->writeHeaders(
+            \pack("N", $id) . $this->encodeHeaders($headers),
+            Http2Parser::PUSH_PROMISE,
+            Http2Parser::END_HEADERS,
+            $streamId
+        );
 
         $stream->pendingResponse = async($this->handleRequest(...), $request);
     }
@@ -638,6 +564,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             if ($length > $this->maxFrameSize) {
                 $split = \str_split($stream->buffer, $this->maxFrameSize);
+                \assert(\is_array($split)); // For Psalm
                 $stream->buffer = \array_pop($split);
                 foreach ($split as $part) {
                     $this->writeFrame($part, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
@@ -687,6 +614,43 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
 
         $stream->deferred->getFuture()->await();
+    }
+
+    private function writeHeaders(string $headers, int $type, int $flags, int $id): void
+    {
+        if (\strlen($headers) > $this->maxFrameSize) {
+            // Header frames must be sent as one contiguous block without frames from any other stream being
+            // interleaved between due to HPack. See https://datatracker.ietf.org/doc/html/rfc7540#section-4.3
+            $split = \str_split($headers, $this->maxFrameSize);
+            \assert(\is_array($split)); // For Psalm
+            $headers = \array_shift($split);
+            async(fn () => $this->writeFrame(
+                $headers,
+                $type,
+                Http2Parser::NO_FLAG,
+                $id
+            ))->ignore();
+
+            $headers = \array_pop($split);
+            foreach ($split as $msgPart) {
+                async(fn () => $this->writeFrame(
+                    $msgPart,
+                    Http2Parser::CONTINUATION,
+                    Http2Parser::NO_FLAG,
+                    $id
+                ))->ignore();
+            }
+            async(fn () => $this->writeFrame(
+                $headers,
+                Http2Parser::CONTINUATION,
+                $flags,
+                $id
+            ))->await();
+
+            return;
+        }
+
+        $this->writeFrame($headers, $type, $flags, $id);
     }
 
     private function createStream(int $id, int $bodySizeLimit, int $flags = Http2Stream::OPEN): Http2Stream
@@ -854,7 +818,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         $message = \sprintf(
             "Received GOAWAY frame from %s with error code %d",
-            $this->client->getRemoteAddress(),
+            $this->client->getRemoteAddress()->toString(),
             $error
         );
 
@@ -907,7 +871,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         EventLoop::defer($this->sendBufferedData(...));
     }
 
-    public function handleHeaders(int $streamId, array $pseudo, array $headers, bool $ended): void
+    public function handleHeaders(int $streamId, array $pseudo, array $headers, bool $streamEnded): void
     {
         foreach ($pseudo as $name => $value) {
             if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
@@ -946,7 +910,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->updateTimeout($streamId);
 
         if (isset($this->trailerDeferreds[$streamId]) && $stream->state & Http2Stream::RESERVED) {
-            if (!$ended) {
+            if (!$streamEnded) {
                 throw new Http2ConnectionException(
                     "Trailers must end the stream",
                     Http2Parser::PROTOCOL_ERROR
@@ -1022,8 +986,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             );
         }
 
+        $address = $this->client->getLocalAddress();
+
         $host = $matches[1];
-        $port = isset($matches[2]) ? (int) $matches[2] : $this->client->getLocalAddress()->getPort();
+        $port = isset($matches[2])
+            ? (int) $matches[2]
+            : ($address instanceof InternetAddress ? $address->getPort() : null);
 
         if ($position = \strpos($target, "#")) {
             $target = \substr($target, 0, $position);
@@ -1051,7 +1019,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->pinged = 0; // Reset ping count when a request is received.
 
-        if ($ended) {
+        if ($streamEnded) {
             $request = new Request(
                 $this->client,
                 $method,

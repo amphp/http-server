@@ -48,7 +48,8 @@
         "amphp/php-cs-fixer-config": "^2-dev",
         "league/uri-components": "^2",
         "monolog/monolog": "^2 || ^1.23",
-        "phpunit/phpunit": "^9"
+        "phpunit/phpunit": "^9",
+        "psalm/phar": "^4.22"
     },
     "minimum-stability": "dev",
     "prefer-stable": false,
