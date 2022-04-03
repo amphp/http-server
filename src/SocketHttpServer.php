@@ -17,6 +17,7 @@ use Amp\Socket\EncryptableSocket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\SocketServer;
 use Amp\Socket\SocketServerFactory;
+use Amp\Sync\LocalSemaphore;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
@@ -56,7 +57,13 @@ final class SocketHttpServer implements HttpServer
         ?HttpDriverFactory $driverFactory = null,
         private readonly bool $enableCompression = false,
     ) {
-        $this->serverFactory = $serverFactory ?? new ConnectionLimitingSocketServerFactory($this->logger);
+        if (!$serverFactory) {
+            $this->serverFactory = new ConnectionLimitingSocketServerFactory(new LocalSemaphore(1000));
+            $this->logger->notice("Total client connections are limited to 1000");
+        } else {
+            $this->serverFactory = $serverFactory;
+        }
+
         $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory($this->logger);
         $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory($this->logger);
 
