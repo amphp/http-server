@@ -737,7 +737,16 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->sendErrorResponse($exception)->await();
             }
         } finally {
-            $this->pendingResponse->finally(fn () => $this->removeTimeout())->ignore();
+            $this->pendingResponse->finally(function (): void {
+                $this->removeTimeout();
+
+                /** @psalm-suppress RedundantCondition */
+                \assert($this->logger->debug(\sprintf(
+                    "Stopping HTTP/1.x parser @ %s #%d",
+                    $this->client->getRemoteAddress()->toString(),
+                    $this->client->getId(),
+                )) || true);
+            })->ignore();
 
             if ($this->bodyQueue !== null) {
                 /** @psalm-suppress TypeDoesNotContainNull */
@@ -763,13 +772,6 @@ final class Http1Driver extends AbstractHttpDriver
                 $trailerDeferred->error($exception);
                 $trailerDeferred = null;
             }
-
-            /** @psalm-suppress RedundantCondition */
-            \assert($this->logger->debug(\sprintf(
-                "Stopping HTTP/1.x parser @ %s #%d",
-                $this->client->getRemoteAddress()->toString(),
-                $this->client->getId(),
-            )) || true);
         }
     }
 
