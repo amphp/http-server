@@ -3,45 +3,31 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Cancellation;
-use Amp\DeferredFuture;
 use Amp\Socket\BindContext;
 use Amp\Socket\EncryptableSocket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\SocketServer;
-use Psr\Log\LoggerInterface as PsrLogger;
+use Amp\Sync\Semaphore;
 
 final class ConnectionLimitingSocketServer implements SocketServer
 {
-    private int $connectionCount = 0;
-
-    private ?DeferredFuture $deferredFuture = null;
-
     public function __construct(
         private readonly SocketServer $delegate,
-        private readonly PsrLogger $logger,
-        private readonly int $connectionLimit,
+        private readonly Semaphore $semaphore,
     ) {
     }
 
     public function accept(?Cancellation $cancellation = null): ?EncryptableSocket
     {
-        $this->deferredFuture?->getFuture()->await();
+        $lock = $this->semaphore->acquire();
 
         $socket = $this->delegate->accept();
         if (!$socket) {
+            $lock->release();
             return null;
         }
 
-        if (++$this->connectionCount >= $this->connectionLimit) {
-            $this->deferredFuture = new DeferredFuture();
-            $this->logger->warning("Connection limit of {$this->connectionLimit} reached");
-        }
-
-        $socket->onClose(function (): void {
-            --$this->connectionCount;
-            $this->deferredFuture?->complete();
-            $this->deferredFuture = null;
-        });
+        $socket->onClose($lock->release(...));
 
         return $socket;
     }

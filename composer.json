@@ -36,6 +36,7 @@
         "amphp/http": "^1.6",
         "amphp/pipeline": "^1",
         "amphp/socket": "^2",
+        "amphp/sync": "^2",
         "league/uri": "^6",
         "psr/http-message": "^1",
         "psr/log": "^1|^2|^3",
@@ -52,7 +53,7 @@
         "psalm/phar": "^4.22"
     },
     "minimum-stability": "dev",
-    "prefer-stable": false,
+    "prefer-stable": true,
     "suggest": {
         "ext-zlib": "Allows GZip compression of response bodies"
     },
