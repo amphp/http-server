@@ -12,22 +12,22 @@ use cash\LRUCache;
 
 final class CompressionMiddleware implements Middleware
 {
-    const MAX_CACHE_SIZE = 1024;
+    public const MAX_CACHE_SIZE = 1024;
 
     /** @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits */
-    const DEFAULT_MINIMUM_LENGTH = 860;
-    const DEFAULT_CHUNK_SIZE = 8192;
-    const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
+    public const DEFAULT_MINIMUM_LENGTH = 860;
+    public const DEFAULT_CHUNK_SIZE = 8192;
+    public const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
     /** @var int Minimum body length before body is compressed. */
-    private int $minimumLength;
+    private readonly int $minimumLength;
 
-    private string $contentRegex;
+    private readonly string $contentRegex;
 
     /** @var int Minimum chunk size before being compressed. */
-    private int $chunkSize;
+    private readonly int $chunkSize;
 
-    private LRUCache $contentTypeCache;
+    private readonly LRUCache $contentTypeCache;
 
     public function __construct(
         int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,

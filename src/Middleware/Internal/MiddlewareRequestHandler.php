@@ -15,18 +15,14 @@ use Amp\Http\Server\Response;
  */
 final class MiddlewareRequestHandler implements RequestHandler
 {
-    private Middleware $middleware;
-
-    private RequestHandler $next;
-
-    public function __construct(Middleware $middleware, RequestHandler $requestHandler)
-    {
-        $this->middleware = $middleware;
-        $this->next = $requestHandler;
+    public function __construct(
+        private readonly Middleware $middleware,
+        private readonly RequestHandler $requestHandler,
+    ) {
     }
 
     public function handleRequest(Request $request): Response
     {
-        return $this->middleware->handleRequest($request, $this->next);
+        return $this->middleware->handleRequest($request, $this->requestHandler);
     }
 }

@@ -30,10 +30,10 @@ final class Trailers
     ];
 
     /** @var string[] */
-    private array $fields = [];
+    private readonly array $fields;
 
     /** @var Future<Message> */
-    private Future $headers;
+    private readonly Future $headers;
 
     /**
      * @param Future<string[]|string[][]> $future Resolved with the trailer values.
@@ -44,13 +44,11 @@ final class Trailers
      */
     public function __construct(Future $future, array $fields = [])
     {
-        if (!empty($fields)) {
-            $this->fields = $fields = \array_map('strtolower', $fields);
+        $this->fields = $fields = \array_map('strtolower', $fields);
 
-            foreach ($this->fields as $field) {
-                if (isset(self::DISALLOWED_TRAILERS[$field])) {
-                    throw new InvalidHeaderException(\sprintf("Field '%s' is not allowed in trailers", $field));
-                }
+        foreach ($this->fields as $field) {
+            if (isset(self::DISALLOWED_TRAILERS[$field])) {
+                throw new InvalidHeaderException(\sprintf("Field '%s' is not allowed in trailers", $field));
             }
         }
 

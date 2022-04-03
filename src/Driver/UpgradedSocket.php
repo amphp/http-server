@@ -14,9 +14,9 @@ final class UpgradedSocket implements Socket
     private string $readBuffer = '';
 
     public function __construct(
-        private Client $client,
-        private ReadableStream $readableStream,
-        private WritableStream $writableStream,
+        private readonly Client $client,
+        private readonly ReadableStream $readableStream,
+        private readonly WritableStream $writableStream,
     ) {
     }
 
