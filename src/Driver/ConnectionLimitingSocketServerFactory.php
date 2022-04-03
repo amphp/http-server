@@ -14,6 +14,9 @@ final class ConnectionLimitingSocketServerFactory implements SocketServerFactory
 {
     private readonly LocalSemaphore $semaphore;
 
+    /**
+     * @param positive-int $connectionLimit
+     */
     public function __construct(
         private readonly PsrLogger $logger,
         int $connectionLimit = 1000,
