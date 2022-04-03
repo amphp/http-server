@@ -12,14 +12,14 @@ final class ConnectionLimitingClientFactory implements ClientFactory
     /** @var array<string, int> */
     private array $clientsPerIp = [];
 
-    private readonly ClientFactory $delegate;
+    private readonly ClientFactory $clientFactory;
 
     public function __construct(
         private readonly PsrLogger $logger,
         private readonly int $connectionsPerIpLimit = 10,
-        ?ClientFactory $delegate = null,
+        ?ClientFactory $clientFactory = null,
     ) {
-        $this->delegate = $delegate ?? new SocketClientFactory($this->logger);
+        $this->clientFactory = $clientFactory ?? new SocketClientFactory($this->logger);
 
         $this->logger->notice("Client connections are limited to {$this->connectionsPerIpLimit} per IP address (excluding localhost)");
     }
@@ -29,7 +29,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
         $address = $socket->getRemoteAddress();
 
         if (!$address instanceof InternetAddress) {
-            return $this->delegate->createClient($socket);
+            return $this->clientFactory->createClient($socket);
         }
 
         $ip = $address->getAddress();
@@ -40,7 +40,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
         if ($ip === "::1" || \str_starts_with($ip, "127.") //
             || \str_starts_with($bytes, "\0\0\0\0\0\0\0\0\0\0\xff\xff\x7f")
         ) {
-            return $this->delegate->createClient($socket);
+            return $this->clientFactory->createClient($socket);
         }
 
         if ($address->getVersion() === InternetAddressVersion::IPv6) {
@@ -61,7 +61,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
 
         ++$this->clientsPerIp[$bytes];
 
-        $client = $this->delegate->createClient($socket);
+        $client = $this->clientFactory->createClient($socket);
         if ($client === null) {
             $this->onClose($bytes);
 

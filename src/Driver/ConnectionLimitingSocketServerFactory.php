@@ -13,14 +13,14 @@ final class ConnectionLimitingSocketServerFactory implements SocketServerFactory
 {
     public function __construct(
         private readonly Semaphore $semaphore,
-        private readonly SocketServerFactory $delegate = new ResourceSocketServerFactory,
+        private readonly SocketServerFactory $socketServerFactory = new ResourceSocketServerFactory,
     ) {
     }
 
     public function listen(SocketAddress $address, ?BindContext $bindContext = null): SocketServer
     {
         return new ConnectionLimitingSocketServer(
-            $this->delegate->listen($address, $bindContext),
+            $this->socketServerFactory->listen($address, $bindContext),
             $this->semaphore,
         );
     }

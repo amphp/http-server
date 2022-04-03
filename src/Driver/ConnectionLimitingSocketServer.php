@@ -12,7 +12,7 @@ use Amp\Sync\Semaphore;
 final class ConnectionLimitingSocketServer implements SocketServer
 {
     public function __construct(
-        private readonly SocketServer $delegate,
+        private readonly SocketServer $socketServer,
         private readonly Semaphore $semaphore,
     ) {
     }
@@ -21,7 +21,7 @@ final class ConnectionLimitingSocketServer implements SocketServer
     {
         $lock = $this->semaphore->acquire();
 
-        $socket = $this->delegate->accept();
+        $socket = $this->socketServer->accept();
         if (!$socket) {
             $lock->release();
             return null;
@@ -34,41 +34,41 @@ final class ConnectionLimitingSocketServer implements SocketServer
 
     public function close(): void
     {
-        $this->delegate->close();
+        $this->socketServer->close();
     }
 
     public function isClosed(): bool
     {
-        return $this->delegate->isClosed();
+        return $this->socketServer->isClosed();
     }
 
     public function onClose(\Closure $onClose): void
     {
-        $this->delegate->onClose($onClose);
+        $this->socketServer->onClose($onClose);
     }
 
     public function reference(): void
     {
-        $this->delegate->reference();
+        $this->socketServer->reference();
     }
 
     public function unreference(): void
     {
-        $this->delegate->unreference();
+        $this->socketServer->unreference();
     }
 
     public function getResource()
     {
-        return $this->delegate->getResource();
+        return $this->socketServer->getResource();
     }
 
     public function getAddress(): SocketAddress
     {
-        return $this->delegate->getAddress();
+        return $this->socketServer->getAddress();
     }
 
     public function getBindContext(): BindContext
     {
-        return $this->delegate->getBindContext();
+        return $this->socketServer->getBindContext();
     }
 }
