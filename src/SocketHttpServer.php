@@ -55,7 +55,7 @@ final class SocketHttpServer implements HttpServer
         ?SocketServerFactory $serverFactory = null,
         ?ClientFactory $clientFactory = null,
         ?HttpDriverFactory $driverFactory = null,
-        private readonly bool $enableCompression = false,
+        private readonly bool $enableCompression = true,
     ) {
         if (!$serverFactory) {
             $this->serverFactory = new ConnectionLimitingSocketServerFactory(new LocalSemaphore(1000));
