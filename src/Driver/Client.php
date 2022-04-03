@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\Closable;
+use Amp\Closable;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 
