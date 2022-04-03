@@ -26,9 +26,9 @@ final class SocketHttpServer implements HttpServer
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 
-    private readonly SocketServerFactory $serverFactory;
+    private readonly SocketServerFactory $socketServerFactory;
 
-    private readonly HttpDriverFactory $driverFactory;
+    private readonly HttpDriverFactory $httpDriverFactory;
 
     private readonly ClientFactory $clientFactory;
 
@@ -52,20 +52,20 @@ final class SocketHttpServer implements HttpServer
 
     public function __construct(
         private readonly PsrLogger $logger,
-        ?SocketServerFactory $serverFactory = null,
+        ?SocketServerFactory $socketServerFactory = null,
         ?ClientFactory $clientFactory = null,
-        ?HttpDriverFactory $driverFactory = null,
+        ?HttpDriverFactory $httpDriverFactory = null,
         private readonly bool $enableCompression = true,
     ) {
-        if (!$serverFactory) {
-            $this->serverFactory = new ConnectionLimitingSocketServerFactory(new LocalSemaphore(1000));
+        if (!$socketServerFactory) {
+            $this->socketServerFactory = new ConnectionLimitingSocketServerFactory(new LocalSemaphore(1000));
             $this->logger->notice("Total client connections are limited to 1000");
         } else {
-            $this->serverFactory = $serverFactory;
+            $this->socketServerFactory = $socketServerFactory;
         }
 
         $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory($this->logger);
-        $this->driverFactory = $driverFactory ?? new DefaultHttpDriverFactory($this->logger);
+        $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($this->logger);
 
         $this->onStart((new PerformanceRecommender())->onStart(...));
     }
@@ -184,10 +184,10 @@ final class SocketHttpServer implements HttpServer
              */
             foreach ($this->addresses as [$address, $bindContext]) {
                 $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
-                    $this->driverFactory->getApplicationLayerProtocols(),
+                    $this->httpDriverFactory->getApplicationLayerProtocols(),
                 );
 
-                $this->servers[] = $this->serverFactory->listen($address, $bindContext?->withTlsContext($tlsContext));
+                $this->servers[] = $this->socketServerFactory->listen($address, $bindContext?->withTlsContext($tlsContext));
             }
 
             $this->logger->info("Started server");
@@ -233,7 +233,7 @@ final class SocketHttpServer implements HttpServer
                 return;
             }
 
-            $this->drivers[$id] = $driver = $this->driverFactory->createHttpDriver(
+            $this->drivers[$id] = $driver = $this->httpDriverFactory->createHttpDriver(
                 $this->requestHandler,
                 $this->errorHandler,
                 $client,
