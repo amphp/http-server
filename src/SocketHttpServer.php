@@ -67,7 +67,7 @@ final class SocketHttpServer implements HttpServer
         $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory($this->logger);
         $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($this->logger);
 
-        $this->onStart((new PerformanceRecommender())->onStart(...));
+        $this->onStart((new PerformanceRecommender($this->logger))->onStart(...));
     }
 
     public function expose(SocketAddress $socketAddress, ?BindContext $bindContext = null): void
@@ -146,7 +146,7 @@ final class SocketHttpServer implements HttpServer
             [$exceptions] = Future\awaitAll($futures);
 
             if (!empty($exceptions)) {
-                throw new CompositeException($exceptions, "HTTP server onStart failure");
+                throw new CompositeException($exceptions);
             }
 
             /**
@@ -174,6 +174,7 @@ final class SocketHttpServer implements HttpServer
             }
         } catch (\Throwable $exception) {
             try {
+                $this->status = HttpServerStatus::Started;
                 $this->stop();
             } finally {
                 throw $exception;
@@ -269,7 +270,7 @@ final class SocketHttpServer implements HttpServer
         $this->servers = [];
 
         if (!empty($exceptions)) {
-            throw new CompositeException($exceptions, "HTTP server onStop failure");
+            throw new CompositeException($exceptions);
         }
     }
 }
