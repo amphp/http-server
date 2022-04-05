@@ -97,35 +97,6 @@ final class SocketHttpServer implements HttpServer
         return $this->status;
     }
 
-    public function getRequestHandler(): RequestHandler
-    {
-        if (!$this->requestHandler) {
-            throw new \Error('Cannot get the request handler when the server is not running');
-        }
-
-        return $this->requestHandler;
-    }
-
-    /**
-     * Retrieve the error handler.
-     */
-    public function getErrorHandler(): ErrorHandler
-    {
-        if (!$this->errorHandler) {
-            throw new \Error('Cannot get the error handler when the server is not running');
-        }
-
-        return $this->errorHandler;
-    }
-
-    /**
-     * Retrieve the logger.
-     */
-    public function getLogger(): PsrLogger
-    {
-        return $this->logger;
-    }
-
     public function onStart(\Closure $onStart): void
     {
         $this->onStart[] = $onStart;
