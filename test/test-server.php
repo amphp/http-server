@@ -6,6 +6,7 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream\WritableResourceStream;
 use Amp\CancelledException;
 use Amp\Http\Server\ClientException;
+use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
@@ -49,7 +50,7 @@ $server->start(new ClosureRequestHandler(static function (Request $request) {
     return new Response(Status::OK, [
             "content-type" => "text/plain; charset=utf-8",
     ], "Hello, World!");
-}));
+}), new DefaultErrorHandler());
 
 trapSignal(\SIGINT);
 

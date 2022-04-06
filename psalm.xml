@@ -10,6 +10,7 @@
     <projectFiles>
         <directory name="examples"/>
         <directory name="src" />
+        <file name="test/test-server.php"/>
         <ignoreFiles>
             <directory name="vendor"/>
         </ignoreFiles>
