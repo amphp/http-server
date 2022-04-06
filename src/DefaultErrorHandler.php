@@ -12,7 +12,7 @@ final class DefaultErrorHandler implements ErrorHandler
     /** @var string[] */
     private array $cache = [];
 
-    public function handleError(int $statusCode, ?string $reason = null, ?Request $request = null): Response
+    public function handleError(int $status, ?string $reason = null, ?Request $request = null): Response
     {
         static $errorHtml;
 
@@ -20,11 +20,11 @@ final class DefaultErrorHandler implements ErrorHandler
             $errorHtml = \file_get_contents(\dirname(__DIR__) . "/resources/error.html");
         }
 
-        if (!isset($this->cache[$statusCode])) {
-            $this->cache[$statusCode] = \str_replace(
+        if (!isset($this->cache[$status])) {
+            $this->cache[$status] = \str_replace(
                 ["{code}", "{reason}"],
                 // Using standard reason in HTML for caching purposes.
-                [$statusCode, Status::getReason($statusCode)],
+                [$status, Status::getReason($status)],
                 $errorHtml
             );
         }
@@ -33,10 +33,10 @@ final class DefaultErrorHandler implements ErrorHandler
             headers: [
                 "content-type" => "text/html; charset=utf-8",
             ],
-            body: $this->cache[$statusCode],
+            body: $this->cache[$status],
         );
 
-        $response->setStatus($statusCode, $reason);
+        $response->setStatus($status, $reason);
 
         return $response;
     }
