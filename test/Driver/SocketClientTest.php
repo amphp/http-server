@@ -9,6 +9,7 @@ use Amp\Http\Client\Connection\UnlimitedConnectionPool;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
+use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
@@ -38,7 +39,7 @@ class SocketClientTest extends AsyncTestCase
             (new Socket\BindContext)->withTlsContext($tlsContext),
         );
 
-        $httpServer->start($handler);
+        $httpServer->start($handler, $this->createMock(ErrorHandler::class));
 
         $server = $httpServer->getServers()[0] ?? self::fail('No servers created by HTTP server');
 

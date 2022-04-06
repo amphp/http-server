@@ -4,6 +4,7 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
+use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
@@ -36,10 +37,12 @@ $server->start(new ClosureRequestHandler(function (Request $request): Response {
     // such state will be separate per process.
     // Note: You might see the counter increase by more than one per reload, because browser
     // might try to load a favicon.ico or similar.
-    return new Response(Status::OK, [
-            "content-type" => "text/plain; charset=utf-8",
-    ], "You're visitor #" . (++$counter) . ".");
-}));
+    return new Response(
+        status: Status::OK,
+        headers: ["content-type" => "text/plain; charset=utf-8",],
+        body: "You're visitor #" . (++$counter) . "."
+    );
+}), new DefaultErrorHandler());
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);

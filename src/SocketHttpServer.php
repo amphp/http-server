@@ -32,9 +32,6 @@ final class SocketHttpServer implements HttpServer
 
     private readonly ClientFactory $clientFactory;
 
-    private ?RequestHandler $requestHandler = null;
-    private ?ErrorHandler $errorHandler = null;
-
     /** @var array<string, array{SocketAddress, BindContext|null}> */
     private array $addresses = [];
 
@@ -110,7 +107,7 @@ final class SocketHttpServer implements HttpServer
     /**
      * Start the server.
      */
-    public function start(RequestHandler $requestHandler, ?ErrorHandler $errorHandler = null): void
+    public function start(RequestHandler $requestHandler, ErrorHandler $errorHandler): void
     {
         if (empty($this->addresses)) {
             throw new \Error(\sprintf('No bind addresses specified; Call %s::expose() to add some', self::class));
@@ -130,9 +127,6 @@ final class SocketHttpServer implements HttpServer
                 $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
             }
         }
-
-        $this->requestHandler = $requestHandler;
-        $this->errorHandler = $errorHandler ?? new DefaultErrorHandler();
 
         $this->logger->debug("Starting server");
         $this->status = HttpServerStatus::Starting;
@@ -170,7 +164,7 @@ final class SocketHttpServer implements HttpServer
 
                 $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-                EventLoop::queue($this->accept(...), $server);
+                EventLoop::queue($this->accept(...), $server, $requestHandler, $errorHandler);
             }
         } catch (\Throwable $exception) {
             try {
@@ -182,15 +176,21 @@ final class SocketHttpServer implements HttpServer
         }
     }
 
-    private function accept(SocketServer $server): void
-    {
+    private function accept(
+        SocketServer $server,
+        RequestHandler $requestHandler,
+        ErrorHandler $errorHandler,
+    ): void {
         while ($socket = $server->accept()) {
-            EventLoop::queue($this->handleClient(...), $socket);
+            EventLoop::queue($this->handleClient(...), $socket, $requestHandler, $errorHandler);
         }
     }
 
-    private function handleClient(EncryptableSocket $socket): void
-    {
+    private function handleClient(
+        EncryptableSocket $socket,
+        RequestHandler $requestHandler,
+        ErrorHandler $errorHandler,
+    ): void {
         try {
             $client = $this->clientFactory->createClient($socket);
             if (!$client) {
@@ -200,14 +200,14 @@ final class SocketHttpServer implements HttpServer
 
             $id = $client->getId();
 
-            if (!$this->requestHandler || !$this->errorHandler) {
+            if ($this->status !== HttpServerStatus::Started) {
                 $client->close();
                 return;
             }
 
             $this->drivers[$id] = $driver = $this->httpDriverFactory->createHttpDriver(
-                $this->requestHandler,
-                $this->errorHandler,
+                $requestHandler,
+                $errorHandler,
                 $client,
             );
 
@@ -265,8 +265,6 @@ final class SocketHttpServer implements HttpServer
         $this->logger->debug("Stopped server");
         $this->status = HttpServerStatus::Stopped;
 
-        $this->requestHandler = null;
-        $this->errorHandler = null;
         $this->servers = [];
 
         if (!empty($exceptions)) {

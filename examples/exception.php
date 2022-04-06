@@ -4,6 +4,7 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
+use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\SocketHttpServer;
 use Amp\Log\ConsoleFormatter;
@@ -17,7 +18,7 @@ use function Amp\trapSignal;
 
 $logHandler = new StreamHandler(ByteStream\getStdout());
 $logHandler->pushProcessor(new PsrLogMessageProcessor());
-$logHandler->setFormatter(new ConsoleFormatter);
+$logHandler->setFormatter(new ConsoleFormatter());
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
@@ -26,9 +27,12 @@ $server = new SocketHttpServer($logger);
 $server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
 $server->expose(new Socket\InternetAddress("[::]", 1337));
 
-$server->start(new ClosureRequestHandler(function () {
-    throw new \Exception("Something went wrong :-(");
-}));
+$server->start(
+    new ClosureRequestHandler(function (): never {
+        throw new \Exception("Something went wrong :-(");
+    }),
+    new DefaultErrorHandler()
+);
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);

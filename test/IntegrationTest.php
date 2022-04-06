@@ -7,6 +7,8 @@ use Amp\Http\Client\Body\StreamBody;
 use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
@@ -48,7 +50,7 @@ class IntegrationTest extends AsyncTestCase
         $this->expectExceptionMessage('No bind addresses specified');
 
         $server = new SocketHttpServer($this->createMock(PsrLogger::class));
-        $server->start($this->createMock(RequestHandler::class));
+        $server->start($this->createMock(RequestHandler::class), $this->createMock(ErrorHandler::class));
     }
 
     public function testShutdownWaitsOnUnfinishedResponses(): void
@@ -57,7 +59,7 @@ class IntegrationTest extends AsyncTestCase
             delay(0.2);
 
             return new Response(Status::NO_CONTENT);
-        }));
+        }), $this->createMock(ErrorHandler::class));
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/"));
 
@@ -78,7 +80,7 @@ class IntegrationTest extends AsyncTestCase
             delay(0.2);
 
             return new Response(Status::OK, ["FOO" => "bar"], "message");
-        }));
+        }), $this->createMock(ErrorHandler::class));
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
 
@@ -102,7 +104,7 @@ class IntegrationTest extends AsyncTestCase
             delay(0.2);
 
             return new Response(Status::OK, ["FOO" => "bar"], "message");
-        }));
+        }), $this->createMock(ErrorHandler::class));
 
         $queue = new Queue();
 
@@ -134,7 +136,7 @@ class IntegrationTest extends AsyncTestCase
      */
     public function testPreRequestHandlerFailure(ClientRequest $request, int $status): void
     {
-        $this->httpServer->start(new ClosureRequestHandler($this->createCallback(0)));
+        $this->httpServer->start(new ClosureRequestHandler($this->createCallback(0)), new DefaultErrorHandler());
 
         $request->setUri($this->getAuthority());
 
@@ -160,7 +162,7 @@ class IntegrationTest extends AsyncTestCase
     {
         $this->httpServer->start(new ClosureRequestHandler(function (Request $req) {
             throw new \Exception;
-        }));
+        }), new DefaultErrorHandler());
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
 

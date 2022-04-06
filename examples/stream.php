@@ -5,10 +5,12 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
 use Amp\ByteStream\ReadableIterableStream;
+use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
+use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
@@ -33,15 +35,17 @@ $server->expose(new Socket\InternetAddress("[::]", 1337));
 
 $server->start(new ClosureRequestHandler(function (Request $request): Response {
     // We stream the response here, one line every 100 ms.
-    return new Response(Status::OK, [
-            "content-type" => "text/plain; charset=utf-8",
-    ], new ReadableIterableStream((function () {
-        for ($i = 0; $i < 30; $i++) {
-            delay(0.1);
-            yield "Line {$i}\r\n";
-        }
-    })()));
-}));
+    return new Response(
+        status: Status::OK,
+        headers: ["content-type" => "text/plain; charset=utf-8"],
+        body: new ReadableIterableStream((function () {
+            for ($i = 0; $i < 30; $i++) {
+                delay(0.1);
+                yield "Line {$i}\r\n";
+            }
+        })()),
+    );
+}), new DefaultErrorHandler());
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);
