@@ -18,7 +18,7 @@ final class PerformanceRecommender implements ServerObserver
             if (\ini_get("zend.assertions") !== "1") {
                 $logger->warning(
                     "Running in debug mode without assertions enabled will not generate debug level " .
-                    "log messages. Enable assertions in php.ini (zend.assertions = 1) to enable" .
+                    "log messages. Enable assertions in php.ini (zend.assertions = 1) to enable " .
                     "debug logging."
                 );
             }
