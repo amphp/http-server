@@ -3,11 +3,11 @@
 namespace Amp\Http\Server\Middleware;
 
 use Amp\ByteStream\ReadableIterableStream;
+use Amp\ByteStream\ReadableStream;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Pipeline\Pipeline;
 use cash\LRUCache;
 
 final class CompressionMiddleware implements Middleware
@@ -19,38 +19,33 @@ final class CompressionMiddleware implements Middleware
     public const DEFAULT_CHUNK_SIZE = 8192;
     public const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
-    /** @var int Minimum body length before body is compressed. */
-    private readonly int $minimumLength;
-
-    private readonly string $contentRegex;
-
-    /** @var int Minimum chunk size before being compressed. */
-    private readonly int $chunkSize;
-
     private readonly LRUCache $contentTypeCache;
 
+    /**
+     * @param positive-int $minimumLength Minimum body length before body is compressed.
+     * @param positive-int $chunkSize Minimum chunk size before being compressed.
+     * @param string $contentRegex
+     */
     public function __construct(
-        int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,
-        int $chunkSize = self::DEFAULT_CHUNK_SIZE,
-        string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX
+        private readonly int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,
+        private readonly int $chunkSize = self::DEFAULT_CHUNK_SIZE,
+        private readonly string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX
     ) {
         if (!\extension_loaded('zlib')) {
             throw new \Error(__CLASS__ . ' requires ext-zlib');
         }
 
+        /** @psalm-suppress TypeDoesNotContainType */
         if ($minimumLength < 1) {
             throw new \Error("The minimum length must be positive");
         }
 
+        /** @psalm-suppress TypeDoesNotContainType */
         if ($chunkSize < 1) {
             throw new \Error("The chunk size must be positive");
         }
 
         $this->contentTypeCache = new LRUCache(self::MAX_CACHE_SIZE);
-
-        $this->minimumLength = $minimumLength;
-        $this->chunkSize = $chunkSize;
-        $this->contentRegex = $contentRegex;
     }
 
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
@@ -133,7 +128,7 @@ final class CompressionMiddleware implements Middleware
             default => throw new \RuntimeException("Invalid encoding type"),
         };
 
-        if (($resource = \deflate_init($mode)) === false) {
+        if (($context = \deflate_init($mode)) === false) {
             throw new \RuntimeException(
                 "Failed initializing deflate context"
             );
@@ -149,29 +144,40 @@ final class CompressionMiddleware implements Middleware
         $response->setHeader("content-encoding", $encoding);
         $response->addHeader("vary", "accept-encoding");
 
-        $generator = Pipeline::fromIterable(function () use ($resource, $body, $bodyBuffer) {
-            do {
-                if (isset($bodyBuffer[$this->chunkSize - 1])) {
-                    if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
-                        throw new \RuntimeException("Failed adding data to deflate context");
-                    }
-
-                    yield $bodyBuffer;
-                    $bodyBuffer = '';
-                }
-
-                $bodyBuffer .= $chunk = $body->read();
-            } while ($chunk !== null);
-
-            if (false === $bodyBuffer = \deflate_add($resource, $bodyBuffer, \ZLIB_FINISH)) {
-                throw new \RuntimeException("Failed adding data to deflate context");
-            }
-
-            yield $bodyBuffer;
-        });
-
-        $response->setBody(new ReadableIterableStream($generator));
+        /** @psalm-suppress InvalidArgument Psalm stubs are out of date, deflate_init returns a \DeflateContext */
+        $response->setBody(
+            new ReadableIterableStream(self::readBody($context, $body, $bodyBuffer, $this->chunkSize))
+        );
 
         return $response;
+    }
+
+    /**
+     * @psalm-suppress InvalidArgument
+     */
+    private static function readBody(
+        \DeflateContext $context,
+        ReadableStream $body,
+        string $bodyBuffer,
+        int $chunkSize,
+    ): \Generator {
+        do {
+            if (isset($bodyBuffer[$chunkSize - 1])) {
+                if (false === $bodyBuffer = \deflate_add($context, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
+                    throw new \RuntimeException("Failed adding data to deflate context");
+                }
+
+                yield $bodyBuffer;
+                $bodyBuffer = '';
+            }
+
+            $bodyBuffer .= $chunk = $body->read();
+        } while ($chunk !== null);
+
+        if (false === $bodyBuffer = \deflate_add($context, $bodyBuffer, \ZLIB_FINISH)) {
+            throw new \RuntimeException("Failed adding data to deflate context");
+        }
+
+        yield $bodyBuffer;
     }
 }
