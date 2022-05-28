@@ -58,7 +58,6 @@ final class Http1Driver extends AbstractHttpDriver
         private readonly int $connectionTimeout = self::DEFAULT_STREAM_TIMEOUT,
         private readonly int $headerSizeLimit = self::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = self::DEFAULT_BODY_SIZE_LIMIT,
-        private readonly int $streamThreshold = self::DEFAULT_STREAM_THRESHOLD,
         array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
         private readonly bool $allowHttp2Upgrade = false,
     ) {
@@ -161,7 +160,6 @@ final class Http1Driver extends AbstractHttpDriver
                             connectionTimeout: $this->connectionTimeout,
                             headerSizeLimit: $this->headerSizeLimit,
                             bodySizeLimit: $this->bodySizeLimit,
-                            streamThreshold: $this->streamThreshold,
                             allowedMethods: $this->allowedMethods,
                             pushEnabled: false,
                         );
@@ -373,7 +371,6 @@ final class Http1Driver extends AbstractHttpDriver
                         connectionTimeout: $this->connectionTimeout,
                         headerSizeLimit: $this->headerSizeLimit,
                         bodySizeLimit: $this->bodySizeLimit,
-                        streamThreshold: $this->streamThreshold,
                         allowedMethods: $this->allowedMethods,
                         pushEnabled: false,
                         settings: $h2cSettings,
@@ -857,13 +854,13 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["transfer-encoding"] = ["chunked"];
         }
 
-        $buffer = "HTTP/$protocol $status $reason\r\n";
-        $buffer .= Rfc7230::formatHeaders($headers);
-        $buffer .= "\r\n";
+        $chunk = "HTTP/$protocol $status $reason\r\n";
+        $chunk .= Rfc7230::formatHeaders($headers);
+        $chunk .= "\r\n";
+
+        $this->writableStream->write($chunk);
 
         if ($request !== null && $request->getMethod() === "HEAD") {
-            $this->writableStream->write($buffer);
-
             if ($shouldClose) {
                 $this->writableStream->end();
             }
@@ -871,56 +868,46 @@ final class Http1Driver extends AbstractHttpDriver
             return;
         }
 
-        $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
+        $chunk = null; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
         $body = $response->getBody();
 
         $this->updateTimeout();
 
         try {
             while (null !== $chunk = $body->read()) {
-                $length = \strlen($chunk);
-
-                if ($length === 0) {
+                if ($chunk === "") {
                     continue;
                 }
 
                 if ($chunked) {
-                    $chunk = \sprintf("%x\r\n%s\r\n", $length, $chunk);
+                    $chunk = \sprintf("%x\r\n%s\r\n", \strlen($chunk), $chunk);
                 }
 
-                $buffer .= $chunk;
-
-                if (\strlen($buffer) < $this->streamThreshold) {
-                    continue;
-                }
-
-                $this->writableStream->write($buffer);
+                $this->writableStream->write($chunk);
                 $this->updateTimeout();
-                $buffer = "";
             }
 
             if ($chunked) {
-                $buffer .= "0\r\n";
+                $chunk = "0\r\n";
 
                 if ($trailers !== null) {
                     $trailers = $trailers->await();
-                    $buffer .= Rfc7230::formatHeaders($trailers->getHeaders());
+                    $chunk .= Rfc7230::formatHeaders($trailers->getHeaders());
                 }
 
-                $buffer .= "\r\n";
+                $chunk .= "\r\n";
+
+                $this->writableStream->write($chunk);
+                $chunk = null;
             }
 
-            if ($buffer !== "" || $shouldClose) {
-                $this->updateTimeout();
-                $this->writableStream->write($buffer);
-
-                if ($shouldClose) {
-                    $this->writableStream->end();
-                }
+            if ($shouldClose) {
+                $this->writableStream->end();
             }
         } catch (ClientException) {
             return; // Client will be closed in finally.
         } finally {
+            /** @psalm-suppress TypeDoesNotContainType */
             if ($chunk !== null) {
                 $this->client->close();
             }

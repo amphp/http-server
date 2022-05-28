@@ -519,8 +519,7 @@ class Http2DriverTest extends HttpDriverTest
             self::markTestSkipped('Not supported with nghttp2, disable ffi for this test.');
         }
 
-        // Set stream threshold to 1 to force immediate writes to client.
-        $this->initDriver(['streamThreshold' => 1]);
+        $this->initDriver();
         $request = async(fn () => $this->whenRequestIsReceived());
 
         $input = new Queue;

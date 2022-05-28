@@ -115,7 +115,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         private readonly int $connectionTimeout = self::DEFAULT_CONNECTION_TIMEOUT,
         private readonly int $headerSizeLimit = self::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = self::DEFAULT_BODY_SIZE_LIMIT,
-        private readonly int $streamThreshold = self::DEFAULT_STREAM_THRESHOLD,
         private readonly int $concurrentStreamLimit = self::DEFAULT_CONCURRENT_STREAM_LIMIT,
         array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
         private readonly bool $pushEnabled = true,
@@ -323,23 +322,21 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             if ($request->getMethod() === "HEAD") {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
                 $this->writeData("", $id);
-                $chunk = null;
                 return;
             }
 
-            $buffer = "";
             $body = $response->getBody();
+            $chunk = $body->read();
 
-            while (null !== $chunk = $body->read()) {
-                $buffer .= $chunk;
-
-                if (\strlen($buffer) < $this->streamThreshold) {
-                    continue;
+            while ($chunk !== null) {
+                // Stream may have been closed while waiting for body data.
+                if (!isset($this->streams[$id])) {
+                    return;
                 }
 
-                $this->writeData($buffer, $id);
+                $this->writeData($chunk, $id);
 
-                $buffer = $chunk = ""; // Don't use null here because of finally.
+                $chunk = $body->read();
             }
 
             // Stream may have been closed while waiting for body data.
@@ -347,21 +344,20 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 return;
             }
 
+            $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
+
             if ($trailers === null) {
-                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
-            }
+                $this->writeData("", $id);
+            } else {
+                $trailers = $trailers->await();
 
-            $this->writeData($buffer, $id);
+                // Stream may have been closed while writing final body chunk or headers.
+                if (!isset($this->streams[$id])) {
+                    return;
+                }
 
-            // Stream may have been closed while writing final body chunk.
-            if (!isset($this->streams[$id])) {
-                return;
-            }
-
-            if ($trailers !== null) {
-                $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
                 $this->writeHeaders(
-                    $this->encodeHeaders($trailers->await()->getHeaders()),
+                    $this->encodeHeaders($trailers->getHeaders()),
                     Http2Parser::HEADERS,
                     Http2Parser::END_STREAM,
                     $id,
@@ -381,9 +377,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             }
 
             if ($chunk !== null) {
-                if (isset($buffer) && $buffer !== "") {
-                    $this->writeData($buffer, $id);
-                }
                 $error ??= Http2Parser::INTERNAL_ERROR;
                 $this->writeFrame(\pack("N", $error), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException($this->client, "Stream error", $error));

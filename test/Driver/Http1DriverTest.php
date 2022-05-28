@@ -939,7 +939,6 @@ class Http1DriverTest extends HttpDriverTest
             new ClosureRequestHandler(fn () => new Response()),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            streamThreshold: 1,
         );
 
         $output = new WritableBuffer();
