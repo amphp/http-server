@@ -4,6 +4,8 @@ namespace Amp\Http\Server\Driver\Internal;
 
 use Amp\Http\Server\Driver\Client;
 use Revolt\EventLoop;
+use function Amp\async;
+use function Amp\weakClosure;
 
 /** @internal */
 final class TimeoutQueue
@@ -11,6 +13,8 @@ final class TimeoutQueue
     private readonly TimeoutCache $timeoutCache;
 
     private ?string $callbackId = null;
+
+    private int $now = 0;
 
     /** @var array<string, array{Client, int, \Closure(Client, int):void}> */
     private array $callbacks = [];
@@ -35,21 +39,20 @@ final class TimeoutQueue
     public function insert(Client $client, int $streamId, \Closure $onTimeout, int $timeout): void
     {
         if ($this->callbackId === null) {
-            $callbacks = &$this->callbacks;
-            $timeoutCache = $this->timeoutCache;
+            $this->now = \time();
             $this->callbackId = EventLoop::unreference(
-                EventLoop::repeat(1, static function () use (&$callbacks, $timeoutCache): void {
-                    $now = \time();
+                EventLoop::repeat(1, weakClosure(function (): void {
+                    $this->now = \time();
 
-                    while ($id = $timeoutCache->extract($now)) {
-                        \assert(isset($callbacks[$id]), "Timeout cache contains an invalid client ID");
+                    while ($id = $this->timeoutCache->extract($this->now)) {
+                        \assert(isset($this->callbacks[$id]), "Timeout cache contains an invalid client ID");
 
                         // Client is either idle or taking too long to send request, so simply close the connection.
-                        [$client, $streamId, $onTimeout] = $callbacks[$id];
+                        [$client, $streamId, $onTimeout] = $this->callbacks[$id];
 
-                        $onTimeout($client, $streamId);
+                        async($onTimeout, $client, $streamId)->ignore();
                     }
-                })
+                }))
             );
         }
 
@@ -57,7 +60,7 @@ final class TimeoutQueue
         \assert(!isset($this->callbacks[$cacheId]));
 
         $this->callbacks[$cacheId] = [$client, $streamId, $onTimeout];
-        $this->timeoutCache->update($cacheId, \time() + $timeout);
+        $this->timeoutCache->update($cacheId, $this->now + $timeout);
     }
 
     private function makeId(Client $client, int $streamId): string
@@ -73,7 +76,7 @@ final class TimeoutQueue
         $cacheId = $this->makeId($client, $streamId);
         \assert(isset($this->callbacks[$cacheId]));
 
-        $this->timeoutCache->update($this->makeId($client, $streamId), \time() + $timeout);
+        $this->timeoutCache->update($this->makeId($client, $streamId), $this->now + $timeout);
     }
 
     /**
