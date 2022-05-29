@@ -967,6 +967,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $requestHandler = new ClosureRequestHandler(function (Request $req) use (&$request) {
             $request = $req;
+            delay(0.1); // Add delay so response is not yet written to output buffer when checking for equality.
             return new Response;
         });
 

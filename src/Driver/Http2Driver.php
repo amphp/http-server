@@ -164,18 +164,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->client = $client;
         $this->writableStream = $writableStream;
-    }
-
-    public function handleClientWithBuffer(string $buffer, ReadableStream $readableStream): void
-    {
-        /** @psalm-suppress RedundantPropertyInitializationCheck */
-        \assert(isset($this->client), "The driver has not been setup");
-
-        $this->readableStream = $readableStream;
-
-        self::getTimeoutQueue()->insert($this->client, 0, fn () => $this->shutdown(
-            new ClientException($this->client, 'Shutting down connection due to inactivity'),
-        ), $this->streamTimeout);
 
         if ($this->settings !== null) {
             // Upgraded connections automatically assume an initial stream with ID 1.
@@ -201,6 +189,18 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 Http2Parser::NO_FLAG
             );
         }
+    }
+
+    public function handleClientWithBuffer(string $buffer, ReadableStream $readableStream): void
+    {
+        /** @psalm-suppress RedundantPropertyInitializationCheck */
+        \assert(isset($this->client), "The driver has not been setup");
+
+        $this->readableStream = $readableStream;
+
+        self::getTimeoutQueue()->insert($this->client, 0, fn () => $this->shutdown(
+            new ClientException($this->client, 'Shutting down connection due to inactivity'),
+        ), $this->streamTimeout);
 
         $this->readableStream = $readableStream;
 

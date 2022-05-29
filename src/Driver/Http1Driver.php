@@ -35,6 +35,7 @@ final class Http1Driver extends AbstractHttpDriver
     private Client $client;
 
     private ReadableStream $readableStream;
+
     private WritableStream $writableStream;
 
     private int $pendingResponseCount = 0;
@@ -401,12 +402,22 @@ final class Http1Driver extends AbstractHttpDriver
                     }
 
                     $this->pendingResponseCount++;
-                    $this->currentBuffer = $buffer;
-                    $this->handleRequest($request);
-                    $this->pendingResponseCount--;
-                    $request = null; // DO NOT leave a reference to the Request object in the parser!
 
-                    continue;
+                    try {
+                        if ($this->http2driver) {
+                            $this->pendingResponse = async($this->http2driver->handleRequest(...), $request);
+
+                            continue;
+                        }
+
+                        $this->currentBuffer = $buffer;
+                        $this->handleRequest($request);
+                        $this->pendingResponseCount--;
+
+                        continue;
+                    } finally {
+                        $request = null; // DO NOT leave a reference to the Request object in the parser!
+                    }
                 }
 
                 // HTTP/1.x clients only ever have a single body emitter.
@@ -447,7 +458,12 @@ final class Http1Driver extends AbstractHttpDriver
                 // Do not await future until body is completely read.
                 $this->pendingResponseCount++;
                 $this->currentBuffer = $buffer;
-                $this->pendingResponse = async($this->handleRequest(...), $request);
+                $this->pendingResponse = async(
+                    $this->http2driver
+                        ? $this->http2driver->handleRequest(...)
+                        : $this->handleRequest(...),
+                    $request,
+                );
 
                 // DO NOT leave a reference to the Request, Trailers, or Body objects within the parser!
                 $request = null;
@@ -724,6 +740,10 @@ final class Http1Driver extends AbstractHttpDriver
                 $queue->complete();
 
                 $this->updateTimeout();
+
+                if ($this->http2driver) {
+                    continue;
+                }
 
                 $this->pendingResponse->await(); // Wait for response to be generated.
                 $this->pendingResponseCount--;
