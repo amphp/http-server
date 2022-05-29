@@ -20,6 +20,7 @@ final class CompressionMiddleware implements Middleware
     /** @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits */
     const DEFAULT_MINIMUM_LENGTH = 860;
     const DEFAULT_CHUNK_SIZE = 8192;
+    const DEFAULT_BUFFER_TIMEOUT = 100;
     const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
     /** @var int Minimum body length before body is compressed. */
@@ -34,10 +35,14 @@ final class CompressionMiddleware implements Middleware
     /** @var LRUCache */
     private $contentTypeCache;
 
+    /** @var int */
+    private $bufferTimeout;
+
     public function __construct(
         int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,
         int $chunkSize = self::DEFAULT_CHUNK_SIZE,
-        string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX
+        string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX,
+        int $bufferTimeout = self::DEFAULT_BUFFER_TIMEOUT
     ) {
         if (!\extension_loaded('zlib')) {
             throw new \Error(__CLASS__ . ' requires ext-zlib');
@@ -51,6 +56,9 @@ final class CompressionMiddleware implements Middleware
             throw new \Error("The chunk size must be positive");
         }
 
+        if ($bufferTimeout < 1) {
+            throw new \Error("The buffer timeout must be be positive");
+        }
         $this->contentTypeCache = new LRUCache(self::MAX_CACHE_SIZE);
 
         $this->minimumLength = $minimumLength;
@@ -125,7 +133,7 @@ final class CompressionMiddleware implements Middleware
         $promise = $body->read();
 
         if ($contentLength === null) {
-            $expiration = Loop::now() + 100;
+            $expiration = Loop::now() + $this->bufferTimeout;
 
             try {
                 do {
@@ -180,7 +188,7 @@ final class CompressionMiddleware implements Middleware
         $iterator = new Producer(function (callable $emit) use ($resource, $body, $promise, $bodyBuffer) {
             do {
                 try {
-                    $expiration = Loop::now() + 100;
+                    $expiration = Loop::now() + $this->bufferTimeout;
 
                     while (!isset($bodyBuffer[$this->chunkSize - 1])) {
                         $bodyBuffer .= $chunk = yield $bodyBuffer === ''
