@@ -4,10 +4,12 @@ namespace Amp\Http\Server\Middleware;
 
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
+use Amp\CancelledException;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
+use Amp\TimeoutCancellation;
 use cash\LRUCache;
 
 final class CompressionMiddleware implements Middleware
@@ -16,20 +18,19 @@ final class CompressionMiddleware implements Middleware
 
     /** @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits */
     public const DEFAULT_MINIMUM_LENGTH = 860;
-    public const DEFAULT_CHUNK_SIZE = 8192;
+    public const DEFAULT_BUFFER_TIMEOUT = 0.1;
     public const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
     private readonly LRUCache $contentTypeCache;
 
     /**
      * @param positive-int $minimumLength Minimum body length before body is compressed.
-     * @param positive-int $chunkSize Minimum chunk size before being compressed.
      * @param string $contentRegex
      */
     public function __construct(
         private readonly int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,
-        private readonly int $chunkSize = self::DEFAULT_CHUNK_SIZE,
-        private readonly string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX
+        private readonly string $contentRegex = self::DEFAULT_CONTENT_TYPE_REGEX,
+        private readonly float $bufferTimeout = self::DEFAULT_BUFFER_TIMEOUT,
     ) {
         if (!\extension_loaded('zlib')) {
             throw new \Error(__CLASS__ . ' requires ext-zlib');
@@ -40,9 +41,8 @@ final class CompressionMiddleware implements Middleware
             throw new \Error("The minimum length must be positive");
         }
 
-        /** @psalm-suppress TypeDoesNotContainType */
-        if ($chunkSize < 1) {
-            throw new \Error("The chunk size must be positive");
+        if ($bufferTimeout <= 0) {
+            throw new \Error("The buffer timeout must be positive");
         }
 
         $this->contentTypeCache = new LRUCache(self::MAX_CACHE_SIZE);
@@ -106,20 +106,9 @@ final class CompressionMiddleware implements Middleware
         $body = $response->getBody();
         $bodyBuffer = '';
 
-        if ($contentLength === null) {
-            do {
-                $bodyBuffer .= $chunk = $body->read();
-
-                if (isset($bodyBuffer[$this->minimumLength])) {
-                    break;
-                }
-
-                if ($chunk === null) {
-                    // Body is not large enough to compress.
-                    $response->setBody($bodyBuffer);
-                    return $response;
-                }
-            } while (true);
+        if ($contentLength === null && !$this->shouldCompress($body, $bodyBuffer)) {
+            $response->setBody($bodyBuffer);
+            return $response;
         }
 
         $mode = match ($encoding) {
@@ -146,10 +135,33 @@ final class CompressionMiddleware implements Middleware
 
         /** @psalm-suppress InvalidArgument Psalm stubs are out of date, deflate_init returns a \DeflateContext */
         $response->setBody(
-            new ReadableIterableStream(self::readBody($context, $body, $bodyBuffer, $this->chunkSize))
+            new ReadableIterableStream(self::readBody($context, $body, $bodyBuffer))
         );
 
         return $response;
+    }
+
+    private function shouldCompress(ReadableStream $body, string &$bodyBuffer): bool
+    {
+        try {
+            $cancellation = new TimeoutCancellation($this->bufferTimeout);
+
+            do {
+                $bodyBuffer .= $chunk = $body->read($cancellation);
+
+                if (isset($bodyBuffer[$this->minimumLength])) {
+                    return true;
+                }
+
+                if ($chunk === null) {
+                    return false;
+                }
+            } while (true);
+        } catch (CancelledException) {
+            // Not enough bytes buffered within timeout to determine body size, so use compression by default.
+        }
+
+        return true;
     }
 
     /**
@@ -158,26 +170,24 @@ final class CompressionMiddleware implements Middleware
     private static function readBody(
         \DeflateContext $context,
         ReadableStream $body,
-        string $bodyBuffer,
-        int $chunkSize,
+        string $chunk,
     ): \Generator {
         do {
-            if (isset($bodyBuffer[$chunkSize - 1])) {
-                if (false === $bodyBuffer = \deflate_add($context, $bodyBuffer, \ZLIB_SYNC_FLUSH)) {
+            if ($chunk !== '') {
+                if (false === $chunk = \deflate_add($context, $chunk, \ZLIB_SYNC_FLUSH)) {
                     throw new \RuntimeException("Failed adding data to deflate context");
                 }
 
-                yield $bodyBuffer;
-                $bodyBuffer = '';
+                yield $chunk;
             }
 
-            $bodyBuffer .= $chunk = $body->read();
+            $chunk = $body->read();
         } while ($chunk !== null);
 
-        if (false === $bodyBuffer = \deflate_add($context, $bodyBuffer, \ZLIB_FINISH)) {
-            throw new \RuntimeException("Failed adding data to deflate context");
+        if (false === $chunk = \deflate_add($context, '', \ZLIB_FINISH)) {
+            throw new \RuntimeException("Failed finishing deflate context");
         }
 
-        yield $bodyBuffer;
+        yield $chunk;
     }
 }
