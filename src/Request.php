@@ -13,7 +13,7 @@ final class Request extends Message
 {
     private ?RequestBody $body = null;
 
-    /** @var RequestCookie[] */
+    /** @var array<string, RequestCookie> */
     private array $cookies = [];
 
     /** @var array<string, mixed> */
@@ -25,7 +25,7 @@ final class Request extends Message
      * @param Client $client The client sending the request.
      * @param string $method HTTP request method.
      * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
-     * @param string[]|string[][] $headers An array of strings or an array of string arrays.
+     * @param array<string, string|string[]> $headers An array of strings or an array of string arrays.
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      * @param Trailers|null $trailers Trailers if request has trailers, or null otherwise.
      */
@@ -184,11 +184,7 @@ final class Request extends Message
      */
     public function getBody(): RequestBody
     {
-        if ($this->body === null) {
-            $this->body = new RequestBody(new ReadableBuffer());
-        }
-
-        return $this->body;
+        return $this->body ??= new RequestBody('');
     }
 
     /**
@@ -206,7 +202,7 @@ final class Request extends Message
             return;
         }
 
-        $this->body = new RequestBody(new ReadableBuffer($body));
+        $this->body = new RequestBody($body);
 
         if ($length = \strlen($body)) {
             $this->setHeader("content-length", (string) $length);
@@ -218,7 +214,7 @@ final class Request extends Message
     }
 
     /**
-     * @return RequestCookie[]
+     * @return array<string, RequestCookie>
      */
     public function getCookies(): array
     {

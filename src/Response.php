@@ -20,22 +20,22 @@ final class Response extends Message
     /** @var string Response reason. */
     private string $reason;
 
-    /** @var ResponseCookie[] */
+    /** @var array<string, ResponseCookie> */
     private array $cookies = [];
 
-    /** @var Push[] */
+    /** @var array<string, Push> */
     private array $push = [];
 
     private ?\Closure $upgrade = null;
 
-    /** @var \Closure[] */
+    /** @var list<\Closure():void> */
     private array $onDispose = [];
 
     private ?Trailers $trailers = null;
 
     /**
      * @param int $status Status code.
-     * @param string[]|string[][] $headers
+     * @param array<string, string|string[]> $headers
      *
      * @throws \Error If one of the arguments is invalid.
      */
@@ -194,7 +194,7 @@ final class Response extends Message
     }
 
     /**
-     * @return ResponseCookie[]
+     * @return array<string, ResponseCookie>
      */
     public function getCookies(): array
     {
@@ -298,7 +298,7 @@ final class Response extends Message
     }
 
     /**
-     * @return Push[]
+     * @return array<string, Push>
      */
     public function getPushes(): array
     {
@@ -309,7 +309,7 @@ final class Response extends Message
      * Indicate resources which a client likely needs to fetch (e.g. Link: preload or HTTP/2 Server Push).
      *
      * @param string $url URL of resource to push to the client.
-     * @param string[][] Additional headers to attach to the request.
+     * @param string[]|string[][] Additional headers to attach to the request.
      *
      * @throws \Error If the given url is invalid.
      */
