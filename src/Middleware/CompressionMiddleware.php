@@ -57,7 +57,7 @@ final class CompressionMiddleware implements Middleware
         }
 
         if ($bufferTimeout < 1) {
-            throw new \Error("The buffer timeout must be be positive");
+            throw new \Error("The buffer timeout must be positive");
         }
         $this->contentTypeCache = new LRUCache(self::MAX_CACHE_SIZE);
 
