@@ -2,26 +2,84 @@
 
 namespace Amp\Http\Server;
 
+use Amp\ByteStream\BufferException;
 use Amp\ByteStream\Payload;
 use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\StreamException;
+use Amp\Cancellation;
 
 /**
- * This class allows streamed and buffered access to an `ReadableStream` like `Amp\ByteStream\Payload`.
+ * This class allows streamed and buffered access to a request body with an API similar to {@see Payload}.
  *
- * Additionally, this class allows increasing the body size limit dynamically and allows access to the request trailers.
+ * The {@see read()} and {@see buffer()} methods can also throw {@see ClientException} in addition to the usual
+ * {@see StreamException}, though generally there is no need to catch this exception.
+ *
+ * Additionally, this class allows increasing the body size limit dynamically.
  */
-final class RequestBody extends Payload
+final class RequestBody implements ReadableStream
 {
-    /** @var callable|null */
-    private $upgradeSize;
+    private readonly Payload $stream;
 
     /**
      * @param null|\Closure(int):void $upgradeSize Closure used to increase the maximum size of the body.
      */
-    public function __construct(ReadableStream $stream, ?\Closure $upgradeSize = null)
+    public function __construct(
+        ReadableStream|string $stream,
+        private readonly ?\Closure $upgradeSize = null,
+    ) {
+        $this->stream = new Payload($stream);
+    }
+
+    /**
+     * @throws ClientException
+     * @throws StreamException
+     */
+    public function read(?Cancellation $cancellation = null): ?string
     {
-        parent::__construct($stream);
-        $this->upgradeSize = $upgradeSize;
+        try {
+            return $this->stream->read($cancellation);
+        } catch (StreamException $exception) {
+            $previous = $exception->getPrevious();
+            throw $previous instanceof ClientException ? $previous : $exception;
+        }
+    }
+
+    /**
+     * @see Payload::buffer()
+     * @throws ClientException
+     * @throws BufferException|StreamException
+     */
+    public function buffer(?Cancellation $cancellation = null, int $limit = \PHP_INT_MAX): string
+    {
+        try {
+            return $this->stream->buffer($cancellation, $limit);
+        } catch (StreamException $exception) {
+            $previous = $exception->getPrevious();
+            throw $previous instanceof ClientException ? $previous : $exception;
+        }
+    }
+
+    public function isReadable(): bool
+    {
+        return $this->stream->isReadable();
+    }
+
+    /**
+     * Indicates the remainder of the request body is no longer needed and will be discarded.
+     */
+    public function close(): void
+    {
+        $this->stream->close();
+    }
+
+    public function isClosed(): bool
+    {
+        return $this->stream->isClosed();
+    }
+
+    public function onClose(\Closure $onClose): void
+    {
+        $this->stream->onClose($onClose);
     }
 
     /**
