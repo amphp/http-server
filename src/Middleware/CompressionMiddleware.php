@@ -14,6 +14,8 @@ use cash\LRUCache;
 
 final class CompressionMiddleware implements Middleware
 {
+    private static ?\Closure $errorHandler;
+
     public const MAX_CACHE_SIZE = 1024;
 
     /** @link http://webmasters.stackexchange.com/questions/31750/what-is-recommended-minimum-object-size-for-deflate-performance-benefits */
@@ -172,10 +174,18 @@ final class CompressionMiddleware implements Middleware
         ReadableStream $body,
         string $chunk,
     ): \Generator {
+        self::$errorHandler ??= static function (int $code, string $message): never {
+            throw new \RuntimeException('Compression error: ' . $message, $code);
+        };
+
         do {
             if ($chunk !== '') {
-                if (false === $chunk = \deflate_add($context, $chunk, \ZLIB_SYNC_FLUSH)) {
-                    throw new \RuntimeException("Failed adding data to deflate context");
+                \set_error_handler(self::$errorHandler);
+
+                try {
+                    $chunk = \deflate_add($context, $chunk, \ZLIB_SYNC_FLUSH);
+                } finally {
+                    \restore_error_handler();
                 }
 
                 yield $chunk;
@@ -184,8 +194,12 @@ final class CompressionMiddleware implements Middleware
             $chunk = $body->read();
         } while ($chunk !== null);
 
-        if (false === $chunk = \deflate_add($context, '', \ZLIB_FINISH)) {
-            throw new \RuntimeException("Failed finishing deflate context");
+        \set_error_handler(self::$errorHandler);
+
+        try {
+            $chunk = \deflate_add($context, '', \ZLIB_FINISH);
+        } finally {
+            \restore_error_handler();
         }
 
         yield $chunk;
