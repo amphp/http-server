@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server;
 
-use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Message;
