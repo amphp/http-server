@@ -6,6 +6,7 @@ use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\ReadableStreamChain;
+use Amp\ByteStream\StreamException;
 use Amp\ByteStream\WritableStream;
 use Amp\DeferredFuture;
 use Amp\Future;
@@ -91,13 +92,13 @@ final class Http1Driver extends AbstractHttpDriver
 
         $headerSizeLimit = $this->headerSizeLimit;
 
-        $buffer = $readableStream->read();
-        if ($buffer === null) {
-            $this->removeTimeout();
-            return;
-        }
-
         try {
+            $buffer = $readableStream->read();
+            if ($buffer === null) {
+                $this->removeTimeout();
+                return;
+            }
+
             do {
                 if ($this->http2driver) {
                     $this->removeTimeout();
@@ -748,6 +749,8 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->pendingResponse->await(); // Wait for response to be generated.
                 $this->pendingResponseCount--;
             } while ($this->continue);
+        } catch (StreamException) {
+            // Client disconnected, finally block will clean up.
         } catch (ClientException $exception) {
             if ($this->bodyQueue === null || !$this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
@@ -924,7 +927,7 @@ final class Http1Driver extends AbstractHttpDriver
             if ($shouldClose) {
                 $this->writableStream->end();
             }
-        } catch (ClientException) {
+        } catch (StreamException|ClientException) {
             return; // Client will be closed in finally.
         } finally {
             /** @psalm-suppress TypeDoesNotContainType */

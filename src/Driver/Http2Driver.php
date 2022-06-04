@@ -146,7 +146,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
         ), $this->streamTimeout);
 
-        $this->processClientInput(fn () => $this->readPreface());
+        $this->processClientInput();
     }
 
     /**
@@ -204,10 +204,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->readableStream = $readableStream;
 
-        $this->processClientInput(fn () => $buffer);
+        $this->processClientInput($buffer);
     }
 
-    private function processClientInput(\Closure $parserInput): void
+    private function processClientInput(?string $chunk = null): void
     {
         /** @psalm-suppress RedundantCondition */
         \assert($this->logger->debug(\sprintf(
@@ -219,18 +219,14 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $parser = (new Http2Parser($this))->parse($this->settings);
 
         try {
-            $parser->send($parserInput());
+            $parser->send($chunk ?? $this->readPreface());
 
-            while (null !== $chunk = $this->readableStream->read()) {
+            while ($parser->valid() && null !== $chunk = $this->readableStream->read()) {
                 $parser->send($chunk);
-
-                if (!$parser->valid()) {
-                    break;
-                }
             }
 
             $this->shutdown();
-        } catch (Http2ConnectionException $exception) {
+        } catch (StreamException|Http2ConnectionException $exception) {
             $this->shutdown($exception);
         } finally {
             self::getTimeoutQueue()->remove($this->client, 0);
@@ -363,8 +359,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                     $id,
                 );
             }
+        } catch (StreamException) {
+            // Client disconnected, ignore and proceed to clean up below.
+            $chunk = null;
         } catch (ClientException $exception) {
-            $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used in finally below.
+            $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used below.
         } catch (\Throwable $throwable) {
             // Will be rethrown after cleanup below.
         }
