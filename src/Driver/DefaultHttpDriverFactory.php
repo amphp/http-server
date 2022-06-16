@@ -8,8 +8,10 @@ use Psr\Log\LoggerInterface as PsrLogger;
 
 final class DefaultHttpDriverFactory implements HttpDriverFactory
 {
-    private const ALPN = ["h2", "http/1.1"];
-
+    /**
+     * @param bool $allowHttp2Upgrade Requires HTTP/2 support to be enabled.
+     * @param bool $pushEnabled Requires HTTP/2 support to be enabled.
+     */
     public function __construct(
         private readonly PsrLogger $logger,
         private readonly int $streamTimeout = HttpDriver::DEFAULT_STREAM_TIMEOUT,
@@ -17,6 +19,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         private readonly int $headerSizeLimit = HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
         private readonly array $allowedMethods = HttpDriver::DEFAULT_ALLOWED_METHODS,
+        private readonly bool $http2Enabled = true,
         private readonly bool $allowHttp2Upgrade = false,
         private readonly bool $pushEnabled = true,
     ) {
@@ -49,12 +52,16 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
             headerSizeLimit: $this->headerSizeLimit,
             bodySizeLimit: $this->bodySizeLimit,
             allowedMethods: $this->allowedMethods,
-            allowHttp2Upgrade: $this->allowHttp2Upgrade,
+            allowHttp2Upgrade: $this->http2Enabled && $this->allowHttp2Upgrade,
         );
     }
 
     public function getApplicationLayerProtocols(): array
     {
-        return self::ALPN;
+        if ($this->http2Enabled) {
+            return ["h2", "http/1.1"];
+        }
+
+        return ["http/1.1"];
     }
 }
