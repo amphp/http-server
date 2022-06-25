@@ -36,12 +36,7 @@ final class RequestBody implements ReadableStream
      */
     public function read(?Cancellation $cancellation = null): ?string
     {
-        try {
-            return $this->stream->read($cancellation);
-        } catch (StreamException $exception) {
-            $previous = $exception->getPrevious();
-            throw $previous instanceof ClientException ? $previous : $exception;
-        }
+        return $this->stream->read($cancellation);
     }
 
     /**
@@ -51,12 +46,7 @@ final class RequestBody implements ReadableStream
      */
     public function buffer(?Cancellation $cancellation = null, int $limit = \PHP_INT_MAX): string
     {
-        try {
-            return $this->stream->buffer($cancellation, $limit);
-        } catch (StreamException $exception) {
-            $previous = $exception->getPrevious();
-            throw $previous instanceof ClientException ? $previous : $exception;
-        }
+        return $this->stream->buffer($cancellation, $limit);
     }
 
     public function isReadable(): bool

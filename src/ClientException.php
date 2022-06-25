@@ -3,8 +3,8 @@
 namespace Amp\Http\Server;
 
 /**
- * A ClientException thrown from Body::read() or Body::buffer() indicates that the requesting client stream has been
- * closed due to an error or exceeding a server limit such as the body size limit.
+ * A ClientException thrown from {@see RequestBody::read()} or {@see RequestBody::buffer()} indicates that the
+ * requesting client stream has been closed due to an error or exceeding a server limit such as the body size limit.
  *
  * Applications may optionally catch this exception in request handlers to continue other processing. Users are NOT
  * required to catch it and if left uncaught it will simply end request handler execution. For streaming response bodies
