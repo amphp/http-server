@@ -359,6 +359,8 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $this->stopping = true;
 
         return call(function () use ($lastId, $reason) {
+            $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
+
             try {
                 $promises = [];
                 foreach ($this->streams as $id => $stream) {
@@ -371,7 +373,6 @@ final class Http2Driver implements HttpDriver, Http2Processor
                     }
                 }
 
-                $code = $reason ? $reason->getCode() : Http2Parser::GRACEFUL_SHUTDOWN;
                 $lastId = $lastId ?? ($id ?? 0);
                 yield $this->writeFrame(\pack("NN", $lastId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
 
@@ -391,7 +392,9 @@ final class Http2Driver implements HttpDriver, Http2Processor
                 yield $promises;
             } finally {
                 if (!empty($this->streams)) {
-                    $exception = new ClientException($this->client, $reason->getMessage(), $reason->getCode(), $reason);
+                    $message = $reason ? $reason->getMessage() : 'Connection closed';
+
+                    $exception = new ClientException($this->client, $message, $code, $reason);
                     foreach ($this->streams as $id => $stream) {
                         $this->releaseStream($id, $exception);
                     }
