@@ -64,6 +64,7 @@ final class CompressionMiddleware implements Middleware
         $this->minimumLength = $minimumLength;
         $this->chunkSize = $chunkSize;
         $this->contentRegex = $contentRegex;
+        $this->bufferTimeout = $bufferTimeout;
     }
 
     public function handleRequest(Request $request, RequestHandler $requestHandler): Promise
