@@ -945,7 +945,7 @@ class Http1DriverTest extends HttpDriverTest
 
         async(fn () => $driver->handleClient(
             $this->createClientMock(),
-            new ReadableBuffer("GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"),
+            new ReadableBuffer("GET / HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\n\r\n"),
             $output,
         ));
 

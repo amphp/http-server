@@ -45,7 +45,7 @@ final class Http1Driver extends AbstractHttpDriver
 
     private Future $pendingResponse;
 
-    private Future $lastWrite;
+    private ?Future $lastWrite = null;
 
     private bool $stopping = false;
 
@@ -65,7 +65,6 @@ final class Http1Driver extends AbstractHttpDriver
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
 
-        $this->lastWrite = Future::complete();
         $this->pendingResponse = Future::complete();
     }
 
@@ -108,16 +107,17 @@ final class Http1Driver extends AbstractHttpDriver
 
                 $contentLength = null;
                 $isChunked = false;
+                $searchPos = 0;
                 $rawHeaders = ""; // For Psalm
+
+                $buffer = \ltrim($buffer, "\r\n");
 
                 do {
                     if ($this->stopping) {
                         return;
                     }
 
-                    $buffer = \ltrim($buffer, "\r\n");
-
-                    if ($headerPos = \strpos($buffer, "\r\n\r\n")) {
+                    if ($headerPos = \strpos($buffer, "\r\n\r\n", $searchPos)) {
                         $rawHeaders = \substr($buffer, 0, $headerPos + 2);
                         $buffer = \substr($buffer, $headerPos + 4);
                         break;
@@ -136,18 +136,16 @@ final class Http1Driver extends AbstractHttpDriver
                         return;
                     }
 
+                    $searchPos = \max(0, \strlen($buffer) - 3);
                     $buffer .= $chunk;
                 } while (true);
 
-                $startLineEndPos = (int) \strpos($rawHeaders, "\r\n");
-                $startLine = \substr($rawHeaders, 0, $startLineEndPos);
-                $rawHeaders = \substr($rawHeaders, $startLineEndPos + 2);
-
-                if (!\preg_match("/^([A-Z]+) (\S+) HTTP\/(\d+(?:\.\d+)?)$/i", $startLine, $matches)) {
+                if (!\preg_match("#^([^ ]+) (\S+) HTTP/(\d+(?:\.\d+)?)\r\n#", $rawHeaders, $matches)) {
                     throw new ClientException($this->client, "Bad Request: invalid request line", Status::BAD_REQUEST);
                 }
 
-                [, $method, $target, $protocol] = $matches;
+                [$startLine, $method, $target, $protocol] = $matches;
+                $rawHeaders = \substr($rawHeaders, \strlen($startLine));
 
                 if ($protocol !== "1.1" && $protocol !== "1.0") {
                     if ($protocol === "2.0" && $this->allowHttp2Upgrade) {
@@ -197,8 +195,8 @@ final class Http1Driver extends AbstractHttpDriver
 
                     $parsedHeaders = Rfc7230::parseRawHeaders($rawHeaders);
                     $headers = [];
-                    foreach ($parsedHeaders as [$key, $transferEncoding]) {
-                        $headers[\strtolower($key)][] = $transferEncoding;
+                    foreach ($parsedHeaders as [$key, $value]) {
+                        $headers[\strtolower($key)][] = $value;
                     }
                 } catch (InvalidHeaderException $e) {
                     throw new ClientException(
@@ -236,8 +234,8 @@ final class Http1Driver extends AbstractHttpDriver
                         'identity' => false,
                         default => throw new ClientException(
                             $this->client,
-                            "Bad Request: unsupported transfer-encoding",
-                            Status::BAD_REQUEST
+                            "Unsupported transfer-encoding",
+                            Status::NOT_IMPLEMENTED
                         ),
                     };
                 }
@@ -381,7 +379,7 @@ final class Http1Driver extends AbstractHttpDriver
                     $this->http2driver->initializeWriting($this->client, $this->writableStream);
 
                     // Remove headers that are not related to the HTTP/2 request.
-                    foreach ($parsedHeaders as $index => [$key, $transferEncoding]) {
+                    foreach ($parsedHeaders as $index => [$key, $value]) {
                         switch (\strtolower($key)) {
                             case "upgrade":
                             case "connection":
@@ -398,8 +396,8 @@ final class Http1Driver extends AbstractHttpDriver
 
                 if (!($isChunked || $contentLength)) {
                     $request = new Request($this->client, $method, $uri, [], '', $protocol);
-                    foreach ($parsedHeaders as [$key, $transferEncoding]) {
-                        $request->addHeader($key, $transferEncoding);
+                    foreach ($parsedHeaders as [$key, $value]) {
+                        $request->addHeader($key, $value);
                     }
 
                     $this->pendingResponseCount++;
@@ -452,8 +450,8 @@ final class Http1Driver extends AbstractHttpDriver
                 }
 
                 $request = new Request($this->client, $method, $uri, [], $body, $protocol, $trailers);
-                foreach ($parsedHeaders as [$key, $transferEncoding]) {
-                    $request->addHeader($key, $transferEncoding);
+                foreach ($parsedHeaders as [$key, $value]) {
+                    $request->addHeader($key, $value);
                 }
 
                 // Do not await future until body is completely read.
@@ -805,6 +803,11 @@ final class Http1Driver extends AbstractHttpDriver
         );
     }
 
+    private function updateTimeout(): void
+    {
+        self::getTimeoutQueue()->update($this->client, 0, $this->connectionTimeout);
+    }
+
     private function removeTimeout(): void
     {
         self::getTimeoutQueue()->remove($this->client, 0);
@@ -822,7 +825,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         $deferred = new DeferredFuture;
         $lastWrite = $this->lastWrite;
-        $this->lastWrite = $deferred->getFuture();
+        $this->lastWrite = $future = $deferred->getFuture();
 
         try {
             $this->send($lastWrite, $response, $request);
@@ -831,6 +834,9 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->upgrade($request, $response);
             }
         } finally {
+            if ($this->lastWrite === $future) {
+                $this->lastWrite = null;
+            }
             $deferred->complete();
         }
     }
@@ -838,21 +844,19 @@ final class Http1Driver extends AbstractHttpDriver
     /**
      * HTTP/1.x response writer.
      */
-    private function send(Future $lastWrite, Response $response, ?Request $request = null): void
+    private function send(?Future $lastWrite, Response $response, ?Request $request = null): void
     {
         /** @psalm-suppress RedundantPropertyInitializationCheck */
         \assert(isset($this->client), "The driver has not been setup; call setup first");
 
-        $lastWrite->await(); // Prevent sending multiple responses at once.
-
-        $shouldClose = false;
+        $lastWrite?->await(); // Prevent sending multiple responses at once.
 
         $protocol = $request !== null ? $request->getProtocolVersion() : "1.0";
 
         $status = $response->getStatus();
         $reason = $response->getReason();
 
-        $headers = $this->filter($response, $protocol, $request ? $request->getHeaderArray("connection") : []);
+        [$headers, $shouldClose] = $this->filter($response, $request, $protocol);
 
         $trailers = $response->getTrailers();
 
@@ -860,18 +864,10 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["trailer"] = [\implode(", ", $fields)];
         }
 
-        $chunked = (!isset($headers["content-length"]) || $trailers !== null)
+        $chunked = !$shouldClose
+            && (!isset($headers["content-length"]) || $trailers !== null)
             && $protocol === "1.1"
             && $status >= Status::OK;
-
-        if (!empty($headers["connection"])) {
-            foreach ($headers["connection"] as $connection) {
-                if (\strcasecmp($connection, "close") === 0) {
-                    $chunked = false;
-                    $shouldClose = true;
-                }
-            }
-        }
 
         if ($chunked) {
             $headers["transfer-encoding"] = ["chunked"];
@@ -941,17 +937,16 @@ final class Http1Driver extends AbstractHttpDriver
      * Filters and updates response headers based on protocol and connection header from the request.
      *
      * @param string $protocol Request protocol.
-     * @param array $connection Request connection header.
      *
-     * @return string[][] Response headers to be written.
+     * @return array{string[][], bool} Response headers to be written and flag if the connection should be closed.
      */
-    private function filter(Response $response, string $protocol = "1.0", array $connection = []): array
+    private function filter(Response $response, ?Request $request, string $protocol = "1.0"): array
     {
         $headers = $response->getHeaders();
 
         if ($response->getStatus() < Status::OK) {
             unset($headers['content-length']); // 1xx responses do not have a body.
-            return $headers;
+            return [$headers, false];
         }
 
         foreach ($response->getPushes() as $push) {
@@ -959,11 +954,10 @@ final class Http1Driver extends AbstractHttpDriver
         }
 
         $contentLength = $headers["content-length"][0] ?? null;
-        $shouldClose = \in_array("close", $connection, true)
+        $shouldClose = !$request || \in_array("close", $request->getHeaderArray("connection"), true)
             || (isset($headers["connection"]) && \in_array("close", $headers["connection"], true));
 
         if ($contentLength !== null) {
-            $shouldClose = $shouldClose || $protocol === "1.0";
             unset($headers["transfer-encoding"]);
         } elseif ($protocol === "1.1") {
             unset($headers["content-length"]);
@@ -980,12 +974,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         $headers["date"] = [formatDateHeader()];
 
-        return $headers;
-    }
-
-    private function updateTimeout(): void
-    {
-        self::getTimeoutQueue()->update($this->client, 0, $this->connectionTimeout);
+        return [$headers, $shouldClose];
     }
 
     /**
@@ -1037,8 +1026,7 @@ final class Http1Driver extends AbstractHttpDriver
         $response = $this->errorHandler->handleError($status, $message);
         $response->setHeader("connection", "close");
 
-        $lastWrite = $this->lastWrite;
-        return $this->lastWrite = async(fn () => $this->send($lastWrite, $response));
+        return $this->lastWrite = async($this->send(...), $this->lastWrite, $response);
     }
 
     public function getPendingRequestCount(): int
@@ -1059,7 +1047,7 @@ final class Http1Driver extends AbstractHttpDriver
         $this->stopping = true;
 
         $this->pendingResponse->await();
-        $this->lastWrite->await();
+        $this->lastWrite?->await();
     }
 
     public function getApplicationLayerProtocols(): array

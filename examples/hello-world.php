@@ -6,7 +6,7 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Request;
-use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
+use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
 use Amp\Http\Status;
@@ -30,21 +30,25 @@ $logHandler->pushProcessor(new PsrLogMessageProcessor());
 $logHandler->setFormatter(new ConsoleFormatter());
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
+$logger->useLoggingLoopDetection(false);
 
-$server = new SocketHttpServer($logger);
+$server = new SocketHttpServer($logger, enableCompression: false);
 
 $server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
 $server->expose(new Socket\InternetAddress("[::]", 1337));
 $server->expose(new Socket\InternetAddress("0.0.0.0", 1338), $context);
 $server->expose(new Socket\InternetAddress("[::]", 1338), $context);
 
-$server->start(new ClosureRequestHandler(static function (Request $request): Response {
-    return new Response(
-        status: Status::OK,
-        headers: ["content-type" => "text/plain; charset=utf-8"],
-        body: "Hello, World!",
-    );
-}), new DefaultErrorHandler());
+$server->start(new class implements RequestHandler {
+    public function handleRequest(Request $request): Response
+    {
+        return new Response(
+            status: Status::OK,
+            headers: ["content-type" => "text/plain; charset=utf-8"],
+            body: "Hello, World!",
+        );
+    }
+}, new DefaultErrorHandler());
 
 // Await SIGINT or SIGTERM to be received.
 $signal = trapSignal([\SIGINT, \SIGTERM]);
