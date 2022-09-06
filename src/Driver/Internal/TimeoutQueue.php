@@ -76,7 +76,7 @@ final class TimeoutQueue
         $cacheId = $this->makeId($client, $streamId);
         \assert(isset($this->callbacks[$cacheId]));
 
-        $this->timeoutCache->update($this->makeId($client, $streamId), $this->now + $timeout);
+        $this->timeoutCache->update($cacheId, $this->now + $timeout);
     }
 
     /**
