@@ -167,7 +167,7 @@ final class Http1Driver extends AbstractHttpDriver
                         $this->http2driver->handleClient(
                             $this->client,
                             new ReadableStreamChain(
-                                new ReadableBuffer("$startLine\r\n$rawHeaders\r\n$buffer"),
+                                new ReadableBuffer("$startLine$rawHeaders\r\n$buffer"),
                                 $readableStream
                             ),
                             $writableStream
