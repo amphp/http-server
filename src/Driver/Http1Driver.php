@@ -33,7 +33,7 @@ final class Http1Driver extends AbstractHttpDriver
 {
     private static function makeHeaderReduceClosure(string $search): \Closure
     {
-        return static fn (int $carry, string $header) => $carry || \strcasecmp($search, $header) === 0;
+        return static fn (bool $carry, string $header) => $carry || \strcasecmp($search, $header) === 0;
     }
 
     private ?Http2Driver $http2driver = null;
