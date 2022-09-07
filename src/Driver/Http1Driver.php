@@ -953,9 +953,13 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["link"][] = "<{$push->getUri()}>; rel=preload";
         }
 
+        $requestConnectionHeaders = \array_map('strtolower', $request?->getHeaderArray("connection") ?? []);
+
         $contentLength = $headers["content-length"][0] ?? null;
-        $shouldClose = !$request || \in_array("close", $request->getHeaderArray("connection"), true)
-            || (isset($headers["connection"]) && \in_array("close", $headers["connection"], true));
+        $shouldClose = $request === null
+            || \in_array("close", $requestConnectionHeaders, true)
+            || (isset($headers["connection"]) && \in_array("close", $headers["connection"], true))
+            || $protocol === "1.0" && !\in_array("keep-alive", $requestConnectionHeaders, true);
 
         if ($contentLength !== null) {
             unset($headers["transfer-encoding"]);
