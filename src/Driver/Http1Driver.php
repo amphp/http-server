@@ -71,9 +71,6 @@ final class Http1Driver extends AbstractHttpDriver
         parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
 
         $this->pendingResponse = Future::complete();
-
-        $this->closeReduce = $this->makeHeaderReduceClosure("close");
-        $this->keepAliveReduce = $this->makeHeaderReduceClosure("keep-alive");
     }
 
     public function handleClient(
