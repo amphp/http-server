@@ -31,6 +31,11 @@ use function Amp\Http\formatDateHeader;
 
 final class Http1Driver extends AbstractHttpDriver
 {
+    private static function makeHeaderReduceClosure(string $search): \Closure
+    {
+        return static fn (int $carry, string $header) => $carry || \strcasecmp($search, $header) === 0;
+    }
+
     private ?Http2Driver $http2driver = null;
 
     private Client $client;
@@ -66,6 +71,9 @@ final class Http1Driver extends AbstractHttpDriver
         parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
 
         $this->pendingResponse = Future::complete();
+
+        $this->closeReduce = $this->makeHeaderReduceClosure("close");
+        $this->keepAliveReduce = $this->makeHeaderReduceClosure("keep-alive");
     }
 
     public function handleClient(
@@ -942,6 +950,10 @@ final class Http1Driver extends AbstractHttpDriver
      */
     private function filter(Response $response, ?Request $request, string $protocol = "1.0"): array
     {
+        static $closeReduce, $keepAliveReduce;
+        $closeReduce ??= self::makeHeaderReduceClosure("close");
+        $keepAliveReduce ??= self::makeHeaderReduceClosure("keep-alive");
+
         $headers = $response->getHeaders();
 
         if ($response->getStatus() < Status::OK) {
@@ -953,13 +965,11 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["link"][] = "<{$push->getUri()}>; rel=preload";
         }
 
-        $requestConnectionHeaders = \array_map('strtolower', $request?->getHeaderArray("connection") ?? []);
-
         $contentLength = $headers["content-length"][0] ?? null;
         $shouldClose = $request === null
-            || \in_array("close", $requestConnectionHeaders, true)
-            || (isset($headers["connection"]) && \in_array("close", $headers["connection"], true))
-            || $protocol === "1.0" && !\in_array("keep-alive", $requestConnectionHeaders, true);
+            || \array_reduce($request->getHeaderArray("connection"), $closeReduce, false)
+            || \array_reduce($headers["connection"] ?? [], $closeReduce, false)
+            || ($protocol === "1.0" && !\array_reduce($request->getHeaderArray("connection"), $keepAliveReduce, false));
 
         if ($contentLength !== null) {
             unset($headers["transfer-encoding"]);
