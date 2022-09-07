@@ -31,6 +31,33 @@ use function Amp\Http\formatDateHeader;
 
 final class Http1Driver extends AbstractHttpDriver
 {
+    private const HEADER_LOWER = [
+        'Accept' => 'accept',
+        'accept' => 'accept',
+        'Accept-Encoding' => 'accept-encoding',
+        'accept-encoding' => 'accept-encoding',
+        'Accept-Language' => 'accept-language',
+        'accept-language' => 'accept-language',
+        'Connection' => 'connection',
+        'connection' => 'connection',
+        'Cookie' => 'cookie',
+        'cookie' => 'cookie',
+        'Host' => 'host',
+        'host' => 'host',
+        'Sec-Fetch-Dest' => 'sec-fetch-dest',
+        'sec-fetch-dest' => 'sec-fetch-dest',
+        'Sec-Fetch-Mode' => 'sec-fetch-mode',
+        'sec-fetch-mode' => 'sec-fetch-mode',
+        'Sec-Fetch-Site' => 'sec-fetch-site',
+        'sec-fetch-site' => 'sec-fetch-site',
+        'Sec-Fetch-User' => 'sec-fetch-user',
+        'sec-fetch-user' => 'sec-fetch-user',
+        'Upgrade-Insecure-Requests' => 'upgrade-insecure-requests',
+        'upgrade-insecure-requests' => 'upgrade-insecure-requests',
+        'User-Agent' => 'user-agent',
+        'user-agent' => 'user-agent',
+    ];
+
     private static function makeHeaderReduceClosure(string $search): \Closure
     {
         return static fn (bool $carry, string $header) => $carry || \strcasecmp($search, $header) === 0;
@@ -201,7 +228,7 @@ final class Http1Driver extends AbstractHttpDriver
                     $parsedHeaders = Rfc7230::parseRawHeaders($rawHeaders);
                     $headers = [];
                     foreach ($parsedHeaders as [$key, $value]) {
-                        $headers[\strtolower($key)][] = $value;
+                        $headers[self::HEADER_LOWER[$key] ?? \strtolower($key)][] = $value;
                     }
                 } catch (InvalidHeaderException $e) {
                     throw new ClientException(
@@ -962,11 +989,14 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["link"][] = "<{$push->getUri()}>; rel=preload";
         }
 
+        $requestConnectionHeaders = $request?->getHeaderArray("connection") ?? [];
+        $responseConnectionHeaders = $headers["connection"] ?? [];
+
         $contentLength = $headers["content-length"][0] ?? null;
         $shouldClose = $request === null
-            || \array_reduce($request->getHeaderArray("connection"), $closeReduce, false)
-            || \array_reduce($headers["connection"] ?? [], $closeReduce, false)
-            || ($protocol === "1.0" && !\array_reduce($request->getHeaderArray("connection"), $keepAliveReduce, false));
+            || \array_reduce($requestConnectionHeaders, $closeReduce, false)
+            || \array_reduce($responseConnectionHeaders, $closeReduce, false)
+            || $protocol === "1.0" && !\array_reduce($requestConnectionHeaders, $keepAliveReduce, false);
 
         if ($contentLength !== null) {
             unset($headers["transfer-encoding"]);
