@@ -666,7 +666,6 @@ class Http1DriverTest extends HttpDriverTest
             $body = $req->getBody();
             $body->increaseSizeLimit(\strlen($payload));
 
-            /** @var $request */
             $body = $request->getBody()->buffer();
         });
 
@@ -713,7 +712,6 @@ class Http1DriverTest extends HttpDriverTest
             $body->increaseSizeLimit(3);
 
             try {
-                /** @var $request */
                 $request->getBody()->buffer();
             } catch (ClientException $exception) {
             }

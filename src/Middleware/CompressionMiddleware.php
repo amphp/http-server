@@ -27,7 +27,6 @@ final class CompressionMiddleware implements Middleware
 
     /**
      * @param positive-int $minimumLength Minimum body length before body is compressed.
-     * @param string $contentRegex
      */
     public function __construct(
         private readonly int $minimumLength = self::DEFAULT_MINIMUM_LENGTH,
