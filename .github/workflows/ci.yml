@@ -73,6 +73,14 @@ jobs:
       - name: Run static analysis
         run: vendor/bin/psalm.phar
 
+      - name: Install composer-require-checker
+        run: php -r 'file_put_contents("composer-require-checker.phar", file_get_contents("https://github.com/maglnet/ComposerRequireChecker/releases/download/4.2.0/composer-require-checker.phar"));'
+        if: runner.os != 'Windows' && matrix.composer-require-checker-version != 'none'
+
+      - name: Run composer-require-checker
+        run: php composer-require-checker.phar check composer.json --config-file $PWD/composer-require-check.json
+        if: runner.os != 'Windows' && matrix.composer-require-checker-version != 'none'
+
       - name: Run style fixer
         env:
           PHP_CS_FIXER_IGNORE_ENV: 1

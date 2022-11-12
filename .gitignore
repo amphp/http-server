@@ -6,3 +6,4 @@ composer.lock
 phpunit.xml
 test-autobahn/reports
 vendor
+composer-require-checker.phar
