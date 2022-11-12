@@ -905,10 +905,7 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["transfer-encoding"] = ["chunked"];
         }
 
-        $chunk = "HTTP/$protocol $status $reason\r\n";
-        $chunk .= Rfc7230::formatHeaders($headers);
-        $chunk .= "\r\n";
-
+        $chunk = "HTTP/$protocol $status $reason\r\n" . Rfc7230::formatHeaders($headers) . "\r\n";
         $this->writableStream->write($chunk);
 
         if ($request !== null && $request->getMethod() === "HEAD") {
