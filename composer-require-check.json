@@ -1,5 +1,13 @@
 {
     "symbol-whitelist": [
+      "createClientId",
+      "DeflateContext",
+      "deflate_add",
+      "deflate_init",
+      "ZLIB_ENCODING_GZIP",
+      "ZLIB_ENCODING_RAW",
+      "ZLIB_FINISH",
+      "ZLIB_SYNC_FLUSH"
     ],
     "php-core-extensions": [
         "Core",
