@@ -1086,7 +1086,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             );
         } catch (InvalidHeaderException $exception) {
             throw new Http2StreamException(
-                "Invalid headers field in promises trailers",
+                "Invalid headers field in trailers",
                 $streamId,
                 Http2Parser::PROTOCOL_ERROR,
                 $exception

@@ -38,7 +38,7 @@ final class Trailers
     /**
      * @param Future<string[]|string[][]> $future Resolved with the trailer values.
      * @param string[] $fields Expected header fields. May be empty, but if provided, the array of
-     *     headers used to resolve the given promise must contain exactly the fields given in this array.
+     *     headers used to complete the given future must contain exactly the fields given in this array.
      *
      * @throws InvalidHeaderException If the fields list contains a disallowed field.
      */

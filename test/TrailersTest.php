@@ -11,9 +11,9 @@ class TrailersTest extends AsyncTestCase
 {
     public function testMessageHasHeader(): void
     {
-        $promise = Future::complete(['fooHeader' => 'barValue']);
+        $future = Future::complete(['fooHeader' => 'barValue']);
 
-        $trailers = new Trailers($promise, ['fooHeader']);
+        $trailers = new Trailers($future, ['fooHeader']);
         $trailers = $trailers->await();
 
         self::assertTrue($trailers->hasHeader('fooHeader'));
@@ -22,12 +22,12 @@ class TrailersTest extends AsyncTestCase
 
     public function testHasHeaderReturnsFalseForEmptyArrayValue(): void
     {
-        $promise = Future::complete(['fooHeader' => []]);
+        $future = Future::complete(['fooHeader' => []]);
 
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage('Trailers do not contain the expected fields');
 
-        $trailers = new Trailers($promise, ['fooHeader']);
+        $trailers = new Trailers($future, ['fooHeader']);
         self::assertFalse(($trailers->await())->hasHeader('fooHeader'));
     }
 
@@ -39,7 +39,7 @@ class TrailersTest extends AsyncTestCase
         $trailers = new Trailers(Future::complete(null), ['content-length']);
     }
 
-    public function testDisallowedFieldsInPromiseResolution(): void
+    public function testDisallowedFieldsInFuture(): void
     {
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");

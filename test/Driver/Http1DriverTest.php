@@ -926,7 +926,7 @@ class Http1DriverTest extends HttpDriverTest
             ],
         ];
 
-        delay(0.1); // Tick event loop to resolve the Trailers promise.
+        delay(0.1); // Tick event loop to complete the Trailers future.
 
         return $data;
     }
