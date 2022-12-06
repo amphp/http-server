@@ -227,7 +227,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             $this->shutdown();
         } catch (StreamException|Http2ConnectionException $exception) {
-            $this->shutdown($exception);
+            $this->shutdown(new ClientException(
+                $this->client,
+                "Exception thrown when reading client input: " . $exception->getMessage(),
+                $exception->getCode(),
+                $exception,
+            ));
         } finally {
             self::getTimeoutQueue()->remove($this->client, 0);
         }
@@ -392,10 +397,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
-    /**
-     *     been opened.
-     */
-    private function shutdown(?\Throwable $reason = null): void
+    private function shutdown(?ClientException $reason = null): void
     {
         if ($this->stopping) {
             return;
@@ -403,7 +405,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->stopping = true;
 
-        $code = $reason?->getCode() ?? Http2Parser::GRACEFUL_SHUTDOWN;
+        $previous = $reason?->getPrevious();
+        $previous = $previous instanceof Http2ConnectionException ? $previous : null;
+
+        $code = $previous?->getCode() ?? Http2Parser::GRACEFUL_SHUTDOWN;
 
         try {
             $futures = [];
@@ -423,7 +428,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 Http2Parser::FRAME_SIZE_ERROR,
                 Http2Parser::COMPRESSION_ERROR,
                 Http2Parser::SETTINGS_TIMEOUT,
-                Http2Parser::ENHANCE_YOUR_CALM => $reason?->getMessage(),
+                Http2Parser::ENHANCE_YOUR_CALM => $previous?->getMessage(),
                 default => null,
             };
 
@@ -439,7 +444,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 $this->client->getRemoteAddress()->toString(),
                 $this->client->getId(),
                 $this->remoteStreamId,
-                $reason ? $reason->getMessage() : 'none',
+                $reason?->getMessage() ?? "undefined",
             )) || true);
 
             Future\await($futures);
@@ -460,14 +465,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             // ignore if no longer writable
         } finally {
             if (!empty($this->streams)) {
-                $exception = new ClientException(
-                    $this->client,
-                    $reason?->getMessage() ?? "",
-                    \is_int($code) ? $code : Http2Parser::GRACEFUL_SHUTDOWN,
-                    $reason
-                );
+                $reason ??= new ClientException($this->client, "Connection closed unexpectedly", Http2Parser::CANCEL);
                 foreach ($this->streams as $id => $stream) {
-                    $this->releaseStream($id, $exception);
+                    $this->releaseStream($id, $reason);
                 }
             }
 
@@ -835,7 +835,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->logger->notice($message);
         }
 
-        $this->shutdown(new Http2ConnectionException($message, $error));
+        $this->shutdown(new ClientException(
+            $this->client,
+            "Client closed HTTP/2 connection",
+            $error,
+            new Http2ConnectionException($message, $error),
+        ));
     }
 
     public function handleStreamWindowIncrement(int $streamId, int $windowSize): void

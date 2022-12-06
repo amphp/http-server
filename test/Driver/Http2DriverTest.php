@@ -769,7 +769,7 @@ class Http2DriverTest extends HttpDriverTest
         self::assertTrue($this->output->getSink()->isClosed());
         self::assertStringEndsWith(
             \bin2hex(self::packFrame(
-                \pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM),
+                \pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM) . 'Too many pings',
                 Http2Parser::GOAWAY,
                 Http2Parser::NO_FLAG
             )),
