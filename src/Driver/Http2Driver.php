@@ -781,7 +781,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 continue;
             }
 
-            $this->writeBufferedData($id);
+            try {
+                $this->writeBufferedData($id);
+            } catch (StreamException) {
+                return; // Socket closed while writing buffered data.
+            }
         }
     }
 
