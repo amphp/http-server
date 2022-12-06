@@ -123,9 +123,9 @@ class SocketClientTest extends AsyncTestCase
         $request = "POST / HTTP/1.0\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 4\r\n\r\nbody";
         $socket->write($request);
 
-        $socket->close();
-
         delay(0.1);
+
+        $socket->close();
 
         $server->stop();
     }
