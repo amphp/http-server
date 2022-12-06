@@ -417,7 +417,21 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 }
             }
 
-            $this->writeFrame(\pack("NN", $this->remoteStreamId, $code), Http2Parser::GOAWAY, Http2Parser::NO_FLAG);
+            $message = match ($code) {
+                Http2Parser::PROTOCOL_ERROR,
+                Http2Parser::FLOW_CONTROL_ERROR,
+                Http2Parser::FRAME_SIZE_ERROR,
+                Http2Parser::COMPRESSION_ERROR,
+                Http2Parser::SETTINGS_TIMEOUT,
+                Http2Parser::ENHANCE_YOUR_CALM => $reason?->getMessage(),
+                default => null,
+            };
+
+            $this->writeFrame(
+                \pack("NN", $this->remoteStreamId, $code) . $message,
+                Http2Parser::GOAWAY,
+                Http2Parser::NO_FLAG,
+            );
 
             /** @psalm-suppress RedundantCondition */
             \assert($this->logger->debug(\sprintf(
