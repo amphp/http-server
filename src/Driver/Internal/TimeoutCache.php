@@ -5,7 +5,7 @@ namespace Amp\Http\Server\Driver\Internal;
 /** @internal */
 final class TimeoutCache
 {
-    /** @var object[] */
+    /** @var array<int, object{id: string, expiration: string}> */
     private array $data = [];
 
     /** @var array<string, int> */

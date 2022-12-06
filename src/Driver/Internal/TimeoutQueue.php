@@ -12,23 +12,40 @@ final class TimeoutQueue
 {
     private readonly TimeoutCache $timeoutCache;
 
-    private ?string $callbackId = null;
+    private readonly \WeakMap $streamNames;
 
-    private int $now = 0;
+    private readonly string $callbackId;
+
+    private int $now;
 
     /** @var array<string, array{Client, int, \Closure(Client, int):void}> */
     private array $callbacks = [];
 
     public function __construct()
     {
-        $this->timeoutCache = new TimeoutCache;
+        $this->timeoutCache = new TimeoutCache();
+        $this->streamNames = new \WeakMap();
+        $this->now = \time();
+
+        $this->callbackId = EventLoop::unreference(
+            EventLoop::repeat(1, weakClosure(function (): void {
+                $this->now = \time();
+
+                while ($id = $this->timeoutCache->extract($this->now)) {
+                    \assert(isset($this->callbacks[$id]), "Timeout cache contains an invalid client ID");
+
+                    // Client is either idle or taking too long to send request, so simply close the connection.
+                    [$client, $streamId, $onTimeout] = $this->callbacks[$id];
+
+                    async($onTimeout, $client, $streamId)->ignore();
+                }
+            }))
+        );
     }
 
     public function __destruct()
     {
-        if ($this->callbackId !== null) {
-            EventLoop::cancel($this->callbackId);
-        }
+        EventLoop::cancel($this->callbackId);
     }
 
     /**
@@ -38,24 +55,6 @@ final class TimeoutQueue
      */
     public function insert(Client $client, int $streamId, \Closure $onTimeout, int $timeout): void
     {
-        if ($this->callbackId === null) {
-            $this->now = \time();
-            $this->callbackId = EventLoop::unreference(
-                EventLoop::repeat(1, weakClosure(function (): void {
-                    $this->now = \time();
-
-                    while ($id = $this->timeoutCache->extract($this->now)) {
-                        \assert(isset($this->callbacks[$id]), "Timeout cache contains an invalid client ID");
-
-                        // Client is either idle or taking too long to send request, so simply close the connection.
-                        [$client, $streamId, $onTimeout] = $this->callbacks[$id];
-
-                        async($onTimeout, $client, $streamId)->ignore();
-                    }
-                }))
-            );
-        }
-
         $cacheId = $this->makeId($client, $streamId);
         \assert(!isset($this->callbacks[$cacheId]));
 
@@ -65,7 +64,9 @@ final class TimeoutQueue
 
     private function makeId(Client $client, int $streamId): string
     {
-        return $client->getId() . ':' . $streamId;
+        /** @psalm-suppress InaccessibleProperty $streamNames is a WeakMap */
+        $streamMap = $this->streamNames[$client] ??= new \ArrayObject();
+        return $streamMap[$streamId] ??= $client->getId() . ':' . $streamId;
     }
 
     /**
@@ -87,11 +88,6 @@ final class TimeoutQueue
         $cacheId = $this->makeId($client, $streamId);
 
         $this->timeoutCache->clear($cacheId);
-        unset($this->callbacks[$cacheId]);
-
-        if (!$this->callbacks && $this->callbackId !== null) {
-            EventLoop::cancel($this->callbackId);
-            $this->callbackId = null;
-        }
+        unset($this->callbacks[$cacheId], $this->streamNames[$client][$streamId]);
     }
 }
