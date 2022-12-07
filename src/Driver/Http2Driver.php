@@ -202,8 +202,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             new ClientException($this->client, 'Shutting down connection due to inactivity'),
         ), $this->streamTimeout);
 
-        $this->readableStream = $readableStream;
-
         $this->processClientInput($buffer);
     }
 

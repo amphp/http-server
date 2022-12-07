@@ -13,7 +13,12 @@ abstract class HttpDriverTest extends AsyncTestCase
      */
     protected function createClientMock(): Client
     {
+        static $id = 0;
+
         $mock = $this->createMock(Client::class);
+
+        $mock->method('getId')
+            ->willReturn(++$id);
 
         $mock->method('getLocalAddress')
             ->willReturn(new InternetAddress('127.0.0.1', 80));
