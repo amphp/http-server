@@ -692,23 +692,15 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             self::getTimeoutQueue()->remove($this->client, $id);
         }
 
-        if (isset($this->bodyQueues[$id])) {
-            $queue = $this->bodyQueues[$id];
-            unset($this->bodyQueues[$id]);
-            $queue->error($exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL));
-        }
+        ($this->bodyQueues[$id] ?? null)?->error(
+            $exception ??= new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL)
+        );
 
-        if (isset($this->trailerDeferreds[$id])) {
-            $deferred = $this->trailerDeferreds[$id];
-            unset($this->trailerDeferreds[$id]);
-            $deferred->error($exception ?? new ClientException(
-                $this->client,
-                "Client disconnected",
-                Http2Parser::CANCEL
-            ));
-        }
+        ($this->trailerDeferreds[$id] ?? null)?->error(
+            $exception ?? new ClientException($this->client, "Client disconnected", Http2Parser::CANCEL)
+        );
 
-        unset($this->streams[$id]);
+        unset($this->streams[$id], $this->bodyQueues[$id], $this->trailerDeferreds[$id]);
 
         if ($id & 1) { // Client-initiated stream.
             $this->remainingStreams++;

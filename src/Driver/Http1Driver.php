@@ -582,28 +582,28 @@ final class Http1Driver extends AbstractHttpDriver
                                 $buffer .= $chunk;
                             } while (true);
 
-                            if (isset($rawTrailers)) {
-                                try {
-                                    $trailers = Rfc7230::parseHeaders($rawTrailers);
-                                } catch (InvalidHeaderException $e) {
-                                    throw new ClientException(
-                                        $this->client,
-                                        "Bad Request: " . $e->getMessage(),
-                                        Status::BAD_REQUEST
-                                    );
-                                }
+                            \assert(isset($rawTrailers)); // For Psalm
 
-                                if (\array_intersect_key($trailers, Trailers::DISALLOWED_TRAILERS)) {
-                                    throw new ClientException(
-                                        $this->client,
-                                        "Trailer section contains disallowed headers",
-                                        Status::BAD_REQUEST
-                                    );
-                                }
-
-                                $trailerDeferred->complete($trailers);
-                                $trailerDeferred = null;
+                            try {
+                                $trailers = Rfc7230::parseHeaders($rawTrailers);
+                            } catch (InvalidHeaderException $e) {
+                                throw new ClientException(
+                                    $this->client,
+                                    "Bad Request: " . $e->getMessage(),
+                                    Status::BAD_REQUEST
+                                );
                             }
+
+                            if (\array_intersect_key($trailers, Trailers::DISALLOWED_TRAILERS)) {
+                                throw new ClientException(
+                                    $this->client,
+                                    "Trailer section contains disallowed headers",
+                                    Status::BAD_REQUEST
+                                );
+                            }
+
+                            $trailerDeferred->complete($trailers);
+                            $trailerDeferred = null;
 
                             break; // finished (chunked loop)
                         }
@@ -761,11 +761,9 @@ final class Http1Driver extends AbstractHttpDriver
                     }
                 }
 
-                /** @psalm-suppress RedundantCondition */
-                if ($trailerDeferred !== null) {
-                    $trailerDeferred->complete([]);
-                    $trailerDeferred = null;
-                }
+                /** @psalm-suppress TypeDoesNotContainNull, RedundantCondition $trailerDeferred could be null */
+                $trailerDeferred?->complete([]);
+                $trailerDeferred = null;
 
                 $this->bodyQueue = null;
                 $queue->complete();
@@ -798,30 +796,20 @@ final class Http1Driver extends AbstractHttpDriver
                 )) || true);
             })->ignore();
 
-            if ($this->bodyQueue !== null) {
-                /** @psalm-suppress TypeDoesNotContainNull */
-                $exception ??= new ClientException(
-                    $this->client,
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                );
+            $this->bodyQueue?->error($exception ??= new ClientException(
+                $this->client,
+                "Client disconnected",
+                Status::REQUEST_TIMEOUT
+            ));
+            $this->bodyQueue = null;
 
-                $this->bodyQueue->error($exception);
-                $this->bodyQueue = null;
-            }
-
-            /** @psalm-suppress TypeDoesNotContainType */
-            if (isset($trailerDeferred)) {
-                /** @psalm-suppress TypeDoesNotContainNull */
-                $exception ??= new ClientException(
-                    $this->client,
-                    "Client disconnected",
-                    Status::REQUEST_TIMEOUT
-                );
-
-                $trailerDeferred->error($exception);
-                $trailerDeferred = null;
-            }
+            /** @psalm-suppress TypeDoesNotContainType, RedundantCondition */
+            ($trailerDeferred ?? null)?->error($exception ??= new ClientException(
+                $this->client,
+                "Client disconnected",
+                Status::REQUEST_TIMEOUT
+            ));
+            $trailerDeferred = null;
         }
     }
 
