@@ -2,10 +2,12 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Socket\SocketServer;
-
 interface HttpServer
 {
+    public function start(RequestHandler $requestHandler, ErrorHandler $errorHandler): void;
+
+    public function stop(): void;
+
     /**
      * @param \Closure(HttpServer):void $onStart
      */
@@ -15,11 +17,6 @@ interface HttpServer
      * @param \Closure(HttpServer):void $onStop
      */
     public function onStop(\Closure $onStop): void;
-
-    /**
-     * @return list<SocketServer>
-     */
-    public function getServers(): array;
 
     public function getStatus(): HttpServerStatus;
 }
