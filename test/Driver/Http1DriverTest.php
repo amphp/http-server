@@ -182,7 +182,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $output->close();
         self::assertStringStartsWith("HTTP/1.1 204 No Content\r\n", $output->buffer());
-        self::stringContains("\r\nallow: OPTIONS, HEAD, GET, FOO\r\n", $output->buffer());
+        self::assertStringContainsString("\r\nallow: OPTIONS, HEAD, GET, FOO\r\n", $output->buffer());
     }
 
     public function testIdentityBodyParseEmit(): void

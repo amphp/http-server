@@ -33,13 +33,6 @@ class ResponseTest extends AsyncTestCase
         delay(10);
     }
 
-    public function testSetBodyWithConvertibleType(): void
-    {
-        $response = new Response;
-        $response->setBody(42);
-        self::assertTrue(true);
-    }
-
     public function testCookies(): void
     {
         $request = new Response(Status::OK, [

@@ -145,28 +145,6 @@ class RequestTest extends AsyncTestCase
         self::assertFalse($request->hasHeader('content-length'));
     }
 
-    public function testSetBodyWithConvertibleType(): void
-    {
-        $client = $this->createMock(Client::class);
-        $request = new Request($client, 'POST', Http::createFromString('/'), [
-            'content-length' => '0',
-        ]);
-
-        $request->setBody(42);
-        self::assertTrue(true);
-    }
-
-    public function testSetBodyWithWrongType(): void
-    {
-        $client = $this->createMock(Client::class);
-        $request = new Request($client, 'POST', Http::createFromString('/'), [
-            'content-length' => '0',
-        ]);
-
-        $this->expectException(\TypeError::class);
-        $request->setBody(new \stdClass);
-    }
-
     public function testCookies(): void
     {
         $client = $this->createMock(Client::class);

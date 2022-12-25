@@ -37,7 +37,7 @@ use function Amp\Http\Server\streamChunks;
 
 class Http2DriverTest extends HttpDriverTest
 {
-    public static function packFrame(string $data, string $type, string $flags, int $stream = 0): string
+    public static function packFrame(string $data, int $type, int $flags, int $stream = 0): string
     {
         return \substr(\pack("NccN", \strlen($data), $type, $flags, $stream), 1) . $data;
     }
