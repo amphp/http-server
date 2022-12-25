@@ -1,4 +1,5 @@
-<?php /** @noinspection PhpPropertyOnlyWrittenInspection */
+<?php declare(strict_types=1);
+/** @noinspection PhpPropertyOnlyWrittenInspection */
 
 namespace Amp\Http\Server\Test\Driver;
 
@@ -22,7 +23,6 @@ use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
-use Amp\Pipeline\ConcurrentIterableIterator;
 use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Pipeline;
 use Amp\Pipeline\Queue;
