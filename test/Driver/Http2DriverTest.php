@@ -23,6 +23,8 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Pipeline\ConcurrentIterableIterator;
+use Amp\Pipeline\ConcurrentIterator;
+use Amp\Pipeline\Pipeline;
 use Amp\Pipeline\Queue;
 use Amp\TimeoutCancellation;
 use Psr\Log\NullLogger;
@@ -308,7 +310,7 @@ class Http2DriverTest extends HttpDriverTest
         $request = async(fn () => $this->whenRequestIsReceived());
         $this->givenNextResponse($response);
 
-        $frames = new ConcurrentIterableIterator($this->whenReceivingFrames());
+        $frames = $this->whenReceivingFrames();
 
         self::assertTrue($frames->continue());
         self::assertSame([
@@ -414,7 +416,7 @@ class Http2DriverTest extends HttpDriverTest
         $request = async(fn () => $this->whenRequestIsReceived());
         $this->givenNextResponse($response);
 
-        $frames = new ConcurrentIterableIterator($this->whenReceivingFrames());
+        $frames = $this->whenReceivingFrames();
 
         self::assertTrue($frames->continue());
         self::assertSame([
@@ -524,7 +526,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $input = new Queue;
         $this->givenInput(new ReadableIterableStream($input->pipe()));
-        $frames = new ConcurrentIterableIterator($this->whenReceivingFrames());
+        $frames = $this->whenReceivingFrames();
 
         $input->push(Http2Parser::PREFACE);
 
@@ -815,7 +817,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->responses->push($response);
     }
 
-    private function whenReceivingFrames(): iterable
+    private function whenReceivingFrames(): ConcurrentIterator
     {
         async(fn () => $this->driver->handleClient(
             $this->createClientMock(),
@@ -823,6 +825,11 @@ class Http2DriverTest extends HttpDriverTest
             $this->output->getSink(),
         ))->ignore();
 
+        return Pipeline::fromIterable($this->receiveFrames())->getIterator();
+    }
+
+    private function receiveFrames(): iterable
+    {
         while (true) {
             $frameHeader = $this->outputReader->readLength(9);
 
