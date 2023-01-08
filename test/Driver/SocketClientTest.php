@@ -71,14 +71,14 @@ class SocketClientTest extends AsyncTestCase
 
         $connector = new class implements Socket\SocketConnector {
             public function connect(
-                string $uri,
+                Socket\SocketAddress|string $uri,
                 ?ConnectContext $context = null,
-                ?Cancellation $token = null
+                ?Cancellation $cancellation = null
             ): Socket\EncryptableSocket {
                 $context = (new Socket\ConnectContext)
                     ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
 
-                return (new Socket\DnsSocketConnector())->connect($uri, $context, $token);
+                return (new Socket\DnsSocketConnector())->connect($uri, $context, $cancellation);
             }
         };
 

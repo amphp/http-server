@@ -5,6 +5,7 @@ namespace Amp\Http\Server;
 use Amp\ByteStream\BufferException;
 use Amp\ByteStream\Payload;
 use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\ReadableStreamIteratorAggregate;
 use Amp\ByteStream\StreamException;
 use Amp\Cancellation;
 
@@ -15,9 +16,13 @@ use Amp\Cancellation;
  * {@see StreamException}, though generally there is no need to catch this exception.
  *
  * Additionally, this class allows increasing the body size limit dynamically.
+ *
+ * @implements \IteratorAggregate<int, string>
  */
-final class RequestBody implements ReadableStream
+final class RequestBody implements ReadableStream, \IteratorAggregate
 {
+    use ReadableStreamIteratorAggregate;
+
     private readonly Payload $stream;
 
     /**
