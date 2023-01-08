@@ -15,6 +15,7 @@ use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\HttpDriver;
+use Amp\Http\Server\Driver\UpgradedSocket;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
@@ -1128,5 +1129,47 @@ class Http1DriverTest extends HttpDriverTest
 
         self::assertInstanceOf(Message::class, $trailers);
         self::assertSame("42", $trailers->getHeader("My-Trailer"));
+    }
+
+    public function testSwitchingProtocolsUpgrade(): void
+    {
+        $requestHandler = new ClosureRequestHandler(function (Request $req) use (&$request): Response {
+            $request = $req;
+            $response = new Response();
+            $response->upgrade($this->createCallback(1, expectArgs: [self::isInstanceOf(UpgradedSocket::class)]));
+            return $response;
+        });
+
+        $driver = new Http1Driver(
+            $requestHandler,
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+        );
+
+        $message = "GET / HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "Connection: upgrade\r\n" .
+            "Upgrade: test\r\n" .
+            "\r\n";
+
+        $output = new WritableBuffer();
+
+        async(fn () => $driver->handleClient(
+            $this->createClientMock(),
+            new ReadableBuffer($message),
+            $output,
+        ));
+
+        delay(0.1); // Allow parser generator to continue.
+
+        $output->close();
+
+        /** @var Request $request */
+        self::assertInstanceOf(Request::class, $request);
+        self::assertSame("GET", $request->getMethod());
+        self::assertSame("upgrade", $request->getHeader("connection"));
+        self::assertSame("test", $request->getHeader("upgrade"));
+
+        self::assertStringStartsWith("HTTP/1.1 101 Switching Protocols\r\n", $output->buffer());
     }
 }

@@ -3,14 +3,20 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\ReadableStreamIteratorAggregate;
 use Amp\ByteStream\ResourceStream;
 use Amp\ByteStream\WritableStream;
 use Amp\Cancellation;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 
-final class UpgradedSocket implements Socket
+/**
+ * @implements \IteratorAggregate<int, string>
+ */
+final class UpgradedSocket implements Socket, \IteratorAggregate
 {
+    use ReadableStreamIteratorAggregate;
+
     private string $readBuffer = '';
 
     public function __construct(
