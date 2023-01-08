@@ -4,13 +4,13 @@ namespace Amp\Http\Server\Middleware;
 
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
+use Amp\Cache\LocalCache;
 use Amp\CancelledException;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\TimeoutCancellation;
-use cash\LRUCache;
 
 final class CompressionMiddleware implements Middleware
 {
@@ -23,7 +23,8 @@ final class CompressionMiddleware implements Middleware
     public const DEFAULT_BUFFER_TIMEOUT = 0.1;
     public const DEFAULT_CONTENT_TYPE_REGEX = '#^(?:text/.*+|[^/]*+/xml|[^+]*\+xml|application/(?:json|(?:x-)?javascript))$#i';
 
-    private readonly LRUCache $contentTypeCache;
+    /** @var LocalCache<bool> */
+    private readonly LocalCache $contentTypeCache;
 
     /**
      * @param positive-int $minimumLength Minimum body length before body is compressed.
@@ -37,7 +38,7 @@ final class CompressionMiddleware implements Middleware
             throw new \Error(__CLASS__ . ' requires ext-zlib');
         }
 
-        /** @psalm-suppress TypeDoesNotContainType */
+        /** @psalm-suppress DocblockTypeContradiction */
         if ($minimumLength < 1) {
             throw new \Error("The minimum length must be positive");
         }
@@ -46,7 +47,7 @@ final class CompressionMiddleware implements Middleware
             throw new \Error("The buffer timeout must be positive");
         }
 
-        $this->contentTypeCache = new LRUCache(self::MAX_CACHE_SIZE);
+        $this->contentTypeCache = new LocalCache(self::MAX_CACHE_SIZE);
     }
 
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
@@ -97,10 +98,10 @@ final class CompressionMiddleware implements Middleware
 
         if ($doDeflate === null) {
             $doDeflate = \preg_match($this->contentRegex, \trim(\strstr($contentType, ";", true) ?: $contentType));
-            $this->contentTypeCache->put($contentType, $doDeflate);
+            $this->contentTypeCache->set($contentType, (bool) $doDeflate);
         }
 
-        if ($doDeflate === 0) {
+        if (!$doDeflate) {
             return $response;
         }
 
