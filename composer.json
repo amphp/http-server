@@ -52,7 +52,7 @@
         "league/uri-components": "^2",
         "monolog/monolog": "^2 || ^1.23",
         "phpunit/phpunit": "^9",
-        "psalm/phar": "^4.22"
+        "psalm/phar": "^5.4"
     },
     "minimum-stability": "dev",
     "prefer-stable": true,
