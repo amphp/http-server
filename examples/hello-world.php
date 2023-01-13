@@ -34,10 +34,10 @@ $logger->useLoggingLoopDetection(false);
 
 $server = new SocketHttpServer($logger, enableCompression: false);
 
-$server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
-$server->expose(new Socket\InternetAddress("[::]", 1337));
-$server->expose(new Socket\InternetAddress("0.0.0.0", 1338), $context);
-$server->expose(new Socket\InternetAddress("[::]", 1338), $context);
+$server->expose("0.0.0.0:1337");
+$server->expose("[::]:1337");
+$server->expose("0.0.0.0:1338", $context);
+$server->expose("[::]:1338", $context);
 
 $server->start(new class implements RequestHandler {
     public function handleRequest(Request $request): Response

@@ -67,8 +67,12 @@ final class SocketHttpServer implements HttpServer
         $this->onStart((new PerformanceRecommender($this->logger))->onStart(...));
     }
 
-    public function expose(SocketAddress $socketAddress, ?BindContext $bindContext = null): void
+    public function expose(SocketAddress|string $socketAddress, ?BindContext $bindContext = null): void
     {
+        if (\is_string($socketAddress)) {
+            $socketAddress = SocketAddress\fromString($socketAddress);
+        }
+
         $name = $socketAddress->toString();
         if (isset($this->addresses[$name])) {
             throw new \Error(\sprintf('Already exposing %s on HTTP server', $name));

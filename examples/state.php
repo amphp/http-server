@@ -12,7 +12,6 @@ use Amp\Http\Server\SocketHttpServer;
 use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
-use Amp\Socket;
 use Monolog\Logger;
 use Monolog\Processor\PsrLogMessageProcessor;
 use function Amp\trapSignal;
@@ -27,8 +26,8 @@ $logger->pushHandler($logHandler);
 
 $server = new SocketHttpServer($logger);
 
-$server->expose(new Socket\InternetAddress("0.0.0.0", 1337));
-$server->expose(new Socket\InternetAddress("[::]", 1337));
+$server->expose("0.0.0.0:1337");
+$server->expose("[::]:1337");
 
 $server->start(new ClosureRequestHandler(function (Request $request): Response {
     static $counter = 0;
