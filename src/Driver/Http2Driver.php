@@ -65,8 +65,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     private ReadableStream $readableStream;
     private WritableStream $writableStream;
 
-    private ?string $settings;
-
     private int $serverWindow = self::DEFAULT_WINDOW_SIZE;
 
     private int $clientWindow = self::DEFAULT_WINDOW_SIZE;
@@ -105,7 +103,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private int $pinged = 0;
 
-    private HPack $hpack;
+    private readonly HPack $hpack;
 
     public function __construct(
         RequestHandler $requestHandler,
@@ -118,11 +116,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         private readonly int $concurrentStreamLimit = self::DEFAULT_CONCURRENT_STREAM_LIMIT,
         array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
         private readonly bool $pushEnabled = true,
-        ?string $settings = null,
+        private readonly ?string $settings = null,
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
-
-        $this->settings = $settings;
 
         $this->remainingStreams = $concurrentStreamLimit;
         $this->allowsPush = $pushEnabled;
@@ -296,7 +292,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 );
             }
 
-            $headers = \array_merge([":status" => $status], $response->getHeaders());
+            $headers = [':status' => [$status], ...$response->getHeaders()];
 
             // Remove headers that are obsolete in HTTP/2.
             unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
@@ -506,10 +502,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $path .= "?" . $query;
         }
 
-        $headers = \array_merge(
-            \array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), // Uses only select headers
-            $push->getHeaders() // Overwrites request headers with those defined in push.
-        );
+        $headers = [
+            ...\array_intersect_key($request->getHeaders(), self::PUSH_PROMISE_INTERSECT), // Uses only select headers
+            ...$push->getHeaders() // Overwrites request headers with those defined in push.
+        ];
 
         // $id is the new stream ID for the pushed response, $streamId is the original request stream ID.
         $id = $this->localStreamId += 2; // Server initiated stream IDs must be even.
@@ -521,12 +517,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $this->streamIdMap[\spl_object_hash($request)] = $id;
 
-        $headers = \array_merge([
+        $headers = [
             ":authority" => [$pushUri->getAuthority()],
             ":scheme" => [$pushUri->getScheme()],
             ":path" => [$path],
             ":method" => ["GET"],
-        ], $headers);
+            ...$headers,
+        ];
 
         $this->writeHeaders(
             \pack("N", $id) . $this->encodeHeaders($headers),
@@ -630,29 +627,14 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             // interleaved between due to HPack. See https://datatracker.ietf.org/doc/html/rfc7540#section-4.3
             $split = \str_split($headers, $this->maxFrameSize);
             \assert(\is_array($split)); // For Psalm
-            $headers = \array_shift($split);
-            async(fn () => $this->writeFrame(
-                $headers,
-                $type,
-                Http2Parser::NO_FLAG,
-                $id
-            ))->ignore();
-
             $headers = \array_pop($split);
-            foreach ($split as $msgPart) {
-                async(fn () => $this->writeFrame(
-                    $msgPart,
-                    Http2Parser::CONTINUATION,
-                    Http2Parser::NO_FLAG,
-                    $id
-                ))->ignore();
+
+            $writeFrame = $this->writeFrame(...);
+            foreach ($split as $part) {
+                async($writeFrame, $part, $type, Http2Parser::NO_FLAG, $id)->ignore();
+                $type = Http2Parser::CONTINUATION;
             }
-            async(fn () => $this->writeFrame(
-                $headers,
-                Http2Parser::CONTINUATION,
-                $flags,
-                $id
-            ))->await();
+            async($writeFrame, $headers, $type, $flags, $id)->await();
 
             return;
         }
