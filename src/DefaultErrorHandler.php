@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server;
 
-use Amp\Http\Status;
+use Amp\Http\HttpStatus;
 
 /**
  * ErrorHandler instance used by default if none is given.
@@ -24,7 +24,7 @@ final class DefaultErrorHandler implements ErrorHandler
             $this->cache[$status] = \str_replace(
                 ["{code}", "{reason}"],
                 // Using standard reason in HTML for caching purposes.
-                [$status, Status::getReason($status)],
+                [$status, HttpStatus::getReason($status)],
                 $errorHtml
             );
         }

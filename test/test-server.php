@@ -5,13 +5,13 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream\WritableResourceStream;
 use Amp\CancelledException;
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
-use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
@@ -47,7 +47,7 @@ $server->start(new ClosureRequestHandler(static function (Request $request) {
         // Ignore failure to read body tue to timeout.
     }
 
-    return new Response(Status::OK, [
+    return new Response(HttpStatus::OK, [
             "content-type" => "text/plain; charset=utf-8",
     ], "Hello, World!");
 }), new DefaultErrorHandler());

@@ -9,12 +9,12 @@ use Amp\Http\Client\Connection\UnlimitedConnectionPool;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
-use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket;
 use Amp\Socket\Certificate;
@@ -61,7 +61,7 @@ class SocketClientTest extends AsyncTestCase
             $data = \str_repeat("*", 100000);
             $stream = new ReadableBuffer("data/" . $data . "/data");
 
-            $res = new Response(Status::OK, [], $stream);
+            $res = new Response(HttpStatus::OK, [], $stream);
 
             $res->setCookie(new ResponseCookie("cookie", "with-value"));
             $res->setHeader("custom", "header");
@@ -110,7 +110,7 @@ class SocketClientTest extends AsyncTestCase
             $data = "data";
             $data .= \str_repeat("_", $server->getOptions()->getOutputBufferSize() + 1);
 
-            return new Response(Status::OK, [], $data);
+            return new Response(HttpStatus::OK, [], $data);
         });
 
         $port = \parse_url($address, PHP_URL_PORT);

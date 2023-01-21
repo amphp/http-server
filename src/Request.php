@@ -4,18 +4,18 @@ namespace Amp\Http\Server;
 
 use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\RequestCookie;
-use Amp\Http\Message;
+use Amp\Http\HttpMessage;
 use Amp\Http\Server\Driver\Client;
 use Psr\Http\Message\UriInterface as PsrUri;
 
-final class Request extends Message
+final class Request extends HttpMessage
 {
     private ?RequestBody $body = null;
 
     /** @var array<string, RequestCookie> */
     private array $cookies = [];
 
-    /** @var array<string, mixed> */
+    /** @var array<non-empty-string, mixed> */
     private array $attributes = [];
 
     private ?Trailers $trailers = null;
@@ -24,12 +24,12 @@ final class Request extends Message
      * @param Client $client The client sending the request.
      * @param string $method HTTP request method.
      * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
-     * @param array<string, string|string[]> $headers An array of strings or an array of string arrays.
+     * @param array<non-empty-string, string|string[]> $headers An array of strings or an array of string arrays.
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      * @param Trailers|null $trailers Trailers if request has trailers, or null otherwise.
      */
     public function __construct(
-        private Client $client,
+        private readonly Client $client,
         private string $method,
         private PsrUri $uri,
         array $headers = [],
@@ -111,7 +111,7 @@ final class Request extends Message
      * Sets the headers from the given array. Any cookie headers will automatically populate the contained array of
      * RequestCookie objects.
      *
-     * @param string[]|string[][] $headers
+     * @param array<non-empty-string, string|array<string>> $headers
      */
     public function setHeaders(array $headers): void
     {
@@ -127,13 +127,33 @@ final class Request extends Message
     }
 
     /**
+     * Replace headers from the given array. Any cookie headers will automatically populate the contained array of
+     * RequestCookie objects.
+     *
+     * @param array<non-empty-string, string|array<string>> $headers
+     */
+    public function replaceHeaders(array $headers): void
+    {
+        $cookies = $this->cookies;
+
+        try {
+            parent::replaceHeaders($headers);
+        } catch (\Throwable $e) {
+            $this->cookies = $cookies;
+
+            throw $e;
+        }
+    }
+
+    /**
      * Sets the named header to the given value.
      *
+     * @param non-empty-string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, $value): void
+    public function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -149,11 +169,12 @@ final class Request extends Message
     /**
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
+     * @param non-empty-string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, $value): void
+    public function addHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -282,7 +303,7 @@ final class Request extends Message
     }
 
     /**
-     * @return array<string, mixed> An array of all request attributes in the request's mutable local storage,
+     * @return array<non-empty-string, mixed> An array of all request attributes in the request's mutable local storage,
      * indexed by name.
      */
     public function getAttributes(): array
@@ -297,7 +318,8 @@ final class Request extends Message
      * Other request handlers or middleware which are aware of this data can then access it without the server being
      * tightly coupled to specific implementations.
      *
-     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
+     * @param non-empty-string $name Name of the attribute, should be namespaced with a vendor and package namespace
+     *      like classes.
      */
     public function hasAttribute(string $name): bool
     {
@@ -311,7 +333,8 @@ final class Request extends Message
      * Other request handlers or middleware which are aware of this data can then access it without the server being
      * tightly coupled to specific implementations.
      *
-     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
+     * @param non-empty-string $name Name of the attribute, should be namespaced with a vendor and package namespace
+     *      like classes.
      *
      * @throws MissingAttributeError If an attribute with the given name does not exist.
      */
@@ -337,7 +360,8 @@ final class Request extends Message
      * $request->setAttribute(Router::class, $routeArguments);
      * ```
      *
-     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
+     * @param non-empty-string $name Name of the attribute, should be namespaced with a vendor and package namespace
+     *      like classes.
      * @param mixed $value Value of the attribute, might be any value.
      */
     public function setAttribute(string $name, mixed $value): void
@@ -348,7 +372,8 @@ final class Request extends Message
     /**
      * Remove an attribute from the request's mutable local storage.
      *
-     * @param string $name Name of the attribute, should be namespaced with a vendor and package namespace like classes.
+     * @param non-empty-string $name Name of the attribute, should be namespaced with a vendor and package namespace
+     *      like classes.
      *
      * @throws MissingAttributeError If an attribute with the given name does not exist.
      */

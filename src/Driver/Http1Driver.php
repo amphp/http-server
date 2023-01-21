@@ -10,6 +10,7 @@ use Amp\ByteStream\StreamException;
 use Amp\ByteStream\WritableStream;
 use Amp\DeferredFuture;
 use Amp\Future;
+use Amp\Http\HttpStatus;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Rfc7230;
 use Amp\Http\Server\ClientException;
@@ -20,7 +21,6 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
-use Amp\Http\Status;
 use Amp\Pipeline\DisposedException;
 use Amp\Pipeline\Queue;
 use Amp\Socket\InternetAddress;
@@ -159,7 +159,7 @@ final class Http1Driver extends AbstractHttpDriver
                         throw new ClientException(
                             $this->client,
                             "Bad Request: header size violation",
-                            Status::REQUEST_HEADER_FIELDS_TOO_LARGE
+                            HttpStatus::REQUEST_HEADER_FIELDS_TOO_LARGE
                         );
                     }
 
@@ -173,7 +173,7 @@ final class Http1Driver extends AbstractHttpDriver
                 } while (true);
 
                 if (!\preg_match("#^([^ ]+) (\S+) HTTP/(\d+(?:\.\d+)?)\r\n#", $rawHeaders, $matches)) {
-                    throw new ClientException($this->client, "Bad Request: invalid request line", Status::BAD_REQUEST);
+                    throw new ClientException($this->client, "Bad Request: invalid request line", HttpStatus::BAD_REQUEST);
                 }
 
                 [$startLine, $method, $target, $protocol] = $matches;
@@ -211,12 +211,12 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException(
                         $this->client,
                         "Unsupported version $protocol",
-                        Status::HTTP_VERSION_NOT_SUPPORTED
+                        HttpStatus::HTTP_VERSION_NOT_SUPPORTED
                     );
                 }
 
                 if (!$rawHeaders) {
-                    throw new ClientException($this->client, "Bad Request: missing host header", Status::BAD_REQUEST);
+                    throw new ClientException($this->client, "Bad Request: missing host header", HttpStatus::BAD_REQUEST);
                 }
 
                 try {
@@ -234,7 +234,7 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException(
                         $this->client,
                         "Bad Request: " . $e->getMessage(),
-                        Status::BAD_REQUEST
+                        HttpStatus::BAD_REQUEST
                     );
                 }
 
@@ -242,7 +242,7 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException(
                         $this->client,
                         "Bad Request: multiple content-length headers",
-                        Status::BAD_REQUEST
+                        HttpStatus::BAD_REQUEST
                     );
                 }
 
@@ -252,7 +252,7 @@ final class Http1Driver extends AbstractHttpDriver
                         throw new ClientException(
                             $this->client,
                             "Bad Request: invalid content length",
-                            Status::BAD_REQUEST
+                            HttpStatus::BAD_REQUEST
                         );
                     }
 
@@ -267,21 +267,21 @@ final class Http1Driver extends AbstractHttpDriver
                         default => throw new ClientException(
                             $this->client,
                             "Unsupported transfer-encoding",
-                            Status::NOT_IMPLEMENTED
+                            HttpStatus::NOT_IMPLEMENTED
                         ),
                     };
                 }
 
                 if (!isset($headers["host"][0])) {
-                    throw new ClientException($this->client, "Bad Request: missing host header", Status::BAD_REQUEST);
+                    throw new ClientException($this->client, "Bad Request: missing host header", HttpStatus::BAD_REQUEST);
                 }
 
                 if (isset($headers["host"][1])) {
-                    throw new ClientException($this->client, "Bad Request: multiple host headers", Status::BAD_REQUEST);
+                    throw new ClientException($this->client, "Bad Request: multiple host headers", HttpStatus::BAD_REQUEST);
                 }
 
                 if (!\preg_match("#^([A-Z\d.\-]+|\[[\d:]+])(?::([1-9]\d*))?$#i", $headers["host"][0], $matches)) {
-                    throw new ClientException($this->client, "Bad Request: invalid host header", Status::BAD_REQUEST);
+                    throw new ClientException($this->client, "Bad Request: invalid host header", HttpStatus::BAD_REQUEST);
                 }
 
                 $address = $this->client->getLocalAddress();
@@ -324,7 +324,7 @@ final class Http1Driver extends AbstractHttpDriver
                             throw new ClientException(
                                 $this->client,
                                 "Bad Request: target host mis-matched to host header",
-                                Status::BAD_REQUEST
+                                HttpStatus::BAD_REQUEST
                             );
                         }
 
@@ -332,7 +332,7 @@ final class Http1Driver extends AbstractHttpDriver
                             throw new ClientException(
                                 $this->client,
                                 "Bad Request: no request path provided in target",
-                                Status::BAD_REQUEST
+                                HttpStatus::BAD_REQUEST
                             );
                         }
                     } else { // authority-form
@@ -340,7 +340,7 @@ final class Http1Driver extends AbstractHttpDriver
                             throw new ClientException(
                                 $this->client,
                                 "Bad Request: authority-form only valid for CONNECT requests",
-                                Status::BAD_REQUEST
+                                HttpStatus::BAD_REQUEST
                             );
                         }
 
@@ -348,7 +348,7 @@ final class Http1Driver extends AbstractHttpDriver
                             throw new ClientException(
                                 $this->client,
                                 "Bad Request: invalid connect target",
-                                Status::BAD_REQUEST
+                                HttpStatus::BAD_REQUEST
                             );
                         }
 
@@ -361,7 +361,7 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException(
                         $this->client,
                         "Bad Request: invalid target",
-                        Status::BAD_REQUEST,
+                        HttpStatus::BAD_REQUEST,
                         $exception
                     );
                 }
@@ -369,7 +369,7 @@ final class Http1Driver extends AbstractHttpDriver
                 if (isset($headers["expect"][0]) && \strtolower($headers["expect"][0]) === "100-continue") {
                     $this->write(
                         new Request($this->client, $method, $uri, $headers, '', $protocol),
-                        new Response(Status::CONTINUE, [])
+                        new Response(HttpStatus::CONTINUE, [])
                     );
                 }
 
@@ -388,7 +388,7 @@ final class Http1Driver extends AbstractHttpDriver
                     // Request instance will be overwritten below. This is for sending the switching protocols response.
                     $this->write(
                         new Request($this->client, $method, $uri, $headers, '', $protocol),
-                        new Response(Status::SWITCHING_PROTOCOLS, [
+                        new Response(HttpStatus::SWITCHING_PROTOCOLS, [
                             "connection" => "upgrade",
                             "upgrade" => "h2c",
                         ])
@@ -476,7 +476,7 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException(
                         $this->client,
                         "Invalid header field in trailers",
-                        Status::BAD_REQUEST,
+                        HttpStatus::BAD_REQUEST,
                         $exception
                     );
                 }
@@ -511,7 +511,7 @@ final class Http1Driver extends AbstractHttpDriver
                                 throw new ClientException(
                                     $this->client,
                                     "Bad Request: hex chunk size expected",
-                                    Status::BAD_REQUEST
+                                    HttpStatus::BAD_REQUEST
                                 );
                             }
 
@@ -533,7 +533,7 @@ final class Http1Driver extends AbstractHttpDriver
                                 throw new ClientException(
                                     $this->client,
                                     "Bad Request: invalid hex chunk size",
-                                    Status::BAD_REQUEST
+                                    HttpStatus::BAD_REQUEST
                                 );
                             }
                         }
@@ -570,7 +570,7 @@ final class Http1Driver extends AbstractHttpDriver
                                     throw new ClientException(
                                         $this->client,
                                         "Bad Request: trailer headers too large",
-                                        Status::BAD_REQUEST
+                                        HttpStatus::BAD_REQUEST
                                     );
                                 }
 
@@ -590,7 +590,7 @@ final class Http1Driver extends AbstractHttpDriver
                                 throw new ClientException(
                                     $this->client,
                                     "Bad Request: " . $e->getMessage(),
-                                    Status::BAD_REQUEST
+                                    HttpStatus::BAD_REQUEST
                                 );
                             }
 
@@ -598,7 +598,7 @@ final class Http1Driver extends AbstractHttpDriver
                                 throw new ClientException(
                                     $this->client,
                                     "Trailer section contains disallowed headers",
-                                    Status::BAD_REQUEST
+                                    HttpStatus::BAD_REQUEST
                                 );
                             }
 
@@ -654,7 +654,7 @@ final class Http1Driver extends AbstractHttpDriver
                                 throw new ClientException(
                                     $this->client,
                                     "Payload too large",
-                                    Status::PAYLOAD_TOO_LARGE
+                                    HttpStatus::PAYLOAD_TOO_LARGE
                                 );
                             } while ($bodySizeLimit < $bodySize + $chunkLengthRemaining);
                         }
@@ -757,7 +757,7 @@ final class Http1Driver extends AbstractHttpDriver
                     } while ($bodySize < \min($bodySizeLimit, $contentLength));
 
                     if ($contentLength > $bodySizeLimit) {
-                        throw new ClientException($this->client, "Payload too large", Status::PAYLOAD_TOO_LARGE);
+                        throw new ClientException($this->client, "Payload too large", HttpStatus::PAYLOAD_TOO_LARGE);
                     }
                 }
 
@@ -799,7 +799,7 @@ final class Http1Driver extends AbstractHttpDriver
             $this->bodyQueue?->error($exception ??= new ClientException(
                 $this->client,
                 "Client disconnected",
-                Status::REQUEST_TIMEOUT
+                HttpStatus::REQUEST_TIMEOUT
             ));
             $this->bodyQueue = null;
 
@@ -807,7 +807,7 @@ final class Http1Driver extends AbstractHttpDriver
             ($trailerDeferred ?? null)?->error($exception ??= new ClientException(
                 $this->client,
                 "Client disconnected",
-                Status::REQUEST_TIMEOUT
+                HttpStatus::REQUEST_TIMEOUT
             ));
             $trailerDeferred = null;
         }
@@ -887,7 +887,7 @@ final class Http1Driver extends AbstractHttpDriver
         $chunked = !$shouldClose
             && (!isset($headers["content-length"]) || $trailers !== null)
             && $protocol === "1.1"
-            && $status >= Status::OK;
+            && $status >= HttpStatus::OK;
 
         if ($chunked) {
             $headers["transfer-encoding"] = ["chunked"];
@@ -955,7 +955,8 @@ final class Http1Driver extends AbstractHttpDriver
      *
      * @param string $protocol Request protocol.
      *
-     * @return array{string[][], bool} Response headers to be written and flag if the connection should be closed.
+     * @return array{array<non-empty-string, list<string>>, bool} Response headers to be written and flag if the
+     *      connection should be closed.
      */
     private function filter(Response $response, ?Request $request, string $protocol = "1.0"): array
     {
@@ -965,7 +966,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         $headers = $response->getHeaders();
 
-        if ($response->getStatus() < Status::OK) {
+        if ($response->getStatus() < HttpStatus::OK) {
             unset($headers['content-length']); // 1xx responses do not have a body.
             return [$headers, false];
         }
@@ -1045,7 +1046,7 @@ final class Http1Driver extends AbstractHttpDriver
     private function sendErrorResponse(ClientException $exception): Future
     {
         $message = $exception->getMessage();
-        $status = $exception->getCode() ?: Status::BAD_REQUEST;
+        $status = $exception->getCode() ?: HttpStatus::BAD_REQUEST;
 
         \assert($status >= 400 && $status < 500);
 

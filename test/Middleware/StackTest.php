@@ -2,13 +2,13 @@
 
 namespace Amp\Http\Server\Test\Middleware;
 
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use League\Uri;
 use function Amp\Http\Server\Middleware\stack;
@@ -20,7 +20,7 @@ class StackTest extends AsyncTestCase
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
 
         $stack = stack(new ClosureRequestHandler(function (Request $request) {
-            $response = new Response(Status::OK, [], "OK");
+            $response = new Response(HttpStatus::OK, [], "OK");
             $response->setHeader("stack", $request->getAttribute(StackTest::class));
 
             return $response;

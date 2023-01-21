@@ -5,12 +5,12 @@ namespace Amp\Http\Server;
 use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\ResponseCookie;
-use Amp\Http\Message;
-use Amp\Http\Status;
+use Amp\Http\HttpMessage;
+use Amp\Http\HttpStatus;
 use League\Uri;
 use Revolt\EventLoop;
 
-final class Response extends Message
+final class Response extends HttpMessage
 {
     private ReadableStream $body;
 
@@ -34,19 +34,19 @@ final class Response extends Message
     private ?Trailers $trailers = null;
 
     /**
-     * @param int $status Status code.
-     * @param array<string, string|string[]> $headers
+     * @param int $status HttpStatus code.
+     * @param array<non-empty-string, string|string[]> $headers
      *
      * @throws \Error If one of the arguments is invalid.
      */
     public function __construct(
-        int $status = Status::OK,
+        int $status = HttpStatus::OK,
         array $headers = [],
         ReadableStream|string $body = '',
         ?Trailers $trailers = null
     ) {
         $this->status = $this->validateStatusCode($status);
-        $this->reason = Status::getReason($this->status);
+        $this->reason = HttpStatus::getReason($this->status);
 
         $this->setBody($body);
 
@@ -94,7 +94,7 @@ final class Response extends Message
      * Sets the headers from the given array. Any cookie headers will automatically populate the contained array of
      * ResponseCookie objects.
      *
-     * @param string[]|string[][] $headers
+     * @param array<non-empty-string, string|array<string>> $headers
      */
     public function setHeaders(array $headers): void
     {
@@ -110,13 +110,33 @@ final class Response extends Message
     }
 
     /**
+     * Replaces headers from the given array. Any cookie headers will automatically populate the contained array of
+     * ResponseCookie objects.
+     *
+     * @param array<non-empty-string, string|array<string>> $headers
+     */
+    public function replaceHeaders(array $headers): void
+    {
+        $cookies = $this->cookies;
+
+        try {
+            parent::replaceHeaders($headers);
+        } catch (\Throwable $e) {
+            $this->cookies = $cookies;
+
+            throw $e;
+        }
+    }
+
+    /**
      * Sets the named header to the given value.
      *
+     * @param non-empty-string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, $value): void
+    public function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -132,6 +152,7 @@ final class Response extends Message
     /**
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
+     * @param non-empty-string $name
      * @param string|string[] $value
      *
      * @throws \Error If the header name or value is invalid.
@@ -186,9 +207,9 @@ final class Response extends Message
     public function setStatus(int $status, string $reason = null): void
     {
         $this->status = $this->validateStatusCode($status);
-        $this->reason = $reason ?? Status::getReason($this->status);
+        $this->reason = $reason ?? HttpStatus::getReason($this->status);
 
-        if ($this->upgrade && $this->status !== Status::SWITCHING_PROTOCOLS) {
+        if ($this->upgrade && $this->status !== HttpStatus::SWITCHING_PROTOCOLS) {
             $this->upgrade = null;
         }
     }
@@ -344,8 +365,8 @@ final class Response extends Message
     public function upgrade(\Closure $upgrade): void
     {
         $this->upgrade = $upgrade;
-        $this->status = Status::SWITCHING_PROTOCOLS;
-        $this->reason = Status::getReason($this->status);
+        $this->status = HttpStatus::SWITCHING_PROTOCOLS;
+        $this->reason = HttpStatus::getReason($this->status);
 
         $this->removeTrailers();
     }

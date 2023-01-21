@@ -9,6 +9,7 @@ use Amp\Future;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Http2\Http2Parser;
+use Amp\Http\HttpStatus;
 use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
@@ -21,7 +22,6 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
-use Amp\Http\Status;
 use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\NullLogger;
@@ -813,7 +813,7 @@ class Http1DriverTest extends HttpDriverTest
             $queue = new Queue;
 
             $response = new Response(
-                Status::OK,
+                HttpStatus::OK,
                 ["test" => ["successful"]],
                 new ReadableIterableStream($queue->pipe())
             );
@@ -898,14 +898,14 @@ class Http1DriverTest extends HttpDriverTest
         $data = [
             [
                 "HEAD / HTTP/1.1",
-                new Response(Status::OK, [], new ReadableBuffer),
+                new Response(HttpStatus::OK, [], new ReadableBuffer),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=\d{2}\r\ndate: .* GMT\r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
                 "GET / HTTP/1.1",
                 new Response(
-                    Status::OK,
+                    HttpStatus::OK,
                     [],
                     new ReadableBuffer,
                     new Trailers(Future::complete(['test' => 'value']), ['test'])
@@ -915,13 +915,13 @@ class Http1DriverTest extends HttpDriverTest
             ],
             [
                 "GET / HTTP/1.1",
-                new Response(Status::OK, ["content-length" => 0], new ReadableBuffer),
+                new Response(HttpStatus::OK, ["content-length" => "0"], new ReadableBuffer),
                 "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\n\r\n",
                 false,
             ],
             [
                 "GET / HTTP/1.0",
-                new Response(Status::OK, [], new ReadableBuffer),
+                new Response(HttpStatus::OK, [], new ReadableBuffer),
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: .* GMT\r\n\r\n",
                 true,
             ],

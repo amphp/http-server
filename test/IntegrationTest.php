@@ -7,6 +7,7 @@ use Amp\Http\Client\Body\StreamBody;
 use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
@@ -14,7 +15,6 @@ use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
-use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Pipeline\Queue;
 use Amp\Socket;
@@ -58,7 +58,7 @@ class IntegrationTest extends AsyncTestCase
         $this->httpServer->start(new ClosureRequestHandler(function () {
             delay(0.2);
 
-            return new Response(Status::NO_CONTENT);
+            return new Response(HttpStatus::NO_CONTENT);
         }), $this->createMock(ErrorHandler::class));
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/"));
@@ -68,7 +68,7 @@ class IntegrationTest extends AsyncTestCase
 
         $this->httpServer->stop();
 
-        self::assertSame(Status::NO_CONTENT, $response->getStatus());
+        self::assertSame(HttpStatus::NO_CONTENT, $response->getStatus());
     }
 
     public function testBasicRequest(): void
@@ -79,7 +79,7 @@ class IntegrationTest extends AsyncTestCase
 
             delay(0.2);
 
-            return new Response(Status::OK, ["FOO" => "bar"], "message");
+            return new Response(HttpStatus::OK, ["FOO" => "bar"], "message");
         }), $this->createMock(ErrorHandler::class));
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
@@ -89,7 +89,7 @@ class IntegrationTest extends AsyncTestCase
         self::assertSame("GET", $request->getMethod());
         self::assertSame("", $body);
 
-        self::assertSame(Status::OK, $response->getStatus());
+        self::assertSame(HttpStatus::OK, $response->getStatus());
         self::assertSame('OK', $response->getReason());
         self::assertSame("bar", $response->getHeader("foo"));
         self::assertSame("message", $response->getBody()->buffer());
@@ -103,7 +103,7 @@ class IntegrationTest extends AsyncTestCase
 
             delay(0.2);
 
-            return new Response(Status::OK, ["FOO" => "bar"], "message");
+            return new Response(HttpStatus::OK, ["FOO" => "bar"], "message");
         }), $this->createMock(ErrorHandler::class));
 
         $queue = new Queue();
@@ -125,7 +125,7 @@ class IntegrationTest extends AsyncTestCase
         self::assertSame("POST", $request->getMethod());
         self::assertSame("fooBarBUZZ!", $body);
 
-        self::assertSame(Status::OK, $response->getStatus());
+        self::assertSame(HttpStatus::OK, $response->getStatus());
         self::assertSame('OK', $response->getReason());
         self::assertSame("bar", $response->getHeader("foo"));
         self::assertSame("message", $response->getBody()->buffer());
@@ -149,12 +149,12 @@ class IntegrationTest extends AsyncTestCase
     {
         yield "TRACE" => [
             new ClientRequest("http://localhost", "TRACE"),
-            Status::METHOD_NOT_ALLOWED,
+            HttpStatus::METHOD_NOT_ALLOWED,
         ];
 
         yield "UNKNOWN" => [
             new ClientRequest("http://localhost", "UNKNOWN"),
-            Status::NOT_IMPLEMENTED,
+            HttpStatus::NOT_IMPLEMENTED,
         ];
     }
 
@@ -166,6 +166,6 @@ class IntegrationTest extends AsyncTestCase
 
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
 
-        self::assertSame(Status::INTERNAL_SERVER_ERROR, $response->getStatus());
+        self::assertSame(HttpStatus::INTERNAL_SERVER_ERROR, $response->getStatus());
     }
 }

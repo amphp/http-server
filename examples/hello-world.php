@@ -4,12 +4,12 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
-use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
@@ -43,7 +43,7 @@ $server->start(new class implements RequestHandler {
     public function handleRequest(Request $request): Response
     {
         return new Response(
-            status: Status::OK,
+            status: HttpStatus::OK,
             headers: ["content-type" => "text/plain; charset=utf-8"],
             body: "Hello, World!",
         );

@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\HttpDriver;
@@ -9,7 +10,6 @@ use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Status;
 use Psr\Log\LoggerInterface;
 
 /** @internal */
@@ -82,10 +82,10 @@ abstract class AbstractHttpDriver implements HttpDriver
 
             if (!\in_array($method, $this->allowedMethods, true)) {
                 $response = $this->handleInvalidMethod(
-                    isset(self::KNOWN_METHODS[$method]) ? Status::METHOD_NOT_ALLOWED : Status::NOT_IMPLEMENTED
+                    isset(self::KNOWN_METHODS[$method]) ? HttpStatus::METHOD_NOT_ALLOWED : HttpStatus::NOT_IMPLEMENTED
                 );
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
-                $response = new Response(Status::NO_CONTENT, [
+                $response = new Response(HttpStatus::NO_CONTENT, [
                     "allow" => \implode(", ", $this->allowedMethods),
                 ]);
             } else {
@@ -123,7 +123,7 @@ abstract class AbstractHttpDriver implements HttpDriver
      */
     private function handleInternalServerError(Request $request, \Throwable $exception): Response
     {
-        $status = Status::INTERNAL_SERVER_ERROR;
+        $status = HttpStatus::INTERNAL_SERVER_ERROR;
 
         $this->logger->error(
             \sprintf(

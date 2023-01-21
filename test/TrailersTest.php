@@ -44,7 +44,7 @@ class TrailersTest extends AsyncTestCase
         $this->expectException(InvalidHeaderException::class);
         $this->expectExceptionMessage("Field 'content-length' is not allowed in trailers");
 
-        $trailers = new Trailers(Future::complete(['content-length' => 0]));
+        $trailers = new Trailers(Future::complete(['content-length' => '0']));
 
         $trailers->await();
     }

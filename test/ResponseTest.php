@@ -3,8 +3,8 @@
 namespace Amp\Http\Server\Test;
 
 use Amp\Http\Cookie\ResponseCookie;
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\Response;
-use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\PHPUnit\TestException;
 use Amp\PHPUnit\UnhandledException;
@@ -35,8 +35,8 @@ class ResponseTest extends AsyncTestCase
 
     public function testCookies(): void
     {
-        $request = new Response(Status::OK, [
-            'set-cookie' => new ResponseCookie('foo', 'bar'),
+        $request = new Response(HttpStatus::OK, [
+            'set-cookie' => (string) new ResponseCookie('foo', 'bar'),
         ]);
 
         self::assertNull($request->getCookie('foobar'));
@@ -52,7 +52,7 @@ class ResponseTest extends AsyncTestCase
         self::assertTrue($request->hasHeader('set-cookie'));
 
         $request->removeCookie('foo');
-        $request->addHeader('set-cookie', new ResponseCookie('foo'));
+        $request->addHeader('set-cookie', (string) new ResponseCookie('foo'));
         self::assertCount(1, $request->getCookies());
         self::assertNotNull($cookie = $request->getCookie('foo'));
         self::assertSame('', $cookie->getValue());

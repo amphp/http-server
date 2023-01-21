@@ -13,6 +13,7 @@ use Amp\Http\Http2\Http2ConnectionException;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\Http2\Http2Processor;
 use Amp\Http\Http2\Http2StreamException;
+use Amp\Http\HttpStatus;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\AbstractHttpDriver;
@@ -24,7 +25,6 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
-use Amp\Http\Status;
 use Amp\Pipeline\Queue;
 use Amp\Socket\InternetAddress;
 use League\Uri;
@@ -276,8 +276,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         try {
             $status = $response->getStatus();
 
-            if ($status < Status::OK) {
-                $response->setStatus(Status::HTTP_VERSION_NOT_SUPPORTED);
+            if ($status < HttpStatus::OK) {
+                $response->setStatus(HttpStatus::HTTP_VERSION_NOT_SUPPORTED);
                 throw new ClientException(
                     $this->client,
                     "1xx response codes are not supported in HTTP/2",
@@ -285,7 +285,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 );
             }
 
-            if ($status === Status::HTTP_VERSION_NOT_SUPPORTED && $response->getHeader("upgrade")) {
+            if ($status === HttpStatus::HTTP_VERSION_NOT_SUPPORTED && $response->getHeader("upgrade")) {
                 throw new ClientException(
                     $this->client,
                     "Upgrade requests require HTTP/1.1",

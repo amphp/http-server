@@ -4,12 +4,12 @@
 require dirname(__DIR__) . "/vendor/autoload.php";
 
 use Amp\ByteStream;
+use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
-use Amp\Http\Status;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Monolog\Logger;
@@ -35,7 +35,7 @@ $server->start(new ClosureRequestHandler(function (Request $request): Response {
     // Further requests are still processed concurrently.
     delay(3);
 
-    return new Response(Status::OK, [
+    return new Response(HttpStatus::OK, [
         "content-type" => "text/plain; charset=utf-8",
     ], "Hello, World!");
 }), new DefaultErrorHandler());

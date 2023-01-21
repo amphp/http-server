@@ -13,6 +13,7 @@ use Amp\CancelledException;
 use Amp\Future;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
+use Amp\Http\HttpStatus;
 use Amp\Http\Internal\HPackNghttp2;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
@@ -22,7 +23,6 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
-use Amp\Http\Status;
 use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Pipeline;
 use Amp\Pipeline\Queue;
@@ -296,8 +296,8 @@ class Http2DriverTest extends HttpDriverTest
 
         $queue = new Queue();
         $response = new Response(
-            Status::OK,
-            ["content-length" => \strlen($body)],
+            HttpStatus::OK,
+            ["content-length" => (string) \strlen($body)],
             new ReadableIterableStream($queue->pipe()),
             $trailers,
         );
@@ -344,8 +344,8 @@ class Http2DriverTest extends HttpDriverTest
 
         self::assertTrue($frames->continue());
         $hpackBuffer = $hpack->encode([
-            [":status", (string) Status::OK],
-            ["content-length", \strlen($body)],
+            [":status", (string) HttpStatus::OK],
+            ["content-length", (string) \strlen($body)],
             ["trailer", "expires"],
             ["date", formatDateHeader()],
         ]);
@@ -402,8 +402,8 @@ class Http2DriverTest extends HttpDriverTest
 
         $queue = new Queue();
         $response = new Response(
-            Status::OK,
-            ["content-length" => \strlen($body)],
+            HttpStatus::OK,
+            ["content-length" => (string) \strlen($body)],
             new ReadableIterableStream($queue->pipe()),
             $trailers,
         );
@@ -450,8 +450,8 @@ class Http2DriverTest extends HttpDriverTest
 
         self::assertTrue($frames->continue());
         $hpackBuffer = $hpack->encode([
-            [":status", (string) Status::OK],
-            ["content-length", \strlen($body)],
+            [":status", (string) HttpStatus::OK],
+            ["content-length", (string) \strlen($body)],
             ["trailer", "expires"],
             ["date", formatDateHeader()],
         ]);
@@ -561,7 +561,7 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
         $queue = new Queue();
         $this->givenNextResponse(new Response(
-            Status::OK,
+            HttpStatus::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new ReadableIterableStream($queue->pipe())
         ));
@@ -569,7 +569,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $hpack = new HPack;
         $hpackBuffer = $hpack->encode([
-            [":status", (string) Status::OK],
+            [":status", (string) HttpStatus::OK],
             ["content-type", "text/html; charset=utf-8"],
             ["date", formatDateHeader()],
         ]);
@@ -653,7 +653,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $queue = new Queue();
         $this->givenNextResponse(new Response(
-            Status::OK,
+            HttpStatus::OK,
             ["content-type" => "text/html; charset=utf-8"],
             new ReadableIterableStream($queue->pipe())
         ));
@@ -661,7 +661,7 @@ class Http2DriverTest extends HttpDriverTest
         // $onMessage callback should be invoked.
 
         $hpackBuffer = $hpack->encode([
-            [":status", (string) Status::OK],
+            [":status", (string) HttpStatus::OK],
             ["content-type", "text/html; charset=utf-8"],
             ["date", formatDateHeader()],
         ]);

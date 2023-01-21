@@ -93,7 +93,7 @@ class RequestTest extends AsyncTestCase
         $request->setHeader('bar', 'bar');
         self::assertSame(['bar'], $request->getHeaderArray('bar'));
 
-        $request->setHeaders(['bar' => []]);
+        $request->replaceHeaders(['bar' => []]);
         self::assertSame(['bar'], $request->getHeaderArray('foo'));
         self::assertSame([], $request->getHeaderArray('bar'));
     }
@@ -149,7 +149,7 @@ class RequestTest extends AsyncTestCase
     {
         $client = $this->createMock(Client::class);
         $request = new Request($client, 'GET', Http::createFromString('/'), [
-            'cookie' => new RequestCookie('foo', 'bar'),
+            'cookie' => (string) new RequestCookie('foo', 'bar'),
         ]);
 
         self::assertNull($request->getCookie('foobar'));
@@ -165,7 +165,7 @@ class RequestTest extends AsyncTestCase
         self::assertTrue($request->hasHeader('cookie'));
 
         $request->removeCookie('foo');
-        $request->addHeader('cookie', new RequestCookie('foo'));
+        $request->addHeader('cookie', (string) new RequestCookie('foo'));
         self::assertCount(1, $request->getCookies());
         self::assertNotNull($cookie = $request->getCookie('foo'));
         self::assertSame('', $cookie->getValue());
