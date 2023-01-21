@@ -330,7 +330,7 @@ final class Response extends HttpMessage
      * Indicate resources which a client likely needs to fetch (e.g. Link: preload or HTTP/2 Server Push).
      *
      * @param string $url URL of resource to push to the client.
-     * @param string[]|string[][] Additional headers to attach to the request.
+     * @param array<non-empty-string, string|array<string>> $headers Additional headers to attach to the request.
      *
      * @throws \Error If the given url is invalid.
      */

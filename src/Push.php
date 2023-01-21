@@ -2,16 +2,16 @@
 
 namespace Amp\Http\Server;
 
+use Amp\Http\HttpMessage;
 use Amp\Http\InvalidHeaderException;
-use Amp\Http\Message;
 use Psr\Http\Message\UriInterface as PsrUri;
 
-final class Push extends Message
+final class Push extends HttpMessage
 {
     private readonly PsrUri $uri;
 
     /**
-     * @param string[]|string[][] $headers
+     * @param array<non-empty-string, string|array<string>> $headers
      *
      * @throws InvalidHeaderException If given headers contain and invalid header name or value.
      * @throws \Error If the given headers have a colon-prefixed header or a Host header.
@@ -22,7 +22,7 @@ final class Push extends Message
         $this->uri = $uri;
     }
 
-    protected function setHeader(string $name, $value): void
+    protected function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":" || !\strncasecmp("host", $name, 4)) {
             throw new \Error("Pushed headers must not contain colon-prefixed headers or a Host header");
