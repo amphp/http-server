@@ -12,7 +12,7 @@ final class Request extends HttpMessage
 {
     private ?RequestBody $body = null;
 
-    /** @var array<string, RequestCookie> */
+    /** @var array<non-empty-string, RequestCookie> */
     private array $cookies = [];
 
     /** @var array<non-empty-string, mixed> */
@@ -234,7 +234,7 @@ final class Request extends HttpMessage
     }
 
     /**
-     * @return array<string, RequestCookie>
+     * @return array<non-empty-string, RequestCookie>
      */
     public function getCookies(): array
     {
@@ -296,7 +296,7 @@ final class Request extends HttpMessage
         $values = [];
 
         foreach ($this->cookies as $cookie) {
-            $values[] = (string) $cookie;
+            $values[] = $cookie->toString();
         }
 
         $this->setHeader("cookie", $values);

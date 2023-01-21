@@ -20,7 +20,7 @@ final class Response extends HttpMessage
     /** @var string Response reason. */
     private string $reason;
 
-    /** @var array<string, ResponseCookie> */
+    /** @var array<non-empty-string, ResponseCookie> */
     private array $cookies = [];
 
     /** @var array<string, Push> */
@@ -215,7 +215,7 @@ final class Response extends HttpMessage
     }
 
     /**
-     * @return array<string, ResponseCookie>
+     * @return array<non-empty-string, ResponseCookie>
      */
     public function getCookies(): array
     {
@@ -291,7 +291,7 @@ final class Response extends HttpMessage
         $values = [];
 
         foreach ($this->cookies as $cookie) {
-            $values[] = (string) $cookie;
+            $values[] = $cookie->toString();
         }
 
         $this->setHeader("set-cookie", $values);
