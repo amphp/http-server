@@ -210,13 +210,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->client->getId(),
         )) || true);
 
-        $parser = (new Http2Parser($this))->parse($this->settings);
+        $parser = new Http2Parser($this, $this->hpack, $this->settings);
 
         try {
-            $parser->send($chunk ?? $this->readPreface());
+            $parser->push($chunk ?? $this->readPreface());
 
-            while ($parser->valid() && null !== $chunk = $this->readableStream->read()) {
-                $parser->send($chunk);
+            while (null !== $chunk = $this->readableStream->read()) {
+                $parser->push($chunk);
             }
 
             $this->shutdown();
@@ -228,6 +228,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 $exception,
             ));
         } finally {
+            $parser->cancel();
             self::getTimeoutQueue()->remove($this->client, 0);
         }
     }
@@ -537,9 +538,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private function writeFrame(string $data, int $type, int $flags, int $stream = 0): void
     {
-        \assert(Http2Parser::logDebugFrame('send', $type, $flags, $stream, \strlen($data)));
-
-        $this->writableStream->write(\pack("NcN", (\strlen($data) << 8) | ($type & 0xff), $flags, $stream) . $data);
+        $this->writableStream->write(Http2Parser::compileFrame($data, $type, $flags, $stream));
     }
 
     private function writeData(string $data, int $id): void

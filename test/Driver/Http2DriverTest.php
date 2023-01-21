@@ -39,7 +39,7 @@ class Http2DriverTest extends HttpDriverTest
 {
     public static function packFrame(string $data, int $type, int $flags, int $stream = 0): string
     {
-        return \substr(\pack("NccN", \strlen($data), $type, $flags, $stream), 1) . $data;
+        return Http2Parser::compileFrame($data, $type, $flags, $stream);
     }
 
     public static function packHeader(
@@ -805,6 +805,30 @@ class Http2DriverTest extends HttpDriverTest
 
         $buffer = $request->getBody()->buffer();
         self::assertSame('body-data', $buffer);
+    }
+
+    public function testSendingLargeHeaders(): void
+    {
+        $header = 'x-long-header';
+        $value = \str_repeat('.', 10000);
+
+        $headers = [
+            ":authority" => ["localhost:8888"],
+            ":path" => ["/foo"],
+            ":scheme" => ["http"],
+            ":method" => ["POST"],
+            $header => $value,
+        ];
+
+        $input = Http2Parser::PREFACE;
+        $input .= self::packFrame(\pack("N", 100), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
+        $input .= self::packHeader($headers, true);
+
+        $this->givenInput(new ReadableBuffer($input));
+
+        $request = $this->whenRequestIsReceived();
+
+        self::assertSame($value, $request->getHeader($header));
     }
 
     protected function givenPush(string $uri): void
