@@ -3,8 +3,8 @@
 namespace Amp\Http\Server;
 
 use Amp\Future;
+use Amp\Http\HttpMessage;
 use Amp\Http\InvalidHeaderException;
-use Amp\Http\Message;
 use function Amp\async;
 
 final class Trailers
@@ -29,14 +29,14 @@ final class Trailers
         "www-authenticate" => true,
     ];
 
-    /** @var string[] */
+    /** @var list<string> */
     private readonly array $fields;
 
-    /** @var Future<Message> */
-    private readonly Future $headers;
+    /** @var Future<HttpMessage> */
+    private readonly Future $messageFuture;
 
     /**
-     * @param Future<string[]|string[][]> $future Resolved with the trailer values.
+     * @param Future<array<non-empty-string, string|array<string>>> $future Resolved with the trailer values.
      * @param string[] $fields Expected header fields. May be empty, but if provided, the array of
      *     headers used to complete the given future must contain exactly the fields given in this array.
      *
@@ -44,7 +44,7 @@ final class Trailers
      */
     public function __construct(Future $future, array $fields = [])
     {
-        $this->fields = $fields = \array_map('strtolower', $fields);
+        $this->fields = $fields = \array_map('strtolower', \array_values($fields));
 
         foreach ($this->fields as $field) {
             if (isset(self::DISALLOWED_TRAILERS[$field])) {
@@ -52,8 +52,8 @@ final class Trailers
             }
         }
 
-        $this->headers = async(static function () use ($future, $fields): Message {
-            return new class($future->await(), $fields) extends Message {
+        $this->messageFuture = async(static function () use ($future, $fields): HttpMessage {
+            return new class($future->await(), $fields) extends HttpMessage {
                 public function __construct(array $headers, array $fields)
                 {
                     $this->setHeaders($headers);
@@ -81,7 +81,7 @@ final class Trailers
         });
 
         // Future may fail due to client disconnect or error, but we don't want to force awaiting.
-        $this->headers->ignore();
+        $this->messageFuture->ignore();
     }
 
     /**
@@ -92,8 +92,8 @@ final class Trailers
         return $this->fields;
     }
 
-    public function await(): Message
+    public function await(): HttpMessage
     {
-        return $this->headers->await();
+        return $this->messageFuture->await();
     }
 }
