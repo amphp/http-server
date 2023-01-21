@@ -798,12 +798,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
-    public function handleShutdown(int $lastId, int $error): void
+    public function handleShutdown(int $lastId, int $error, string $message): void
     {
         $message = \sprintf(
-            "Received GOAWAY frame from %s with error code %d",
+            "Received GOAWAY frame from %s with error code %d and message '%s'",
             $this->client->getRemoteAddress()->toString(),
-            $error
+            $error,
+            $message,
         );
 
         if ($error !== Http2Parser::GRACEFUL_SHUTDOWN) {
