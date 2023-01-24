@@ -141,6 +141,7 @@ final class CompressionMiddleware implements Middleware
                     $bodyBuffer .= $chunk = yield Promise\timeout($promise, \max(1, $expiration - Loop::now()));
 
                     if (isset($bodyBuffer[$this->minimumLength])) {
+                        $promise = $body->read();
                         break;
                     }
 
