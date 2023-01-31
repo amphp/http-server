@@ -6,6 +6,8 @@ use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\StreamException;
 use Amp\ByteStream\WritableStream;
+use Amp\Cancellation;
+use Amp\CancelledException;
 use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\HPack;
@@ -251,9 +253,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $stream = $this->streams[$id]; // $this->streams[$id] may be unset in send().
         $deferred = new DeferredFuture;
         $stream->pendingWrite = $deferred->getFuture();
+        $cancellation = $stream->deferredCancellation->getCancellation();
 
         try {
-            $this->send($id, $response, $request);
+            $this->send($id, $response, $request, $cancellation);
         } finally {
             $deferred->complete();
         }
@@ -269,7 +272,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         return \count($this->bodyQueues);
     }
 
-    private function send(int $id, Response $response, Request $request): void
+    private function send(int $id, Response $response, Request $request, Cancellation $cancellation): void
     {
         $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
@@ -322,7 +325,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             }
 
             $body = $response->getBody();
-            $chunk = $body->read();
+            $chunk = $body->read($cancellation);
 
             while ($chunk !== null) {
                 // Stream may have been closed while waiting for body data.
@@ -332,7 +335,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
                 $this->writeData($chunk, $id);
 
-                $chunk = $body->read();
+                $chunk = $body->read($cancellation);
             }
 
             // Stream may have been closed while waiting for body data.
@@ -345,7 +348,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             if ($trailers === null) {
                 $this->writeData("", $id);
             } else {
-                $trailers = $trailers->await();
+                $trailers = $trailers->await($cancellation);
 
                 // Stream may have been closed while writing final body chunk or headers.
                 if (!isset($this->streams[$id])) {
@@ -359,7 +362,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                     $id,
                 );
             }
-        } catch (StreamException) {
+        } catch (StreamException|CancelledException) {
             // Client disconnected, ignore and proceed to clean up below.
             $chunk = null;
         } catch (ClientException $exception) {
@@ -581,9 +584,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $stream->clientWindow -= $length;
             $stream->buffer = "";
 
-            if ($stream->deferred) {
-                $stream->deferred->complete();
-                $stream->deferred = null;
+            if ($stream->deferredFuture) {
+                $stream->deferredFuture->complete();
+                $stream->deferredFuture = null;
             }
 
             return;
@@ -610,11 +613,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $stream->buffer = \substr($data, $delta);
         }
 
-        if ($stream->deferred === null) {
-            $stream->deferred = new DeferredFuture;
-        }
-
-        $stream->deferred->getFuture()->await();
+        $stream->deferredFuture ??= new DeferredFuture;
+        $stream->deferredFuture->getFuture()->await();
     }
 
     private function writeHeaders(string $headers, int $type, int $flags, int $id): void
@@ -668,6 +668,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     private function releaseStream(int $id, ?ClientException $exception = null): void
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
+
+        $this->streams[$id]->deferredCancellation->cancel();
 
         if ($id & 1) {
             self::getTimeoutQueue()->remove($this->client, $id);

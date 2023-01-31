@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server;
 
+use Amp\Cancellation;
 use Amp\Future;
 use Amp\Http\HttpMessage;
 use Amp\Http\InvalidHeaderException;
@@ -85,15 +86,15 @@ final class Trailers
     }
 
     /**
-     * @return string[] List of expected trailer fields. May be empty, but still receive trailers.
+     * @return list<string> List of expected trailer fields. May be empty, but still receive trailers.
      */
     public function getFields(): array
     {
         return $this->fields;
     }
 
-    public function await(): HttpMessage
+    public function await(?Cancellation $cancellation = null): HttpMessage
     {
-        return $this->messageFuture->await();
+        return $this->messageFuture->await($cancellation);
     }
 }

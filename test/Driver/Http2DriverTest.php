@@ -807,6 +807,43 @@ class Http2DriverTest extends HttpDriverTest
         self::assertSame('body-data', $buffer);
     }
 
+    public function testStreamClosesWhileAwaitingResponseRead(): void
+    {
+        $headers = [
+            ":authority" => ["localhost:8888"],
+            ":path" => ["/"],
+            ":scheme" => ["https"],
+            ":method" => ["GET"],
+        ];
+
+        $requestQueue = new Queue;
+        $requestQueue->pushAsync(Http2Parser::PREFACE);
+        $requestQueue->pushAsync(self::packHeader($headers));
+
+        $this->givenInput(new ReadableIterableStream($requestQueue->iterate()));
+
+        $responseQueue = new Queue();
+        $response = new Response(body: new ReadableIterableStream($responseQueue->iterate()));
+        $invoked = false;
+        $response->onDispose(static function () use (&$invoked): void {
+            $invoked = true;
+        });
+        $this->givenNextResponse($response);
+
+        unset($response);
+
+        $request = $this->whenRequestIsReceived();
+        self::assertEmpty($request->getBody()->buffer());
+
+        $responseQueue->pushAsync('event-1');
+
+        $requestQueue->push(self::packFrame(\pack("N", 0), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, 1));
+
+        delay(0); // Invoke onDispose handler.
+
+        self::assertTrue($invoked);
+    }
+
     public function testSendingLargeHeaders(): void
     {
         $header = 'x-long-header';

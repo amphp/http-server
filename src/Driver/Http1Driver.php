@@ -8,6 +8,8 @@ use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\ReadableStreamChain;
 use Amp\ByteStream\StreamException;
 use Amp\ByteStream\WritableStream;
+use Amp\CancelledException;
+use Amp\DeferredCancellation;
 use Amp\DeferredFuture;
 use Amp\Future;
 use Amp\Http\HttpStatus;
@@ -85,6 +87,8 @@ final class Http1Driver extends AbstractHttpDriver
 
     private bool $continue = true;
 
+    private readonly DeferredCancellation $deferredCancellation;
+
     public function __construct(
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
@@ -98,6 +102,7 @@ final class Http1Driver extends AbstractHttpDriver
         parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
 
         $this->pendingResponse = Future::complete();
+        $this->deferredCancellation = new DeferredCancellation();
     }
 
     public function handleClient(
@@ -810,6 +815,8 @@ final class Http1Driver extends AbstractHttpDriver
                 HttpStatus::REQUEST_TIMEOUT
             ));
             $trailerDeferred = null;
+
+            $this->deferredCancellation->cancel();
         }
     }
 
@@ -909,8 +916,10 @@ final class Http1Driver extends AbstractHttpDriver
 
         $this->updateTimeout();
 
+        $cancellation = $this->deferredCancellation->getCancellation();
+
         try {
-            while (null !== $chunk = $body->read()) {
+            while (null !== $chunk = $body->read($cancellation)) {
                 if ($chunk === "") {
                     continue;
                 }
@@ -927,7 +936,7 @@ final class Http1Driver extends AbstractHttpDriver
                 $chunk = "0\r\n";
 
                 if ($trailers !== null) {
-                    $trailers = $trailers->await();
+                    $trailers = $trailers->await($cancellation);
                     $chunk .= Rfc7230::formatHeaders($trailers->getHeaders());
                 }
 
@@ -940,7 +949,7 @@ final class Http1Driver extends AbstractHttpDriver
             if ($shouldClose) {
                 $this->writableStream->end();
             }
-        } catch (StreamException|ClientException) {
+        } catch (StreamException|ClientException|CancelledException) {
             return; // Client will be closed in finally.
         } finally {
             /** @psalm-suppress TypeDoesNotContainType */

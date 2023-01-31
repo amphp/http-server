@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\DeferredCancellation;
 use Amp\DeferredFuture;
 use Amp\Future;
 
@@ -35,7 +36,7 @@ final class Http2Stream
 
     public int $state;
 
-    public ?DeferredFuture $deferred = null;
+    public ?DeferredFuture $deferredFuture = null;
 
     /** @var int Integer between 1 and 256 */
     public int $weight = 0;
@@ -44,11 +45,15 @@ final class Http2Stream
 
     public ?int $expectedLength = null;
 
+    public readonly DeferredCancellation $deferredCancellation;
+
     public function __construct(int $bodySizeLimit, int $serverSize, int $clientSize, int $state = self::OPEN)
     {
         $this->bodySizeLimit = $bodySizeLimit;
         $this->serverWindow = $serverSize;
         $this->clientWindow = $clientSize;
         $this->state = $state;
+
+        $this->deferredCancellation = new DeferredCancellation();
     }
 }
