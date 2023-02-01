@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Socket\EncryptableSocket;
+use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 
@@ -11,7 +11,7 @@ final class SocketClient implements Client
     private readonly int $id;
 
     public function __construct(
-        private readonly EncryptableSocket $socket,
+        private readonly Socket $socket,
     ) {
         $this->id = createClientId();
     }

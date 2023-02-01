@@ -74,7 +74,7 @@ class SocketClientTest extends AsyncTestCase
                 Socket\SocketAddress|string $uri,
                 ?ConnectContext $context = null,
                 ?Cancellation $cancellation = null
-            ): Socket\EncryptableSocket {
+            ): Socket\Socket {
                 $context = (new Socket\ConnectContext)
                     ->withTlsContext((new ClientTlsContext(''))->withoutPeerVerification());
 

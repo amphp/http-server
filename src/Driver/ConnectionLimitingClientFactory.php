@@ -2,9 +2,9 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Socket\EncryptableSocket;
 use Amp\Socket\InternetAddress;
 use Amp\Socket\InternetAddressVersion;
+use Amp\Socket\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
 final class ConnectionLimitingClientFactory implements ClientFactory
@@ -24,7 +24,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
         $this->logger->notice("Client connections are limited to {$this->connectionsPerIpLimit} per IP address (excluding localhost)");
     }
 
-    public function createClient(EncryptableSocket $socket): ?Client
+    public function createClient(Socket $socket): ?Client
     {
         $address = $socket->getRemoteAddress();
 

@@ -6,17 +6,17 @@ use Amp\CompositeException;
 use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
 use Amp\Http\Server\Driver\ConnectionLimitingClientFactory;
-use Amp\Http\Server\Driver\ConnectionLimitingSocketServerFactory;
+use Amp\Http\Server\Driver\ConnectionLimitingServerSocketFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
-use Amp\Socket\EncryptableSocket;
+use Amp\Socket\ServerSocket;
+use Amp\Socket\ServerSocketFactory;
+use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
-use Amp\Socket\SocketServer;
-use Amp\Socket\SocketServerFactory;
 use Amp\Sync\LocalSemaphore;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -26,7 +26,7 @@ final class SocketHttpServer implements HttpServer
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 
-    private readonly SocketServerFactory $socketServerFactory;
+    private readonly ServerSocketFactory $socketServerFactory;
 
     private readonly HttpDriverFactory $httpDriverFactory;
 
@@ -35,7 +35,7 @@ final class SocketHttpServer implements HttpServer
     /** @var array<string, array{SocketAddress, BindContext|null}> */
     private array $addresses = [];
 
-    /** @var list<SocketServer> */
+    /** @var list<ServerSocket> */
     private array $servers = [];
 
     /** @var array<int, HttpDriver> */
@@ -49,16 +49,16 @@ final class SocketHttpServer implements HttpServer
 
     public function __construct(
         private readonly PsrLogger $logger,
-        ?SocketServerFactory $socketServerFactory = null,
+        ?ServerSocketFactory $serverSocketFactory = null,
         ?ClientFactory $clientFactory = null,
         ?HttpDriverFactory $httpDriverFactory = null,
         private readonly bool $enableCompression = true,
     ) {
-        if (!$socketServerFactory) {
-            $this->socketServerFactory = new ConnectionLimitingSocketServerFactory(new LocalSemaphore(1000));
+        if (!$serverSocketFactory) {
+            $this->socketServerFactory = new ConnectionLimitingServerSocketFactory(new LocalSemaphore(1000));
             $this->logger->notice("Total client connections are limited to 1000");
         } else {
-            $this->socketServerFactory = $socketServerFactory;
+            $this->socketServerFactory = $serverSocketFactory;
         }
 
         $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory($this->logger);
@@ -181,7 +181,7 @@ final class SocketHttpServer implements HttpServer
     }
 
     private function accept(
-        SocketServer $server,
+        ServerSocket $server,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
     ): void {
@@ -191,7 +191,7 @@ final class SocketHttpServer implements HttpServer
     }
 
     private function handleClient(
-        EncryptableSocket $socket,
+        Socket $socket,
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
     ): void {

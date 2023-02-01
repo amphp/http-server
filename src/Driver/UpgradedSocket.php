@@ -9,11 +9,14 @@ use Amp\ByteStream\WritableStream;
 use Amp\Cancellation;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
+use Amp\Socket\TlsException;
+use Amp\Socket\TlsInfo;
+use Amp\Socket\TlsState;
 
 /**
  * @implements \IteratorAggregate<int, string>
  */
-final class UpgradedSocket implements Socket, \IteratorAggregate
+final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
 {
     use ReadableStreamIteratorAggregate;
 
@@ -126,10 +129,39 @@ final class UpgradedSocket implements Socket, \IteratorAggregate
 
     public function getResource()
     {
-        if (!($this->writableStream instanceof ResourceStream)) {
-            return null;
-        }
+        return $this->writableStream instanceof ResourceStream
+            ? $this->writableStream->getResource()
+            : null;
+    }
 
-        return $this->writableStream->getResource();
+    public function setupTls(?Cancellation $cancellation = null): void
+    {
+        throw new TlsException('Not implemented on upgraded sockets; TLS should already be enabled if available');
+    }
+
+    public function shutdownTls(?Cancellation $cancellation = null): void
+    {
+        throw new TlsException('Not implemented on upgraded sockets');
+    }
+
+    public function isTlsConfigurationAvailable(): bool
+    {
+        return $this->writableStream instanceof Socket
+            ? $this->writableStream->isTlsConfigurationAvailable()
+            : false;
+    }
+
+    public function getTlsState(): TlsState
+    {
+        return $this->writableStream instanceof Socket
+            ? $this->writableStream->getTlsState()
+            : TlsState::Disabled;
+    }
+
+    public function getTlsInfo(): ?TlsInfo
+    {
+        return $this->writableStream instanceof Socket
+            ? $this->writableStream->getTlsInfo()
+            : null;
     }
 }

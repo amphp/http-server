@@ -3,7 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\CancelledException;
-use Amp\Socket\EncryptableSocket;
+use Amp\Socket\Socket;
 use Amp\TimeoutCancellation;
 use Psr\Log\LoggerInterface as PsrLogger;
 
@@ -15,7 +15,7 @@ final class SocketClientFactory implements ClientFactory
     ) {
     }
 
-    public function createClient(EncryptableSocket $socket): ?Client
+    public function createClient(Socket $socket): ?Client
     {
         /** @psalm-suppress RedundantCondition */
         \assert($this->logger->debug(\sprintf(
@@ -24,7 +24,7 @@ final class SocketClientFactory implements ClientFactory
             $socket->getLocalAddress()->toString(),
         )) || true);
 
-        if ($socket->isTlsAvailable()) {
+        if ($socket->isTlsConfigurationAvailable()) {
             try {
                 $socket->setupTls(new TimeoutCancellation($this->tlsHandshakeTimeout));
 

@@ -4,20 +4,20 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\Cancellation;
 use Amp\Socket\BindContext;
-use Amp\Socket\EncryptableSocket;
+use Amp\Socket\ServerSocket;
+use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
-use Amp\Socket\SocketServer;
 use Amp\Sync\Semaphore;
 
-final class ConnectionLimitingSocketServer implements SocketServer
+final class ConnectionLimitingServerSocket implements ServerSocket
 {
     public function __construct(
-        private readonly SocketServer $socketServer,
+        private readonly ServerSocket $socketServer,
         private readonly Semaphore $semaphore,
     ) {
     }
 
-    public function accept(?Cancellation $cancellation = null): ?EncryptableSocket
+    public function accept(?Cancellation $cancellation = null): ?Socket
     {
         $lock = $this->semaphore->acquire();
 
@@ -45,21 +45,6 @@ final class ConnectionLimitingSocketServer implements SocketServer
     public function onClose(\Closure $onClose): void
     {
         $this->socketServer->onClose($onClose);
-    }
-
-    public function reference(): void
-    {
-        $this->socketServer->reference();
-    }
-
-    public function unreference(): void
-    {
-        $this->socketServer->unreference();
-    }
-
-    public function getResource()
-    {
-        return $this->socketServer->getResource();
     }
 
     public function getAddress(): SocketAddress
