@@ -25,12 +25,15 @@ final class DefaultErrorHandler implements ErrorHandler
             self::$errorHtml,
         );
 
-        return new Response(
-            status: $status,
+        $response = new Response(
             headers: [
                 "content-type" => "text/html; charset=utf-8",
             ],
             body: $body,
         );
+
+        $response->setStatus($status, $reason);
+
+        return $response;
     }
 }
