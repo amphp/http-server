@@ -33,33 +33,6 @@ use function Amp\Http\formatDateHeader;
 
 final class Http1Driver extends AbstractHttpDriver
 {
-    private const HEADER_LOWER = [
-        'Accept' => 'accept',
-        'accept' => 'accept',
-        'Accept-Encoding' => 'accept-encoding',
-        'accept-encoding' => 'accept-encoding',
-        'Accept-Language' => 'accept-language',
-        'accept-language' => 'accept-language',
-        'Connection' => 'connection',
-        'connection' => 'connection',
-        'Cookie' => 'cookie',
-        'cookie' => 'cookie',
-        'Host' => 'host',
-        'host' => 'host',
-        'Sec-Fetch-Dest' => 'sec-fetch-dest',
-        'sec-fetch-dest' => 'sec-fetch-dest',
-        'Sec-Fetch-Mode' => 'sec-fetch-mode',
-        'sec-fetch-mode' => 'sec-fetch-mode',
-        'Sec-Fetch-Site' => 'sec-fetch-site',
-        'sec-fetch-site' => 'sec-fetch-site',
-        'Sec-Fetch-User' => 'sec-fetch-user',
-        'sec-fetch-user' => 'sec-fetch-user',
-        'Upgrade-Insecure-Requests' => 'upgrade-insecure-requests',
-        'upgrade-insecure-requests' => 'upgrade-insecure-requests',
-        'User-Agent' => 'user-agent',
-        'user-agent' => 'user-agent',
-    ];
-
     private static function makeHeaderReduceClosure(string $search): \Closure
     {
         return static fn (bool $carry, string $header) => $carry || \strcasecmp($search, $header) === 0;
@@ -231,10 +204,7 @@ final class Http1Driver extends AbstractHttpDriver
                     }
 
                     $parsedHeaders = Rfc7230::parseRawHeaders($rawHeaders);
-                    $headers = [];
-                    foreach ($parsedHeaders as [$key, $value]) {
-                        $headers[self::HEADER_LOWER[$key] ?? \strtolower($key)][] = $value;
-                    }
+                    $headers = Rfc7230::parseHeaders($rawHeaders);
                 } catch (InvalidHeaderException $e) {
                     throw new ClientException(
                         $this->client,
@@ -416,15 +386,13 @@ final class Http1Driver extends AbstractHttpDriver
                     $this->http2driver->initializeWriting($this->client, $this->writableStream);
 
                     // Remove headers that are not related to the HTTP/2 request.
-                    foreach ($parsedHeaders as $index => [$key, $value]) {
-                        switch (\strtolower($key)) {
-                            case "upgrade":
-                            case "connection":
-                            case "http2-settings":
-                                unset($parsedHeaders[$index]);
-                                break;
-                        }
-                    }
+                    $parsedHeaders = \array_filter(
+                        $parsedHeaders,
+                        static fn (array $pair) => match (strtolower($pair[0])) {
+                            'upgrade', 'connection', 'http2-settings' => false,
+                            default => true,
+                        },
+                    );
 
                     $protocol = "2";
                 }
@@ -433,8 +401,8 @@ final class Http1Driver extends AbstractHttpDriver
 
                 if (!($isChunked || $contentLength)) {
                     $request = new Request($this->client, $method, $uri, [], '', $protocol);
-                    foreach ($parsedHeaders as [$key, $value]) {
-                        $request->addHeader($key, $value);
+                    foreach ($parsedHeaders as $pair) {
+                        $request->addHeader(...$pair);
                     }
 
                     $this->pendingResponseCount++;
@@ -487,8 +455,8 @@ final class Http1Driver extends AbstractHttpDriver
                 }
 
                 $request = new Request($this->client, $method, $uri, [], $body, $protocol, $trailers);
-                foreach ($parsedHeaders as [$key, $value]) {
-                    $request->addHeader($key, $value);
+                foreach ($parsedHeaders as $pair) {
+                    $request->addHeader(...$pair);
                 }
 
                 // Do not await future until body is completely read.
