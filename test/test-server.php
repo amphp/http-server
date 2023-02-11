@@ -16,6 +16,7 @@ use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
 use Amp\TimeoutCancellation;
+use Monolog\Level;
 use Monolog\Logger;
 use function Amp\trapSignal;
 
@@ -28,7 +29,7 @@ $context = (new Socket\BindContext)
 
 $logHandler = new StreamHandler(new WritableResourceStream(STDOUT));
 $logHandler->setFormatter(new ConsoleFormatter);
-$logHandler->setLevel(Logger::INFO);
+$logHandler->setLevel(Level::Info);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 

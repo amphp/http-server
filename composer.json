@@ -50,7 +50,7 @@
         "amphp/log": "^2",
         "amphp/php-cs-fixer-config": "^2-dev",
         "league/uri-components": "^2",
-        "monolog/monolog": "^2 || ^1.23",
+        "monolog/monolog": "^3",
         "phpunit/phpunit": "^9",
         "psalm/phar": "^5.4"
     },
