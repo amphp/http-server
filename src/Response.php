@@ -6,19 +6,18 @@ use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\HttpMessage;
+use Amp\Http\HttpResponse;
 use Amp\Http\HttpStatus;
 use League\Uri;
 use Revolt\EventLoop;
 
-final class Response extends HttpMessage
+/**
+ * @psalm-import-type HeaderParamValueType from HttpMessage
+ * @psalm-import-type HeaderParamArrayType from HttpMessage
+ */
+final class Response extends HttpResponse
 {
     private ReadableStream $body;
-
-    /** @var int HTTP status code. */
-    private int $status;
-
-    /** @var string Response reason. */
-    private string $reason;
 
     /** @var array<non-empty-string, ResponseCookie> */
     private array $cookies = [];
@@ -35,9 +34,7 @@ final class Response extends HttpMessage
 
     /**
      * @param int $status HttpStatus code.
-     * @param array<non-empty-string, string|string[]> $headers
-     *
-     * @throws \Error If one of the arguments is invalid.
+     * @param array<non-empty-string, string|array<string>> $headers
      */
     public function __construct(
         int $status = HttpStatus::OK,
@@ -45,8 +42,7 @@ final class Response extends HttpMessage
         ReadableStream|string $body = '',
         ?Trailers $trailers = null
     ) {
-        $this->status = $this->validateStatusCode($status);
-        $this->reason = HttpStatus::getReason($this->status);
+        parent::__construct($this->validateStatusCode($status));
 
         $this->setBody($body);
 
@@ -94,7 +90,7 @@ final class Response extends HttpMessage
      * Sets the headers from the given array. Any cookie headers will automatically populate the contained array of
      * ResponseCookie objects.
      *
-     * @param array<non-empty-string, string|array<string>> $headers
+     * @param HeaderParamArrayType $headers
      */
     public function setHeaders(array $headers): void
     {
@@ -113,7 +109,7 @@ final class Response extends HttpMessage
      * Replaces headers from the given array. Any cookie headers will automatically populate the contained array of
      * ResponseCookie objects.
      *
-     * @param array<non-empty-string, string|array<string>> $headers
+     * @param HeaderParamArrayType $headers
      */
     public function replaceHeaders(array $headers): void
     {
@@ -132,11 +128,11 @@ final class Response extends HttpMessage
      * Sets the named header to the given value.
      *
      * @param non-empty-string $name
-     * @param string|string[] $value
+     * @param HeaderParamValueType $value
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, array|string $value): void
+    public function setHeader(string $name, array|string|int|float $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -153,11 +149,11 @@ final class Response extends HttpMessage
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
      * @param non-empty-string $name
-     * @param string|string[] $value
+     * @param HeaderParamValueType $value
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, $value): void
+    public function addHeader(string $name, array|string|int|float $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -183,22 +179,6 @@ final class Response extends HttpMessage
     }
 
     /**
-     * Returns the response status code.
-     */
-    public function getStatus(): int
-    {
-        return $this->status;
-    }
-
-    /**
-     * Returns the reason phrase describing the status code.
-     */
-    public function getReason(): string
-    {
-        return $this->reason;
-    }
-
-    /**
      * Sets the response status code and reason phrase. Use null for the reason phrase to use the default phrase
      * associated with the status code.
      *
@@ -206,10 +186,9 @@ final class Response extends HttpMessage
      */
     public function setStatus(int $status, string $reason = null): void
     {
-        $this->status = $this->validateStatusCode($status);
-        $this->reason = $reason ?? HttpStatus::getReason($this->status);
+        parent::setStatus($this->validateStatusCode($status), $reason);
 
-        if ($this->upgrade && $this->status !== HttpStatus::SWITCHING_PROTOCOLS) {
+        if ($this->upgrade && $status !== HttpStatus::SWITCHING_PROTOCOLS) {
             $this->upgrade = null;
         }
     }
@@ -250,13 +229,10 @@ final class Response extends HttpMessage
         }
     }
 
-    /**
-     * @throws \Error
-     */
     private function validateStatusCode(int $status): int
     {
         if ($status < 100 || $status > 599) {
-            throw new \Error(
+            throw new \ValueError(
                 'Invalid status code. Must be an integer between 100 and 599, inclusive.'
             );
         }
@@ -365,8 +341,7 @@ final class Response extends HttpMessage
     public function upgrade(\Closure $upgrade): void
     {
         $this->upgrade = $upgrade;
-        $this->status = HttpStatus::SWITCHING_PROTOCOLS;
-        $this->reason = HttpStatus::getReason($this->status);
+        $this->setStatus(HttpStatus::SWITCHING_PROTOCOLS);
 
         $this->removeTrailers();
     }

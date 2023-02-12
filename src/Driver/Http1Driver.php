@@ -154,6 +154,7 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException($this->client, "Bad Request: invalid request line", HttpStatus::BAD_REQUEST);
                 }
 
+                /** @var non-empty-list<non-empty-string> $matches */
                 [$startLine, $method, $target, $protocol] = $matches;
                 $rawHeaders = \substr($rawHeaders, \strlen($startLine));
 
@@ -204,7 +205,7 @@ final class Http1Driver extends AbstractHttpDriver
                     }
 
                     $parsedHeaders = Rfc7230::parseRawHeaders($rawHeaders);
-                    $headers = Rfc7230::parseHeaders($rawHeaders);
+                    $headers = Rfc7230::convertRawHeadersToMap($parsedHeaders);
                 } catch (InvalidHeaderException $e) {
                     throw new ClientException(
                         $this->client,
@@ -388,7 +389,7 @@ final class Http1Driver extends AbstractHttpDriver
                     // Remove headers that are not related to the HTTP/2 request.
                     $parsedHeaders = \array_filter(
                         $parsedHeaders,
-                        static fn (array $pair) => match (strtolower($pair[0])) {
+                        static fn (array $pair) => match (\strtolower($pair[0])) {
                             'upgrade', 'connection', 'http2-settings' => false,
                             default => true,
                         },

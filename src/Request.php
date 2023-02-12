@@ -5,10 +5,15 @@ namespace Amp\Http\Server;
 use Amp\ByteStream\ReadableStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\HttpMessage;
+use Amp\Http\HttpRequest;
 use Amp\Http\Server\Driver\Client;
 use Psr\Http\Message\UriInterface as PsrUri;
 
-final class Request extends HttpMessage
+/**
+ * @psalm-import-type HeaderParamValueType from HttpMessage
+ * @psalm-import-type HeaderParamArrayType from HttpMessage
+ */
+final class Request extends HttpRequest
 {
     private ?RequestBody $body = null;
 
@@ -22,7 +27,7 @@ final class Request extends HttpMessage
 
     /**
      * @param Client $client The client sending the request.
-     * @param string $method HTTP request method.
+     * @param non-empty-string $method HTTP request method.
      * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
      * @param array<non-empty-string, string|string[]> $headers An array of strings or an array of string arrays.
      * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
@@ -30,13 +35,15 @@ final class Request extends HttpMessage
      */
     public function __construct(
         private readonly Client $client,
-        private string $method,
-        private PsrUri $uri,
+        string $method,
+        PsrUri $uri,
         array $headers = [],
         ReadableStream|string $body = '',
         private string $protocol = "1.1",
         ?Trailers $trailers = null
     ) {
+        parent::__construct($method, $uri);
+
         if ($body !== '') {
             $this->setBody($body);
         }
@@ -59,27 +66,11 @@ final class Request extends HttpMessage
     }
 
     /**
-     * Retrieve the HTTP method used to make this request.
-     */
-    public function getMethod(): string
-    {
-        return $this->method;
-    }
-
-    /**
      * Sets the request HTTP method.
      */
     public function setMethod(string $method): void
     {
-        $this->method = $method;
-    }
-
-    /**
-     * Retrieve the request URI.
-     */
-    public function getUri(): PsrUri
-    {
-        return $this->uri;
+        parent::setMethod($method);
     }
 
     /**
@@ -87,7 +78,7 @@ final class Request extends HttpMessage
      */
     public function setUri(PsrUri $uri): void
     {
-        $this->uri = $uri;
+        parent::setUri($uri);
     }
 
     /**
@@ -111,7 +102,7 @@ final class Request extends HttpMessage
      * Sets the headers from the given array. Any cookie headers will automatically populate the contained array of
      * RequestCookie objects.
      *
-     * @param array<non-empty-string, string|array<string>> $headers
+     * @param HeaderParamArrayType $headers
      */
     public function setHeaders(array $headers): void
     {
@@ -130,7 +121,7 @@ final class Request extends HttpMessage
      * Replace headers from the given array. Any cookie headers will automatically populate the contained array of
      * RequestCookie objects.
      *
-     * @param array<non-empty-string, string|array<string>> $headers
+     * @param HeaderParamArrayType $headers
      */
     public function replaceHeaders(array $headers): void
     {
@@ -149,11 +140,11 @@ final class Request extends HttpMessage
      * Sets the named header to the given value.
      *
      * @param non-empty-string $name
-     * @param string|string[] $value
+     * @param HeaderParamValueType $value
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, array|string $value): void
+    public function setHeader(string $name, array|string|int|float $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -170,11 +161,11 @@ final class Request extends HttpMessage
      * Adds the value to the named header, or creates the header with the given value if it did not exist.
      *
      * @param non-empty-string $name
-     * @param string|string[] $value
+     * @param HeaderParamValueType $value
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, array|string $value): void
+    public function addHeader(string $name, array|string|int|float $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -197,6 +188,36 @@ final class Request extends HttpMessage
         if (\stripos($name, "cookie") === 0) {
             $this->cookies = [];
         }
+    }
+
+    public function setQueryParameter(string $key, float|array|int|string|null $value): void
+    {
+        parent::setQueryParameter($key, $value);
+    }
+
+    public function addQueryParameter(string $key, float|array|int|string|null $value): void
+    {
+        parent::addQueryParameter($key, $value);
+    }
+
+    public function setQueryParameters(array $parameters): void
+    {
+        parent::setQueryParameters($parameters);
+    }
+
+    public function replaceQueryParameters(array $parameters): void
+    {
+        parent::replaceQueryParameters($parameters);
+    }
+
+    public function removeQueryParameter(string $key): void
+    {
+        parent::removeQueryParameter($key);
+    }
+
+    public function removeQuery(): void
+    {
+        parent::removeQuery();
     }
 
     /**
@@ -226,7 +247,7 @@ final class Request extends HttpMessage
 
         if ($length = \strlen($body)) {
             $this->setHeader("content-length", (string) $length);
-        } elseif (!\in_array($this->method, ["GET", "HEAD", "OPTIONS", "TRACE"])) {
+        } elseif (!\in_array($this->getMethod(), ["GET", "HEAD", "OPTIONS", "TRACE"])) {
             $this->setHeader("content-length", "0");
         } else {
             $this->removeHeader("content-length");
