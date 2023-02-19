@@ -153,7 +153,7 @@ final class Request extends HttpMessage
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, array|string $value): void
+    public function setHeader(string $name, array|string|int|float $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -174,7 +174,7 @@ final class Request extends HttpMessage
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, array|string $value): void
+    public function addHeader(string $name, array|string|int|float $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
