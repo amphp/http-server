@@ -34,7 +34,7 @@
         "amphp/byte-stream": "^2",
         "amphp/cache": "^2",
         "amphp/hpack": "^3",
-        "amphp/http": "v2.x-dev",
+        "amphp/http": "^2",
         "amphp/pipeline": "^1",
         "amphp/socket": "^2",
         "amphp/sync": "^2",
@@ -46,7 +46,7 @@
     },
     "require-dev": {
         "amphp/phpunit-util": "^3",
-        "amphp/http-client": "dev-queries",
+        "amphp/http-client": "^5",
         "amphp/log": "^2",
         "amphp/php-cs-fixer-config": "^2",
         "league/uri-components": "^2",
@@ -76,11 +76,6 @@
         "files": [
             "test/functions.php"
         ]
-    },
-    "extra": {
-        "branch-alias": {
-            "dev-master": "2.x-dev"
-        }
     },
     "scripts": {
         "test": "@php -dzend.assertions=1 -dassert.exception=1 ./vendor/bin/phpunit",
