@@ -9,8 +9,8 @@ use Amp\Future;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Http2\Http2Parser;
+use Amp\Http\HttpMessage;
 use Amp\Http\HttpStatus;
-use Amp\Http\Message;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
@@ -1127,7 +1127,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $trailers = $request->getTrailers()->await();
 
-        self::assertInstanceOf(Message::class, $trailers);
+        self::assertInstanceOf(HttpMessage::class, $trailers);
         self::assertSame("42", $trailers->getHeader("My-Trailer"));
     }
 
