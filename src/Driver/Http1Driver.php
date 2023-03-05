@@ -757,7 +757,7 @@ final class Http1Driver extends AbstractHttpDriver
         } catch (ClientException $exception) {
             if ($this->bodyQueue === null || !$this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
-                $this->sendErrorResponse($exception)->await();
+                $this->sendErrorResponse($exception, $request ?? null)->await();
             }
         } finally {
             $this->pendingResponse->finally(function (): void {
@@ -1023,15 +1023,19 @@ final class Http1Driver extends AbstractHttpDriver
 
     /**
      * Creates an error response from the error handler and sends that response to the client.
+     *
+     * @return Future<void>
      */
-    private function sendErrorResponse(ClientException $exception): Future
+    private function sendErrorResponse(ClientException $exception, ?Request $request): Future
     {
         $message = $exception->getMessage();
-        $status = $exception->getCode() ?: HttpStatus::BAD_REQUEST;
+        $status = $exception->getCode();
 
-        \assert($status >= 400 && $status < 500);
+        if (!(HttpStatus::isClientError($status) || HttpStatus::isServerError($status))) {
+            $status = HttpStatus::BAD_REQUEST;
+        }
 
-        $response = $this->errorHandler->handleError($status, $message);
+        $response = $this->errorHandler->handleError($status, $message, $request);
         $response->setHeader("connection", "close");
 
         return $this->lastWrite = async($this->send(...), $this->lastWrite, $response);
