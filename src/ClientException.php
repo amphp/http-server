@@ -11,7 +11,7 @@ namespace Amp\Http\Server;
  * in which the handler is also reading the request body, this exception should be caught and used to fail the streaming
  * response body.
  *
- * Creating and throwing a ClientException from a request handler or failing streaming response body will abruptly
+ * Throwing a ClientException from a request handler or failing streaming response body will abruptly
  * disconnect a client. It is not recommended to create ClientException instances in a request handler.
  *
  * Responses returned by request handlers after a ClientException has been thrown will be ignored, as a response has
@@ -21,6 +21,7 @@ class ClientException extends \Exception
 {
     private Driver\Client $client;
 
+    /** @internal Do not instantiate instances of this exception in your request handlers or middleware! */
     public function __construct(Driver\Client $client, string $message, int $code = 0, \Throwable $previous = null)
     {
         parent::__construct($message, $code, $previous);
