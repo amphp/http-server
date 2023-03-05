@@ -497,6 +497,7 @@ final class Http1Driver extends AbstractHttpDriver
                             $buffer .= $chunk;
                         }
 
+                        /** @psalm-suppress NoValue $lineEndPos is set above, maybe a bug in Psalm? */
                         $line = \substr($buffer, 0, $lineEndPos);
                         $buffer = \substr($buffer, $lineEndPos + 2);
                         $hex = \trim($line);
@@ -847,7 +848,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         $lastWrite?->await(); // Prevent sending multiple responses at once.
 
-        $protocol = $request !== null ? $request->getProtocolVersion() : "1.0";
+        $protocol = $request?->getProtocolVersion() ?? "1.0";
 
         $status = $response->getStatus();
         $reason = $response->getReason();
@@ -856,7 +857,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         $trailers = $response->getTrailers();
 
-        if ($trailers !== null && !isset($headers["trailer"]) && ($fields = $trailers->getFields())) {
+        if (($fields = $trailers?->getFields()) && !isset($headers["trailer"])) {
             $headers["trailer"] = [\implode(", ", $fields)];
         }
 
@@ -870,24 +871,26 @@ final class Http1Driver extends AbstractHttpDriver
         }
 
         $chunk = "HTTP/$protocol $status $reason\r\n" . Rfc7230::formatHeaders($headers) . "\r\n";
-        $this->writableStream->write($chunk);
-
-        if ($request !== null && $request->getMethod() === "HEAD") {
-            if ($shouldClose) {
-                $this->writableStream->end();
-            }
-
-            return;
-        }
-
-        $chunk = null; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
-        $body = $response->getBody();
-
-        $this->updateTimeout();
-
-        $cancellation = $this->deferredCancellation->getCancellation();
 
         try {
+            $this->writableStream->write($chunk);
+
+            $chunk = null; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
+
+            if ($request?->getMethod() === "HEAD") {
+                if ($shouldClose) {
+                    $this->writableStream->end();
+                }
+
+                return;
+            }
+
+            $body = $response->getBody();
+
+            $this->updateTimeout();
+
+            $cancellation = $this->deferredCancellation->getCancellation();
+
             while (null !== $chunk = $body->read($cancellation)) {
                 if ($chunk === "") {
                     continue;
