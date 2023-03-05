@@ -199,11 +199,6 @@ final class Http1Driver extends AbstractHttpDriver
                 }
 
                 try {
-                    if ($protocol === "1.0") {
-                        // Header folding is deprecated for HTTP/1.1, but allowed in HTTP/1.0
-                        $rawHeaders = \preg_replace(Rfc7230::HEADER_FOLD_REGEX, ' ', $rawHeaders);
-                    }
-
                     $parsedHeaders = Rfc7230::parseRawHeaders($rawHeaders);
                     $headers = Rfc7230::convertRawHeadersToMap($parsedHeaders);
                 } catch (InvalidHeaderException $e) {
