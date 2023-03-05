@@ -34,7 +34,7 @@ final class Response extends HttpResponse
 
     /**
      * @param int $status HttpStatus code.
-     * @param array<non-empty-string, string|array<string>> $headers
+     * @param HeaderParamArrayType $headers
      */
     public function __construct(
         int $status = HttpStatus::OK,
@@ -132,7 +132,7 @@ final class Response extends HttpResponse
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, array|string|int|float $value): void
+    public function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -153,7 +153,7 @@ final class Response extends HttpResponse
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, array|string|int|float $value): void
+    public function addHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -306,7 +306,7 @@ final class Response extends HttpResponse
      * Indicate resources which a client likely needs to fetch (e.g. Link: preload or HTTP/2 Server Push).
      *
      * @param string $url URL of resource to push to the client.
-     * @param array<non-empty-string, string|array<string>> $headers Additional headers to attach to the request.
+     * @param HeaderParamArrayType $headers Additional headers to attach to the request.
      *
      * @throws \Error If the given url is invalid.
      */

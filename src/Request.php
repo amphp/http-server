@@ -144,7 +144,7 @@ final class Request extends HttpRequest
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function setHeader(string $name, array|string|int|float $value): void
+    public function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -165,7 +165,7 @@ final class Request extends HttpRequest
      *
      * @throws \Error If the header name or value is invalid.
      */
-    public function addHeader(string $name, array|string|int|float $value): void
+    public function addHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
             throw new \Error("Header name cannot be empty or start with a colon (:)");
@@ -190,12 +190,12 @@ final class Request extends HttpRequest
         }
     }
 
-    public function setQueryParameter(string $key, float|array|int|string|null $value): void
+    public function setQueryParameter(string $key, array|string|null $value): void
     {
         parent::setQueryParameter($key, $value);
     }
 
-    public function addQueryParameter(string $key, float|array|int|string|null $value): void
+    public function addQueryParameter(string $key, array|string|null $value): void
     {
         parent::addQueryParameter($key, $value);
     }
