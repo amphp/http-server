@@ -22,7 +22,7 @@ final class Push extends HttpMessage
         $this->uri = $uri;
     }
 
-    protected function setHeader(string $name, array|string|int|float $value): void
+    protected function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":" || !\strncasecmp("host", $name, 4)) {
             throw new \Error("Pushed headers must not contain colon-prefixed headers or a Host header");
