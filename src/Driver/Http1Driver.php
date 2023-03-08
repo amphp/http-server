@@ -209,7 +209,7 @@ final class Http1Driver extends AbstractHttpDriver
                     );
                 }
 
-                if (isset($contentLength["content-length"][1])) {
+                if (isset($headers["content-length"][1])) {
                     throw new ClientException(
                         $this->client,
                         "Bad Request: multiple content-length headers",
