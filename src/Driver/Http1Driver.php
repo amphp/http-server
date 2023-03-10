@@ -70,10 +70,9 @@ final class Http1Driver extends AbstractHttpDriver
         private readonly int $connectionTimeout = self::DEFAULT_STREAM_TIMEOUT,
         private readonly int $headerSizeLimit = self::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = self::DEFAULT_BODY_SIZE_LIMIT,
-        array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
         private readonly bool $allowHttp2Upgrade = false,
     ) {
-        parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
+        parent::__construct($requestHandler, $errorHandler, $logger);
 
         $this->pendingResponse = Future::complete();
         $this->deferredCancellation = new DeferredCancellation();
@@ -172,7 +171,6 @@ final class Http1Driver extends AbstractHttpDriver
                             connectionTimeout: $this->connectionTimeout,
                             headerSizeLimit: $this->headerSizeLimit,
                             bodySizeLimit: $this->bodySizeLimit,
-                            allowedMethods: $this->allowedMethods,
                             pushEnabled: false,
                         );
 
@@ -375,7 +373,6 @@ final class Http1Driver extends AbstractHttpDriver
                         connectionTimeout: $this->connectionTimeout,
                         headerSizeLimit: $this->headerSizeLimit,
                         bodySizeLimit: $this->bodySizeLimit,
-                        allowedMethods: $this->allowedMethods,
                         pushEnabled: false,
                         settings: $h2cSettings,
                     );

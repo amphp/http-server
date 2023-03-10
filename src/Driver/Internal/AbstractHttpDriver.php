@@ -15,23 +15,6 @@ use Psr\Log\LoggerInterface;
 /** @internal */
 abstract class AbstractHttpDriver implements HttpDriver
 {
-    /**
-     * HTTP methods that are *known*.
-     *
-     * Requests for methods not defined here or within Options should result in a 501 (not implemented) response.
-     */
-    private const KNOWN_METHODS = [
-        "GET" => true,
-        "HEAD" => true,
-        "POST" => true,
-        "PUT" => true,
-        "PATCH" => true,
-        "DELETE" => true,
-        "OPTIONS" => true,
-        "TRACE" => true,
-        "CONNECT" => true,
-    ];
-
     private static ?TimeoutQueue $timeoutQueue = null;
     private static ?ErrorHandler $defaultErrorHandler = null;
 
@@ -52,7 +35,6 @@ abstract class AbstractHttpDriver implements HttpDriver
         protected readonly RequestHandler $requestHandler,
         protected readonly ErrorHandler $errorHandler,
         protected readonly LoggerInterface $logger,
-        protected readonly array $allowedMethods = HttpDriver::DEFAULT_ALLOWED_METHODS,
     ) {
     }
 
@@ -78,25 +60,10 @@ abstract class AbstractHttpDriver implements HttpDriver
         $this->pendingResponseCount++;
 
         try {
-            $method = $request->getMethod();
-
-            if (!\in_array($method, $this->allowedMethods, true)) {
-                $response = $this->handleInvalidMethod(
-                    $request,
-                    isset(self::KNOWN_METHODS[$method]) ? HttpStatus::METHOD_NOT_ALLOWED : HttpStatus::NOT_IMPLEMENTED,
-                );
-            } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
-                $response = new Response(HttpStatus::NO_CONTENT, [
-                    "allow" => \implode(", ", $this->allowedMethods),
-                ]);
-            } else {
-                $response = $this->requestHandler->handleRequest($request);
-            }
+            $response = $this->requestHandler->handleRequest($request);
+        } catch (ClientException $exception) {
+            throw $exception;
         } catch (\Throwable $exception) {
-            if ($exception instanceof ClientException) {
-                throw $exception;
-            }
-
             $response = $this->handleInternalServerError($request, $exception);
         } finally {
             $this->pendingRequestHandlerCount--;
@@ -122,24 +89,6 @@ abstract class AbstractHttpDriver implements HttpDriver
      * Write the given response to the client using the write callback provided to `setup()`.
      */
     abstract protected function write(Request $request, Response $response): void;
-
-    private function handleInvalidMethod(Request $request, int $status): Response
-    {
-        $client = $request->getClient();
-
-        $this->logger->warning(\sprintf(
-            "Invalid request method: %s %s HTTP/%s @ %s #%d",
-            $request->getMethod(),
-            (string) $request->getUri(),
-            $request->getProtocolVersion(),
-            $client->getRemoteAddress()->toString(),
-            $client->getId(),
-        ));
-
-        $response = $this->errorHandler->handleError($status);
-        $response->setHeader("allow", \implode(", ", $this->allowedMethods));
-        return $response;
-    }
 
     /**
      * Used if an exception is thrown from a request handler.

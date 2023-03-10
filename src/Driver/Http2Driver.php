@@ -116,11 +116,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         private readonly int $headerSizeLimit = self::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = self::DEFAULT_BODY_SIZE_LIMIT,
         private readonly int $concurrentStreamLimit = self::DEFAULT_CONCURRENT_STREAM_LIMIT,
-        array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
         private readonly bool $pushEnabled = true,
         private readonly ?string $settings = null,
     ) {
-        parent::__construct($requestHandler, $errorHandler, $logger, $allowedMethods);
+        parent::__construct($requestHandler, $errorHandler, $logger);
 
         $this->remainingStreams = $concurrentStreamLimit;
         $this->allowsPush = $pushEnabled;

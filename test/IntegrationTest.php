@@ -131,33 +131,6 @@ class IntegrationTest extends AsyncTestCase
         self::assertSame("message", $response->getBody()->buffer());
     }
 
-    /**
-     * @dataProvider providePreRequestHandlerRequests
-     */
-    public function testPreRequestHandlerFailure(ClientRequest $request, int $status): void
-    {
-        $this->httpServer->start(new ClosureRequestHandler($this->createCallback(0)), new DefaultErrorHandler());
-
-        $request->setUri($this->getAuthority());
-
-        $response = $this->httpClient->request($request);
-
-        self::assertSame($status, $response->getStatus());
-    }
-
-    public function providePreRequestHandlerRequests(): iterable
-    {
-        yield "TRACE" => [
-            new ClientRequest("http://localhost", "TRACE"),
-            HttpStatus::METHOD_NOT_ALLOWED,
-        ];
-
-        yield "UNKNOWN" => [
-            new ClientRequest("http://localhost", "UNKNOWN"),
-            HttpStatus::NOT_IMPLEMENTED,
-        ];
-    }
-
     public function testError(): void
     {
         $this->httpServer->start(new ClosureRequestHandler(function (Request $req) {

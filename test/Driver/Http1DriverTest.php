@@ -167,12 +167,14 @@ class Http1DriverTest extends HttpDriverTest
     {
         $msg = "OPTIONS * HTTP/1.1\r\nHost: localhost\r\n\r\n";
         $driver = new Http1Driver(
-            new ClosureRequestHandler(function () {
-                $this->fail("Should not be called");
+            new ClosureRequestHandler(function (Request $request): Response {
+                self::assertSame("OPTIONS", $request->getMethod());
+                self::assertSame("", $request->getUri()->getPath());
+
+                return new Response(HttpStatus::NO_CONTENT);
             }),
             $this->createMock(ErrorHandler::class),
             new NullLogger,
-            allowedMethods: ["OPTIONS", "HEAD", "GET", "FOO"],
         );
 
         $driver->handleClient(
@@ -182,8 +184,6 @@ class Http1DriverTest extends HttpDriverTest
         );
 
         $output->close();
-        self::assertStringStartsWith("HTTP/1.1 204 No Content\r\n", $output->buffer());
-        self::assertStringContainsString("\r\nallow: OPTIONS, HEAD, GET, FOO\r\n", $output->buffer());
     }
 
     public function testIdentityBodyParseEmit(): void

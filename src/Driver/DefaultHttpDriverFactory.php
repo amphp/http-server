@@ -18,7 +18,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         private readonly int $connectionTimeout = HttpDriver::DEFAULT_CONNECTION_TIMEOUT,
         private readonly int $headerSizeLimit = HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
-        private readonly array $allowedMethods = HttpDriver::DEFAULT_ALLOWED_METHODS,
         private readonly bool $http2Enabled = true,
         private readonly bool $allowHttp2Upgrade = false,
         private readonly bool $pushEnabled = true,
@@ -39,7 +38,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
                 connectionTimeout: $this->connectionTimeout,
                 headerSizeLimit: $this->headerSizeLimit,
                 bodySizeLimit: $this->bodySizeLimit,
-                allowedMethods: $this->allowedMethods,
                 pushEnabled: $this->pushEnabled,
             );
         }
@@ -51,7 +49,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
             connectionTimeout: $this->streamTimeout, // Intentional use of stream instead of connection timeout
             headerSizeLimit: $this->headerSizeLimit,
             bodySizeLimit: $this->bodySizeLimit,
-            allowedMethods: $this->allowedMethods,
             allowHttp2Upgrade: $this->http2Enabled && $this->allowHttp2Upgrade,
         );
     }
