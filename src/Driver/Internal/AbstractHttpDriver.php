@@ -71,14 +71,14 @@ abstract class AbstractHttpDriver implements HttpDriver
 
         /** @psalm-suppress RedundantCondition */
         \assert($this->logger->debug(\sprintf(
-                "%d (%s) %s HTTP/%s @ %s #%d",
-                $response->getStatus(),
-                $response->getReason(),
-                (string) $clientRequest->getUri(),
-                $clientRequest->getProtocolVersion(),
-                $clientRequest->getClient()->getRemoteAddress()->toString(),
-                $clientRequest->getClient()->getId(),
-            )) || true);
+            "%d (%s) %s HTTP/%s @ %s #%d",
+            $response->getStatus(),
+            $response->getReason(),
+            (string) $clientRequest->getUri(),
+            $clientRequest->getProtocolVersion(),
+            $clientRequest->getClient()->getRemoteAddress()->toString(),
+            $clientRequest->getClient()->getId(),
+        )) || true);
 
         $this->write($clientRequest, $response);
 
