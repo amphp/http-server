@@ -82,7 +82,8 @@ abstract class AbstractHttpDriver implements HttpDriver
 
             if (!\in_array($method, $this->allowedMethods, true)) {
                 $response = $this->handleInvalidMethod(
-                    isset(self::KNOWN_METHODS[$method]) ? HttpStatus::METHOD_NOT_ALLOWED : HttpStatus::NOT_IMPLEMENTED
+                    $request,
+                    isset(self::KNOWN_METHODS[$method]) ? HttpStatus::METHOD_NOT_ALLOWED : HttpStatus::NOT_IMPLEMENTED,
                 );
             } elseif ($method === "OPTIONS" && $request->getUri()->getPath() === "") {
                 $response = new Response(HttpStatus::NO_CONTENT, [
@@ -101,6 +102,17 @@ abstract class AbstractHttpDriver implements HttpDriver
             $this->pendingRequestHandlerCount--;
         }
 
+        /** @psalm-suppress RedundantCondition */
+        \assert($this->logger->debug(\sprintf(
+                "%d (%s) %s HTTP/%s @ %s #%d",
+                $response->getStatus(),
+                $response->getReason(),
+                (string) $clientRequest->getUri(),
+                $clientRequest->getProtocolVersion(),
+                $clientRequest->getClient()->getRemoteAddress()->toString(),
+                $clientRequest->getClient()->getId(),
+            )) || true);
+
         $this->write($clientRequest, $response);
 
         $this->pendingResponseCount--;
@@ -111,8 +123,19 @@ abstract class AbstractHttpDriver implements HttpDriver
      */
     abstract protected function write(Request $request, Response $response): void;
 
-    private function handleInvalidMethod(int $status): Response
+    private function handleInvalidMethod(Request $request, int $status): Response
     {
+        $client = $request->getClient();
+
+        $this->logger->warning(\sprintf(
+            "Invalid request method: %s %s HTTP/%s @ %s #%d",
+            $request->getMethod(),
+            (string) $request->getUri(),
+            $request->getProtocolVersion(),
+            $client->getRemoteAddress()->toString(),
+            $client->getId(),
+        ));
+
         $response = $this->errorHandler->handleError($status);
         $response->setHeader("allow", \implode(", ", $this->allowedMethods));
         return $response;
