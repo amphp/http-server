@@ -29,6 +29,7 @@ use Amp\Socket\InternetAddress;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\async;
+use function Amp\Http\convertRawHeadersToMap;
 use function Amp\Http\formatDateHeader;
 
 final class Http1Driver extends AbstractHttpDriver
@@ -200,7 +201,7 @@ final class Http1Driver extends AbstractHttpDriver
 
                 try {
                     $parsedHeaders = Rfc7230::parseRawHeaders($rawHeaders);
-                    $headers = Rfc7230::convertRawHeadersToMap($parsedHeaders);
+                    $headers = convertRawHeadersToMap($parsedHeaders);
                 } catch (InvalidHeaderException $e) {
                     throw new ClientException(
                         $this->client,
