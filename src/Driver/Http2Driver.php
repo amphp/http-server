@@ -994,13 +994,21 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
 
         try {
-            $uri = Uri\Http::createFromComponents([
-                "scheme" => $scheme,
-                "host" => $host,
-                "port" => $port,
-                "path" => $target,
-                "query" => $query,
-            ]);
+            if ($target === "*") {
+                $uri = Uri\Http::createFromComponents([
+                    "scheme" => $scheme,
+                    "host" => $host,
+                    "port" => $port,
+                ]);
+            } else {
+                $uri = Uri\Http::createFromComponents([
+                    "scheme" => $scheme,
+                    "host" => $host,
+                    "port" => $port,
+                    "path" => $target,
+                    "query" => $query,
+                ]);
+            }
         } catch (Uri\Contracts\UriException $exception) {
             throw new Http2ConnectionException(
                 "Invalid request URI",
