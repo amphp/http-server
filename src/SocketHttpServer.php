@@ -138,6 +138,7 @@ final class SocketHttpServer implements HttpServer
                     "Either activate the zlib extension or disable compression in the server's options."
                 );
             } else {
+                $this->logger->notice('Response compression enabled.');
                 $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
             }
         }
