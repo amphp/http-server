@@ -97,13 +97,34 @@ abstract class AbstractHttpDriver implements HttpDriver
     {
         $status = HttpStatus::INTERNAL_SERVER_ERROR;
 
+        $client = $request->getClient();
+        $method = $request->getMethod();
+        $uri = (string) $request->getUri();
+        $protocolVersion = $request->getProtocolVersion();
+        $local = $client->getLocalAddress()->toString();
+        $remote = $client->getRemoteAddress()->toString();
+
         $this->logger->error(
             \sprintf(
-                "Unexpected %s thrown from %s::handleRequest(), falling back to error handler.",
+                "Unexpected %s with message '%s' thrown from %s:%d when handling request: %s %s HTTP/%s %s on %s",
                 $exception::class,
-                $this->requestHandler::class,
+                $exception->getMessage(),
+                $exception->getFile(),
+                $exception->getLine(),
+                $method,
+                $uri,
+                $protocolVersion,
+                $remote,
+                $local,
             ),
-            ['exception' => $exception],
+            [
+                'exception' => $exception,
+                'method' => $request,
+                'uri' => $uri,
+                'protocolVersion' => $protocolVersion,
+                'local' => $local,
+                'remote' => $remote,
+            ],
         );
 
         try {

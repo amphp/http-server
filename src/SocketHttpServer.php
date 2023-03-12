@@ -10,6 +10,7 @@ use Amp\Http\Server\Driver\ConnectionLimitingServerSocketFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
+use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
@@ -61,7 +62,8 @@ final class SocketHttpServer implements HttpServer
             $this->socketServerFactory = $serverSocketFactory;
         }
 
-        $this->clientFactory = $clientFactory ?? new ConnectionLimitingClientFactory($this->logger);
+        $this->clientFactory = $clientFactory
+            ?? new ConnectionLimitingClientFactory(new SocketClientFactory($this->logger), $this->logger);
         $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($this->logger);
 
         $this->onStart((new PerformanceRecommender($this->logger))->onStart(...));

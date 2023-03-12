@@ -18,12 +18,11 @@ final class SocketClientFactory implements ClientFactory
 
     public function createClient(Socket $socket): ?Client
     {
+        $local = $socket->getLocalAddress()->toString();
+        $remote = $socket->getRemoteAddress()->toString();
+
         /** @psalm-suppress RedundantCondition */
-        \assert($this->logger->debug(\sprintf(
-            "Accepted %s on %s",
-            $socket->getRemoteAddress()->toString(),
-            $socket->getLocalAddress()->toString(),
-        )) || true);
+        \assert($this->logger->debug(\sprintf("Accepted %s on %s", $remote, $local)) || true);
 
         if ($socket->isTlsConfigurationAvailable()) {
             try {
@@ -32,24 +31,24 @@ final class SocketClientFactory implements ClientFactory
                 /** @psalm-suppress RedundantCondition, PossiblyNullReference */
                 \assert($this->logger->debug(\sprintf(
                     "TLS negotiated with %s (%s with %s, application protocol: %s)",
-                    $socket->getRemoteAddress()->toString(),
+                    $remote,
                     $socket->getTlsInfo()->getVersion(),
                     $socket->getTlsInfo()->getCipherName(),
                     $socket->getTlsInfo()->getApplicationLayerProtocol() ?? "none",
                 )) || true);
             } catch (SocketException $exception) {
-                $this->logger->debug(\sprintf(
-                    "TLS negotiation failed with %s: %s",
-                    $socket->getRemoteAddress()->toString(),
-                    $exception->getMessage(),
-                ));
+                $message = $exception->getMessage();
+                $this->logger->warning(
+                    \sprintf("TLS negotiation failed for %s on %s: %s", $remote, $local, $message),
+                    ['local' => $local, 'remote' => $remote, 'message' => $message],
+                );
 
                 return null;
             } catch (CancelledException) {
-                $this->logger->debug(\sprintf(
-                    "TLS negotiation timed out with %s",
-                    $socket->getRemoteAddress()->toString(),
-                ));
+                $this->logger->warning(
+                    \sprintf("TLS negotiation timed out for %s on %s", $remote, $local),
+                    ['local' => $local, 'remote' => $remote],
+                );
 
                 return null;
             }

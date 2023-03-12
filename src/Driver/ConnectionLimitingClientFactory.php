@@ -12,15 +12,11 @@ final class ConnectionLimitingClientFactory implements ClientFactory
     /** @var array<string, int> */
     private array $clientsPerIp = [];
 
-    private readonly ClientFactory $clientFactory;
-
     public function __construct(
+        private readonly ClientFactory $clientFactory,
         private readonly PsrLogger $logger,
         private readonly int $connectionsPerIpLimit = 10,
-        ?ClientFactory $clientFactory = null,
     ) {
-        $this->clientFactory = $clientFactory ?? new SocketClientFactory($this->logger);
-
         $this->logger->notice("Client connections are limited to {$this->connectionsPerIpLimit} per IP address (excluding localhost)");
     }
 
@@ -37,7 +33,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
 
         // Connections on localhost are excluded from the connections per IP setting.
         // Checks IPv4 loopback (127.x), IPv6 loopback (::1) and IPv4-to-IPv6 mapped loopback.
-        if ($ip === "::1" || \str_starts_with($ip, "127.") //
+        if ($ip === "::1" || \str_starts_with($ip, "127.")
             || \str_starts_with($bytes, "\0\0\0\0\0\0\0\0\0\0\xff\xff\x7f")
         ) {
             return $this->clientFactory->createClient($socket);
@@ -54,7 +50,10 @@ final class ConnectionLimitingClientFactory implements ClientFactory
                 $ip .= "/56";
             }
 
-            $this->logger->warning("Client denied: too many existing connections from {$ip}");
+            $this->logger->warning(
+                "Client denied: too many existing connections from {$ip}",
+                ['local' => $socket->getLocalAddress()->toString(), 'remote' => $address->toString()],
+            );
 
             return null;
         }
