@@ -11,6 +11,7 @@ use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
+use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\ServerSocket;
@@ -47,12 +48,16 @@ final class SocketHttpServer implements HttpServer
     /** @var list<\Closure(HttpServer):void> */
     private array $onStop = [];
 
+    /**
+     * @param list<non-empty-string>|null $allowedMethods List of allowed method verbs or null to allow any.
+     */
     public function __construct(
         private readonly PsrLogger $logger,
         ?ServerSocketFactory $serverSocketFactory = null,
         ?ClientFactory $clientFactory = null,
         ?HttpDriverFactory $httpDriverFactory = null,
         private readonly bool $enableCompression = true,
+        private readonly ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
     ) {
         if (!$serverSocketFactory) {
             $this->socketServerFactory = new ConnectionLimitingServerSocketFactory(new LocalSemaphore(1000));
@@ -141,6 +146,14 @@ final class SocketHttpServer implements HttpServer
                 $this->logger->notice('Response compression enabled.');
                 $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
             }
+        }
+
+        if ($this->allowedMethods !== null) {
+            $this->logger->notice('Request methods restricted to ' . \implode(', ', $this->allowedMethods));
+            $requestHandler = Middleware\stack(
+                $requestHandler,
+                new AllowedMethodsMiddleware($errorHandler, $this->logger, $this->allowedMethods),
+            );
         }
 
         $this->logger->debug("Starting server");
