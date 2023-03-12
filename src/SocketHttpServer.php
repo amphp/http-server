@@ -11,7 +11,6 @@ use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
-use Amp\Http\Server\Internal\PerformanceRecommender;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\ServerSocket;
@@ -65,8 +64,6 @@ final class SocketHttpServer implements HttpServer
         $this->clientFactory = $clientFactory
             ?? new ConnectionLimitingClientFactory(new SocketClientFactory($this->logger), $this->logger);
         $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($this->logger);
-
-        $this->onStart((new PerformanceRecommender($this->logger))->onStart(...));
     }
 
     public function expose(SocketAddress|string $socketAddress, ?BindContext $bindContext = null): void
@@ -121,6 +118,17 @@ final class SocketHttpServer implements HttpServer
 
         if ($this->status !== HttpServerStatus::Stopped) {
             throw new \Error("Cannot start server: " . $this->status->getLabel());
+        }
+
+        if (\ini_get("zend.assertions") === "1") {
+            $this->logger->warning(
+                "Running in production with assertions enabled is not recommended; it has a negative impact " .
+                "on performance. Disable assertions in php.ini (zend.assertions = -1) for best performance."
+            );
+        }
+
+        if (\extension_loaded("xdebug")) {
+            $this->logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
         }
 
         if ($this->enableCompression) {
