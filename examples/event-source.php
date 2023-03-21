@@ -46,7 +46,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new SocketHttpServer($logger, enableCompression: true);
+$server = new SocketHttpServer($logger);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");

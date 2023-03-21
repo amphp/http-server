@@ -37,7 +37,7 @@ final class AllowedMethodsMiddleware implements Middleware
     public function __construct(
         private readonly ErrorHandler $errorHandler,
         private readonly PsrLogger $logger,
-        private readonly array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
+        public readonly array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
     ) {
     }
 

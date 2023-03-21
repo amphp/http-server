@@ -48,16 +48,14 @@ final class SocketHttpServer implements HttpServer
     /** @var list<\Closure(HttpServer):void> */
     private array $onStop = [];
 
-    /**
-     * @param list<non-empty-string>|null $allowedMethods List of allowed method verbs or null to allow any.
-     */
+    private CompressionMiddleware|bool $compressionMiddleware = true;
+    private AllowedMethodsMiddleware|bool $allowedMethodsMiddleware = true;
+
     public function __construct(
         private readonly PsrLogger $logger,
         ?ServerSocketFactory $serverSocketFactory = null,
         ?ClientFactory $clientFactory = null,
         ?HttpDriverFactory $httpDriverFactory = null,
-        private readonly bool $enableCompression = true,
-        private readonly ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
     ) {
         if (!$serverSocketFactory) {
             $this->socketServerFactory = new ConnectionLimitingServerSocketFactory(new LocalSemaphore(1000));
@@ -83,6 +81,26 @@ final class SocketHttpServer implements HttpServer
         }
 
         $this->addresses[$name] = [$socketAddress, $bindContext];
+    }
+
+    public function setCompressionMiddleware(CompressionMiddleware $middleware): void
+    {
+        $this->compressionMiddleware = $middleware;
+    }
+
+    public function removeCompressionMiddleware(): void
+    {
+        $this->compressionMiddleware = false;
+    }
+
+    public function setAllowedMethodsMiddleware(AllowedMethodsMiddleware $middleware): void
+    {
+        $this->allowedMethodsMiddleware = $middleware;
+    }
+
+    public function removeAllowedMethodsMiddleware(): void
+    {
+        $this->allowedMethodsMiddleware = false;
     }
 
     public function getServers(): array
@@ -136,7 +154,7 @@ final class SocketHttpServer implements HttpServer
             $this->logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
         }
 
-        if ($this->enableCompression) {
+        if ($this->compressionMiddleware) {
             if (!\extension_loaded('zlib')) {
                 $this->logger->warning(
                     "The zlib extension is not loaded which prevents using compression. " .
@@ -144,16 +162,21 @@ final class SocketHttpServer implements HttpServer
                 );
             } else {
                 $this->logger->notice('Response compression enabled.');
-                $requestHandler = Middleware\stack($requestHandler, new CompressionMiddleware);
+                $middleware = \is_bool($this->compressionMiddleware)
+                    ? new CompressionMiddleware()
+                    : $this->compressionMiddleware;
+
+                $requestHandler = Middleware\stack($requestHandler, $middleware);
             }
         }
 
-        if ($this->allowedMethods !== null) {
-            $this->logger->notice('Request methods restricted to ' . \implode(', ', $this->allowedMethods));
-            $requestHandler = Middleware\stack(
-                $requestHandler,
-                new AllowedMethodsMiddleware($errorHandler, $this->logger, $this->allowedMethods),
-            );
+        if ($this->allowedMethodsMiddleware) {
+            $middleware = \is_bool($this->allowedMethodsMiddleware)
+                ? new AllowedMethodsMiddleware($errorHandler, $this->logger)
+                : $this->allowedMethodsMiddleware;
+
+            $this->logger->notice('Request methods restricted to ' . \implode(', ', $middleware->allowedMethods) . '.');
+            $requestHandler = Middleware\stack($requestHandler, $middleware);
         }
 
         $this->logger->debug("Starting server");
