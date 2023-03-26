@@ -115,7 +115,7 @@ class Http1DriverTest extends HttpDriverTest
         self::assertSame($expectations["method"], $request->getMethod(), "method mismatch");
         self::assertSame($expectations["uri"], $request->getUri()->getPath(), "uri mismatch");
         self::assertSame($expectations["headers"], $request->getHeaders(), "headers mismatch");
-        self::assertSame($expectations["raw-headers"], $request->getRawHeaders(), "raw headers mismatch");
+        self::assertSame($expectations["raw-headers"], $request->getHeaderPairs(), "raw headers mismatch");
         self::assertSame($expectations["body"], $body, "body mismatch");
     }
 
