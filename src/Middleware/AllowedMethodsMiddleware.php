@@ -37,7 +37,7 @@ final class AllowedMethodsMiddleware implements Middleware
     public function __construct(
         private readonly ErrorHandler $errorHandler,
         private readonly PsrLogger $logger,
-        public readonly array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
+        private readonly array $allowedMethods = self::DEFAULT_ALLOWED_METHODS,
     ) {
     }
 
@@ -57,6 +57,14 @@ final class AllowedMethodsMiddleware implements Middleware
         }
 
         return $requestHandler->handleRequest($request);
+    }
+
+    /**
+     * @return list<non-empty-string>
+     */
+    public function getAllowedMethods(): array
+    {
+        return $this->allowedMethods;
     }
 
     private function handleInvalidMethod(Request $request, int $status): Response

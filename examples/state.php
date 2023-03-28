@@ -6,10 +6,10 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\DefaultHttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\SocketHttpServer;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Monolog\Logger;
@@ -24,7 +24,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new SocketHttpServer($logger);
+$server = new DefaultHttpServer($logger);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");
@@ -43,8 +43,8 @@ $server->start(new ClosureRequestHandler(function (Request $request): Response {
     );
 }), new DefaultErrorHandler());
 
-// Await SIGINT or SIGTERM to be received.
-$signal = trapSignal([\SIGINT, \SIGTERM]);
+// Await a termination signal to be received.
+$signal = trapSignal([\SIGHUP, \SIGINT, \SIGQUIT, \SIGTERM]);
 
 $logger->info(sprintf("Received signal %d, stopping HTTP server", $signal));
 

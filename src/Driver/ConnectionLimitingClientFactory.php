@@ -17,7 +17,6 @@ final class ConnectionLimitingClientFactory implements ClientFactory
         private readonly PsrLogger $logger,
         private readonly int $connectionsPerIpLimit = 10,
     ) {
-        $this->logger->notice("Client connections are limited to {$this->connectionsPerIpLimit} per IP address (excluding localhost)");
     }
 
     public function createClient(Socket $socket): ?Client

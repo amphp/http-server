@@ -10,11 +10,11 @@ use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\HttpStatus;
+use Amp\Http\Server\DefaultHttpServer;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
-use Amp\Http\Server\SocketHttpServer;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Socket;
 use Amp\Socket\Certificate;
@@ -32,7 +32,7 @@ class SocketClientTest extends AsyncTestCase
         $handler = new ClosureRequestHandler($handler);
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
-        $httpServer = new SocketHttpServer(new NullLogger);
+        $httpServer = new DefaultHttpServer(new NullLogger);
 
         $httpServer->expose(
             new Socket\InternetAddress('127.0.0.1', 0),

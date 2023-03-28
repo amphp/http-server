@@ -5,20 +5,16 @@ namespace Amp\Http\Server;
 use Amp\CompositeException;
 use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
-use Amp\Http\Server\Driver\ConnectionLimitingClientFactory;
-use Amp\Http\Server\Driver\ConnectionLimitingServerSocketFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
-use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
-use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
+use Amp\Socket\ResourceServerSocketFactory;
 use Amp\Socket\ServerSocket;
 use Amp\Socket\ServerSocketFactory;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
-use Amp\Sync\LocalSemaphore;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
@@ -27,7 +23,7 @@ final class SocketHttpServer implements HttpServer
 {
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 
-    private readonly ServerSocketFactory $socketServerFactory;
+    private readonly ServerSocketFactory $serverSocketFactory;
 
     private readonly HttpDriverFactory $httpDriverFactory;
 
@@ -48,25 +44,15 @@ final class SocketHttpServer implements HttpServer
     /** @var list<\Closure(HttpServer):void> */
     private array $onStop = [];
 
-    private CompressionMiddleware|bool $compressionMiddleware = true;
-    private AllowedMethodsMiddleware|bool $allowedMethodsMiddleware = true;
-
     public function __construct(
         private readonly PsrLogger $logger,
         ?ServerSocketFactory $serverSocketFactory = null,
         ?ClientFactory $clientFactory = null,
         ?HttpDriverFactory $httpDriverFactory = null,
     ) {
-        if (!$serverSocketFactory) {
-            $this->socketServerFactory = new ConnectionLimitingServerSocketFactory(new LocalSemaphore(1000));
-            $this->logger->notice("Total client connections are limited to 1000");
-        } else {
-            $this->socketServerFactory = $serverSocketFactory;
-        }
-
-        $this->clientFactory = $clientFactory
-            ?? new ConnectionLimitingClientFactory(new SocketClientFactory($this->logger), $this->logger);
-        $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($this->logger);
+        $this->serverSocketFactory = $serverSocketFactory ?? new ResourceServerSocketFactory();
+        $this->clientFactory = $clientFactory ?? new SocketClientFactory($logger);
+        $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($logger);
     }
 
     public function expose(SocketAddress|string $socketAddress, ?BindContext $bindContext = null): void
@@ -83,26 +69,6 @@ final class SocketHttpServer implements HttpServer
         $this->addresses[$name] = [$socketAddress, $bindContext];
     }
 
-    public function setCompressionMiddleware(CompressionMiddleware $middleware): void
-    {
-        $this->compressionMiddleware = $middleware;
-    }
-
-    public function removeCompressionMiddleware(): void
-    {
-        $this->compressionMiddleware = false;
-    }
-
-    public function setAllowedMethodsMiddleware(AllowedMethodsMiddleware $middleware): void
-    {
-        $this->allowedMethodsMiddleware = $middleware;
-    }
-
-    public function removeAllowedMethodsMiddleware(): void
-    {
-        $this->allowedMethodsMiddleware = false;
-    }
-
     public function getServers(): array
     {
         if ($this->status !== HttpServerStatus::Started) {
@@ -112,9 +78,6 @@ final class SocketHttpServer implements HttpServer
         return $this->servers;
     }
 
-    /**
-     * Retrieve the current server status.
-     */
     public function getStatus(): HttpServerStatus
     {
         return $this->status;
@@ -130,9 +93,6 @@ final class SocketHttpServer implements HttpServer
         $this->onStop[] = $onStop;
     }
 
-    /**
-     * Start the server.
-     */
     public function start(RequestHandler $requestHandler, ErrorHandler $errorHandler): void
     {
         if (empty($this->addresses)) {
@@ -152,31 +112,6 @@ final class SocketHttpServer implements HttpServer
 
         if (\extension_loaded("xdebug")) {
             $this->logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
-        }
-
-        if ($this->compressionMiddleware) {
-            if (!\extension_loaded('zlib')) {
-                $this->logger->warning(
-                    "The zlib extension is not loaded which prevents using compression. " .
-                    "Either activate the zlib extension or disable compression in the server's options."
-                );
-            } else {
-                $this->logger->notice('Response compression enabled.');
-                $middleware = \is_bool($this->compressionMiddleware)
-                    ? new CompressionMiddleware()
-                    : $this->compressionMiddleware;
-
-                $requestHandler = Middleware\stack($requestHandler, $middleware);
-            }
-        }
-
-        if ($this->allowedMethodsMiddleware) {
-            $middleware = \is_bool($this->allowedMethodsMiddleware)
-                ? new AllowedMethodsMiddleware($errorHandler, $this->logger)
-                : $this->allowedMethodsMiddleware;
-
-            $this->logger->notice('Request methods restricted to ' . \implode(', ', $middleware->allowedMethods) . '.');
-            $requestHandler = Middleware\stack($requestHandler, $middleware);
         }
 
         $this->logger->debug("Starting server");
@@ -203,7 +138,10 @@ final class SocketHttpServer implements HttpServer
                     $this->httpDriverFactory->getApplicationLayerProtocols(),
                 );
 
-                $this->servers[] = $this->socketServerFactory->listen($address, $bindContext?->withTlsContext($tlsContext));
+                $this->servers[] = $this->serverSocketFactory->listen(
+                    $address,
+                    $bindContext?->withTlsContext($tlsContext),
+                );
             }
 
             $this->logger->info("Started server");
@@ -268,7 +206,7 @@ final class SocketHttpServer implements HttpServer
                 unset($this->drivers[$id]);
             }
         } catch (\Throwable $exception) {
-            $this->logger->error("Exception while handling client {address}", [
+            $this->logger->error("Exception while handling client {$socket->getRemoteAddress()->toString()}", [
                 'address' => $socket->getRemoteAddress(),
                 'exception' => $exception,
             ]);
@@ -277,9 +215,6 @@ final class SocketHttpServer implements HttpServer
         }
     }
 
-    /**
-     * Stop the server.
-     */
     public function stop(): void
     {
         if ($this->status === HttpServerStatus::Stopped) {
