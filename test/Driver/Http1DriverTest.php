@@ -92,7 +92,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             $requestHandler,
-            $this->createMock(ErrorHandler::class),
+            $this->createErrorHandlerMock(1),
             new NullLogger,
         );
 
@@ -130,7 +130,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $driver = new Http1Driver(
             $requestHandler,
-            $this->createMock(ErrorHandler::class),
+            $this->createErrorHandlerMock(1),
             new NullLogger,
         );
 
@@ -426,40 +426,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $return[] = [$msg, $expectations];
 
-        // 4 --- HTTP/1.0 with header folding ---------------------------------------------------------->
-
-        $trace =
-            "GET /someurl.html HTTP/1.0\r\n" .
-            "Host: \r\n" .
-            " localhost\r\n" .
-            "X-My-Header: 42\r\n" .
-            "\r\n";
-
-        $msg = $trace . "\r\n";
-
-        $headers = [
-            'host' => ['localhost'],
-            'x-my-header' => ['42'],
-        ];
-
-        $rawHeaders = [
-            ["Host", "localhost"],
-            ["X-My-Header", "42"],
-        ];
-
-        $expectations = [
-            "trace" => $trace,
-            "protocol" => "1.0",
-            "method" => "GET",
-            "uri" => "/someurl.html",
-            "headers" => $headers,
-            "raw-headers" => $rawHeaders,
-            "body" => "",
-        ];
-
-        $return[] = [$msg, $expectations];
-
-        // 5 --- chunked entity body -------------------------------------------------------------->
+        // 4 --- chunked entity body -------------------------------------------------------------->
 
         $trace =
             "GET /test HTTP/1.1\r\n" .
@@ -495,7 +462,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $return[] = [$msg, $expectations];
 
-        // 6 --- chunked entity body with trailer headers ----------------------------------------->
+        // 5 --- chunked entity body with trailer headers ----------------------------------------->
 
         $trace =
             "GET /test HTTP/1.1\r\n" .
@@ -649,6 +616,20 @@ class Http1DriverTest extends HttpDriverTest
             "\r\n";
         $errCode = 400;
         $errMsg = "Bad Request: invalid host header";
+        $return[] = [$msg, $errCode, $errMsg];
+
+        // 11 --- HTTP/1.0 with header folding ----------------------------------------------------->
+
+        $trace =
+            "GET /someurl.html HTTP/1.0\r\n" .
+            "Host: \r\n" .
+            " localhost\r\n" .
+            "X-My-Header: 42\r\n" .
+            "\r\n";
+        $msg = $trace . "\r\n";
+        $errCode = 400;
+        $errMsg = "Bad Request: Invalid header syntax: Obsolete line folding";
+
         $return[] = [$msg, $errCode, $errMsg];
 
         // x -------------------------------------------------------------------------------------->
