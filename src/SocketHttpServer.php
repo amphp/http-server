@@ -5,29 +5,33 @@ namespace Amp\Http\Server;
 use Amp\CompositeException;
 use Amp\Future;
 use Amp\Http\Server\Driver\ClientFactory;
+use Amp\Http\Server\Driver\ConnectionLimitingClientFactory;
+use Amp\Http\Server\Driver\ConnectionLimitingServerSocketFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
+use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
+use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\ResourceServerSocketFactory;
 use Amp\Socket\ServerSocket;
 use Amp\Socket\ServerSocketFactory;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
+use Amp\Sync\LocalSemaphore;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
 
 final class SocketHttpServer implements HttpServer
 {
+    private const DEFAULT_CONNECTION_LIMIT = 1000;
+    private const DEFAULT_CONNECTIONS_PER_IP_LIMIT = 10;
+
     private HttpServerStatus $status = HttpServerStatus::Stopped;
 
-    private readonly ServerSocketFactory $serverSocketFactory;
-
     private readonly HttpDriverFactory $httpDriverFactory;
-
-    private readonly ClientFactory $clientFactory;
 
     /** @var array<string, array{SocketAddress, BindContext|null}> */
     private array $addresses = [];
@@ -44,14 +48,79 @@ final class SocketHttpServer implements HttpServer
     /** @var list<\Closure(HttpServer):void> */
     private array $onStop = [];
 
+    /**
+     * Creates an instance appropriate for direct access by the public.
+     *
+     * @param CompressionMiddleware|null $compressionMiddleware Use null to disable compression.
+     * @param positive-int $connectionLimit Default is {@see self::DEFAULT_CONNECTION_LIMIT}.
+     * @param positive-int $connectionLimitPerIp Default  is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
+     * @param array|null $allowedMethods Use null to disable request method filtering.
+     */
+    public static function forEndpoint(
+        PsrLogger $logger,
+        ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
+        int $connectionLimit = self::DEFAULT_CONNECTION_LIMIT,
+        int $connectionLimitPerIp = self::DEFAULT_CONNECTIONS_PER_IP_LIMIT,
+        ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
+        ?HttpDriverFactory $httpDriverFactory = null,
+    ): self {
+        $serverSocketFactory = new ConnectionLimitingServerSocketFactory(new LocalSemaphore($connectionLimit));
+
+        $logger->notice(\sprintf("Total client connections are limited to %d.", $connectionLimit));
+
+        $clientFactory = new ConnectionLimitingClientFactory(
+            new SocketClientFactory($logger),
+            $logger,
+            $connectionLimitPerIp,
+        );
+
+        $logger->notice(\sprintf(
+            "Client connections are limited to %s per IP address (excluding localhost).",
+            $connectionLimitPerIp,
+        ));
+
+        return new self(
+            $logger,
+            $serverSocketFactory,
+            $clientFactory,
+            $compressionMiddleware,
+            $allowedMethods,
+            $httpDriverFactory,
+        );
+    }
+
+    /**
+     * Creates an instance appropriate for use when behind a proxy service such as nginx. It is not recommended
+     * to allow public traffic to access the created server directly. Compression is disabled, there are no limits
+     * on the total number of connections or connections per IP, and methods are not filtered by default.
+     *
+     * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
+     */
+    public static function forBehindProxy(
+        PsrLogger $logger,
+        ?array $allowedMethods = null,
+        ?HttpDriverFactory $httpDriverFactory = null,
+    ): self {
+        return new self(
+            $logger,
+            new ResourceServerSocketFactory(),
+            new SocketClientFactory($logger),
+            allowedMethods: $allowedMethods,
+            httpDriverFactory: $httpDriverFactory,
+        );
+    }
+
+    /**
+     * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
+     */
     public function __construct(
         private readonly PsrLogger $logger,
-        ?ServerSocketFactory $serverSocketFactory = null,
-        ?ClientFactory $clientFactory = null,
+        private readonly ServerSocketFactory $serverSocketFactory,
+        private readonly ClientFactory $clientFactory,
+        private readonly ?CompressionMiddleware $compressionMiddleware = null,
+        private readonly ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ) {
-        $this->serverSocketFactory = $serverSocketFactory ?? new ResourceServerSocketFactory();
-        $this->clientFactory = $clientFactory ?? new SocketClientFactory($logger);
         $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($logger);
     }
 
@@ -112,6 +181,30 @@ final class SocketHttpServer implements HttpServer
 
         if (\extension_loaded("xdebug")) {
             $this->logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
+        }
+
+        if ($this->compressionMiddleware) {
+            if (!\extension_loaded('zlib')) {
+                $this->logger->warning(
+                    "The zlib extension is not loaded which prevents using compression. " .
+                    "Either activate the zlib extension or disable compression in the server's options."
+                );
+            } else {
+                $this->logger->notice('Response compression enabled.');
+                $requestHandler = Middleware\stack($requestHandler, $this->compressionMiddleware);
+            }
+        }
+
+        if ($this->allowedMethods !== null) {
+            $this->logger->notice(\sprintf(
+                'Request methods restricted to %s.',
+                \implode(', ', $this->allowedMethods),
+            ));
+
+            $requestHandler = Middleware\stack(
+                $requestHandler,
+                new AllowedMethodsMiddleware($errorHandler, $this->logger, $this->allowedMethods),
+            );
         }
 
         $this->logger->debug("Starting server");

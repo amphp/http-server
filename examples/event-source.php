@@ -7,10 +7,10 @@ use Amp\ByteStream;
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
-use Amp\Http\Server\DefaultHttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\SocketHttpServer;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Monolog\Logger;
@@ -46,7 +46,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new DefaultHttpServer($logger);
+$server = SocketHttpServer::forEndpoint($logger);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");

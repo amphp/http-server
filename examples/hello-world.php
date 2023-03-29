@@ -6,10 +6,10 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
-use Amp\Http\Server\DefaultHttpServer;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
+use Amp\Http\Server\SocketHttpServer;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
@@ -32,8 +32,7 @@ $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 $logger->useLoggingLoopDetection(false);
 
-$server = new DefaultHttpServer($logger);
-$server->removeCompressionMiddleware();
+$server = SocketHttpServer::forBehindProxy($logger);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");

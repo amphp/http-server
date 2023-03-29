@@ -34,7 +34,7 @@ class IntegrationTest extends AsyncTestCase
 
         $this->httpClient = HttpClientBuilder::buildDefault();
 
-        $this->httpServer = new SocketHttpServer($this->createMock(PsrLogger::class));
+        $this->httpServer = SocketHttpServer::forEndpoint($this->createMock(PsrLogger::class));
         $this->httpServer->expose(new Socket\InternetAddress('127.0.0.1', 0));
     }
 
@@ -49,7 +49,7 @@ class IntegrationTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage('No bind addresses specified');
 
-        $server = new SocketHttpServer($this->createMock(PsrLogger::class));
+        $server = SocketHttpServer::forEndpoint($this->createMock(PsrLogger::class));
         $server->start($this->createMock(RequestHandler::class), $this->createMock(ErrorHandler::class));
     }
 
