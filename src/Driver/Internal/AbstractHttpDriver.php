@@ -43,16 +43,6 @@ abstract class AbstractHttpDriver implements HttpDriver
      */
     final protected function handleRequest(Request $request): void
     {
-        /** @psalm-suppress RedundantCondition */
-        \assert($this->logger->debug(\sprintf(
-            "%s %s HTTP/%s @ %s #%d",
-            $request->getMethod(),
-            (string) $request->getUri(),
-            $request->getProtocolVersion(),
-            $request->getClient()->getRemoteAddress()->toString(),
-            $request->getClient()->getId(),
-        )) || true);
-
         $clientRequest = $request;
         $request = clone $request;
 
@@ -71,10 +61,11 @@ abstract class AbstractHttpDriver implements HttpDriver
 
         /** @psalm-suppress RedundantCondition */
         \assert($this->logger->debug(\sprintf(
-            "%d (%s) %s HTTP/%s @ %s #%d",
+            '"%s %s" %d "%s" HTTP/%s @ %s #%d',
+            $clientRequest->getMethod(),
+            (string) $clientRequest->getUri(),
             $response->getStatus(),
             $response->getReason(),
-            (string) $clientRequest->getUri(),
             $clientRequest->getProtocolVersion(),
             $clientRequest->getClient()->getRemoteAddress()->toString(),
             $clientRequest->getClient()->getId(),

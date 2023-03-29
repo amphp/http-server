@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Amp\Http\Server\Middleware;
 
@@ -35,13 +35,11 @@ class AccessLoggerMiddleware implements Middleware
             'remote' => $remote,
         ];
 
-        $this->logger->info(\sprintf("%s %s HTTP/%s %s on %s", $method, $uri, $protocolVersion, $remote, $local), $context);
-
         try {
             $response = $requestHandler->handleRequest($request);
         } catch (ClientException $exception) {
             $this->logger->warning(\sprintf(
-                "Client exception for %s %s HTTP/%s %s",
+                'Client exception for "%s %s" HTTP/%s %s',
                 $method,
                 $uri,
                 $protocolVersion,
@@ -65,11 +63,11 @@ class AccessLoggerMiddleware implements Middleware
         $level = $status < 400 ? LogLevel::INFO : LogLevel::NOTICE;
 
         $this->logger->log($level, \sprintf(
-            "%d (%s) for %s %s HTTP/%s %s on %s",
-            $status,
-            $reason,
+            '"%s %s" %d "%s" HTTP/%s %s on %s',
             $method,
             $uri,
+            $status,
+            $reason,
             $protocolVersion,
             $remote,
             $local,
