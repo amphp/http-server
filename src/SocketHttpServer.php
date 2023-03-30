@@ -19,6 +19,7 @@ use Amp\Socket\ServerSocket;
 use Amp\Socket\ServerSocketFactory;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
+use Amp\Socket\SocketException;
 use Amp\Sync\LocalSemaphore;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -54,7 +55,7 @@ final class SocketHttpServer implements HttpServer
      * @param CompressionMiddleware|null $compressionMiddleware Use null to disable compression.
      * @param positive-int $connectionLimit Default is {@see self::DEFAULT_CONNECTION_LIMIT}.
      * @param positive-int $connectionLimitPerIp Default  is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
-     * @param array|null $allowedMethods Use null to disable request method filtering.
+     * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public static function forEndpoint(
         PsrLogger $logger,
@@ -124,6 +125,12 @@ final class SocketHttpServer implements HttpServer
         $this->httpDriverFactory = $httpDriverFactory ?? new DefaultHttpDriverFactory($logger);
     }
 
+    /**
+     * Listen for client connections on the given address. The socket server will be created using the
+     * {@see ServerSocketFactory} provided to the constructor and the given {@see BindContext}.
+     *
+     * @throws SocketException
+     */
     public function expose(SocketAddress|string $socketAddress, ?BindContext $bindContext = null): void
     {
         if (\is_string($socketAddress)) {
@@ -138,6 +145,11 @@ final class SocketHttpServer implements HttpServer
         $this->addresses[$name] = [$socketAddress, $bindContext];
     }
 
+    /**
+     * May only be called when the server is running.
+     *
+     * @return list<ServerSocket>
+     */
     public function getServers(): array
     {
         if ($this->status !== HttpServerStatus::Started) {
