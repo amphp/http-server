@@ -25,7 +25,7 @@ $logHandler->setFormatter(new ConsoleFormatter());
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = SocketHttpServer::forEndpoint($logger);
+$server = SocketHttpServer::createForEndpoint($logger);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");

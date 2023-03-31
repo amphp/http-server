@@ -24,7 +24,7 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = SocketHttpServer::forBehindProxy($logger);
+$server = SocketHttpServer::createForBehindProxy($logger);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");

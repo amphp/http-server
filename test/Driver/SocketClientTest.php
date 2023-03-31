@@ -32,7 +32,7 @@ class SocketClientTest extends AsyncTestCase
         $handler = new ClosureRequestHandler($handler);
         $tlsContext = (new ServerTlsContext)->withDefaultCertificate(new Certificate(\dirname(__DIR__) . "/server.pem"));
 
-        $httpServer = SocketHttpServer::forBehindProxy(new NullLogger());
+        $httpServer = SocketHttpServer::createForBehindProxy(new NullLogger());
 
         $httpServer->expose(
             new Socket\InternetAddress('127.0.0.1', 0),

@@ -54,10 +54,10 @@ final class SocketHttpServer implements HttpServer
      *
      * @param CompressionMiddleware|null $compressionMiddleware Use null to disable compression.
      * @param positive-int $connectionLimit Default is {@see self::DEFAULT_CONNECTION_LIMIT}.
-     * @param positive-int $connectionLimitPerIp Default  is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
+     * @param positive-int $connectionLimitPerIp Default is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
      * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
-    public static function forEndpoint(
+    public static function createForEndpoint(
         PsrLogger $logger,
         ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
         int $connectionLimit = self::DEFAULT_CONNECTION_LIMIT,
@@ -97,7 +97,7 @@ final class SocketHttpServer implements HttpServer
      *
      * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
-    public static function forBehindProxy(
+    public static function createForBehindProxy(
         PsrLogger $logger,
         ?array $allowedMethods = null,
         ?HttpDriverFactory $httpDriverFactory = null,
