@@ -32,7 +32,7 @@ $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 $logger->useLoggingLoopDetection(false);
 
-$server = SocketHttpServer::createForBehindProxy($logger);
+$server = SocketHttpServer::createForEndpoint($logger, compressionMiddleware: null);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");

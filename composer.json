@@ -36,7 +36,7 @@
         "amphp/hpack": "^3",
         "amphp/http": "^2",
         "amphp/pipeline": "^1",
-        "amphp/socket": "^2",
+        "amphp/socket": "2.x-dev",
         "amphp/sync": "^2",
         "league/uri": "^6",
         "league/uri-interfaces": "^2.3",

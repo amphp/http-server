@@ -13,6 +13,7 @@ use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
+use Amp\Http\Server\Middleware\ForwardedForMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\ResourceServerSocketFactory;
 use Amp\Socket\ServerSocket;
@@ -80,11 +81,16 @@ final class SocketHttpServer implements HttpServer
             $connectionLimitPerIp,
         ));
 
+        $middleware = [];
+        if ($compressionMiddleware) {
+            $middleware[] = $compressionMiddleware;
+        }
+
         return new self(
             $logger,
             $serverSocketFactory,
             $clientFactory,
-            $compressionMiddleware,
+            $middleware,
             $allowedMethods,
             $httpDriverFactory,
         );
@@ -99,26 +105,40 @@ final class SocketHttpServer implements HttpServer
      */
     public static function createForBehindProxy(
         PsrLogger $logger,
-        ?array $allowedMethods = null,
+        array $trustedProxies,
+        ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
+        ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ): self {
+        $middleware = [];
+        if ($trustedProxies) {
+            $middleware[] = new ForwardedForMiddleware($trustedProxies);
+        }
+
+        if ($compressionMiddleware) {
+            $middleware[] = $compressionMiddleware;
+        }
+
         return new self(
             $logger,
             new ResourceServerSocketFactory(),
             new SocketClientFactory($logger),
-            allowedMethods: $allowedMethods,
-            httpDriverFactory: $httpDriverFactory,
+            $middleware,
+            $allowedMethods,
+            $httpDriverFactory,
         );
     }
 
     /**
+     * @param array<Middleware> $middleware Default middlewares. You may also use {@see Middleware\stack()} before
+     *      passing the {@see RequestHandler} to {@see self::start()}.
      * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public function __construct(
         private readonly PsrLogger $logger,
         private readonly ServerSocketFactory $serverSocketFactory,
         private readonly ClientFactory $clientFactory,
-        private readonly ?CompressionMiddleware $compressionMiddleware = null,
+        private readonly array $middleware = [],
         private readonly ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ) {
@@ -195,17 +215,7 @@ final class SocketHttpServer implements HttpServer
             $this->logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
         }
 
-        if ($this->compressionMiddleware) {
-            if (!\extension_loaded('zlib')) {
-                $this->logger->warning(
-                    "The zlib extension is not loaded which prevents using compression. " .
-                    "Either activate the zlib extension or disable compression in the server's options."
-                );
-            } else {
-                $this->logger->notice('Response compression enabled.');
-                $requestHandler = Middleware\stack($requestHandler, $this->compressionMiddleware);
-            }
-        }
+        $requestHandler = Middleware\stack($requestHandler, ...$this->middleware);
 
         if ($this->allowedMethods !== null) {
             $this->logger->notice(\sprintf(
