@@ -6,6 +6,9 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\Driver\SocketClientFactory;
+use Amp\Http\Server\Middleware\ForwardedFor;
+use Amp\Http\Server\Middleware\ForwardedForMiddleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
@@ -32,7 +35,7 @@ $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 $logger->useLoggingLoopDetection(false);
 
-$server = SocketHttpServer::createForEndpoint($logger, compressionMiddleware: null);
+$server = SocketHttpServer::createForBehindProxy($logger, ['127.0.0.1/24']);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");
@@ -42,10 +45,15 @@ $server->expose("[::]:1338", $context);
 $server->start(new class implements RequestHandler {
     public function handleRequest(Request $request): Response
     {
+        $forwardedFor = \implode(', ', \array_map(
+                fn (ForwardedFor $ff) => $ff->getAddress(),
+                $request->getAttribute(ForwardedForMiddleware::class),
+        ));
+
         return new Response(
             status: HttpStatus::OK,
             headers: ["content-type" => "text/plain; charset=utf-8"],
-            body: "Hello, World!",
+            body: "Hello, World! " . $forwardedFor,
         );
     }
 }, new DefaultErrorHandler());
