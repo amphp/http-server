@@ -6,7 +6,6 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
-use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\ForwardedFor;
 use Amp\Http\Server\Middleware\ForwardedForMiddleware;
 use Amp\Http\Server\Request;
@@ -46,8 +45,8 @@ $server->start(new class implements RequestHandler {
     public function handleRequest(Request $request): Response
     {
         $forwardedFor = \implode(', ', \array_map(
-                fn (ForwardedFor $ff) => $ff->getAddress(),
-                $request->getAttribute(ForwardedForMiddleware::class),
+            fn (ForwardedFor $ff) => $ff->getAddress(),
+            $request->getAttribute(ForwardedForMiddleware::class),
         ));
 
         return new Response(

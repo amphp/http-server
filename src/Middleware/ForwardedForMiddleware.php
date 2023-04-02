@@ -16,7 +16,7 @@ final class ForwardedForMiddleware implements Middleware
     /** @var list<CidrMatcher> */
     private readonly array $trustedProxies;
 
-    /** @var LocalCache<non-empty-string, bool> */
+    /** @var LocalCache<bool> */
     private readonly LocalCache $trustedIps;
 
     /**
@@ -86,23 +86,17 @@ final class ForwardedForMiddleware implements Middleware
 
         $forwardedFor = [];
         foreach ($maps as $map) {
-            foreach ($map as $key => $value) {
-                if ($key !== 'for') {
-                    continue;
-                }
-
-                if ($value === null) {
-                    break;
-                }
-
-                $address = $this->tryInternetAddress($value);
-                if (!$address) {
-                   break;
-                }
-
-                $forwardedFor[] = new ForwardedFor($address, $map);
-                break;
+            $for = $map['for'] ?? null;
+            if ($for === null) {
+                continue;
             }
+
+            $address = $this->tryInternetAddress($for);
+            if (!$address) {
+               continue;
+            }
+
+            $forwardedFor[] = new ForwardedFor($address, $map);
         }
 
         return $forwardedFor;
