@@ -54,14 +54,13 @@ final class SocketHttpServer implements HttpServer
     /**
      * Creates an instance appropriate for direct access by the public.
      *
-     * @param CompressionMiddleware|null $compressionMiddleware Use null to disable compression.
      * @param positive-int $connectionLimit Default is {@see self::DEFAULT_CONNECTION_LIMIT}.
      * @param positive-int $connectionLimitPerIp Default is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
      * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public static function createForEndpoint(
         PsrLogger $logger,
-        ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
+        bool $enableCompression = true,
         int $connectionLimit = self::DEFAULT_CONNECTION_LIMIT,
         int $connectionLimitPerIp = self::DEFAULT_CONNECTIONS_PER_IP_LIMIT,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
@@ -83,7 +82,7 @@ final class SocketHttpServer implements HttpServer
         ));
 
         $middleware = [];
-        if ($compressionMiddleware) {
+        if ($enableCompression && $compressionMiddleware = self::createCompressionMiddleware($logger)) {
             $middleware[] = $compressionMiddleware;
         }
 
@@ -108,7 +107,7 @@ final class SocketHttpServer implements HttpServer
         PsrLogger $logger,
         ForwardedForHeaderType $headerType,
         array $trustedProxies,
-        ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
+        bool $enableCompression = true,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ): self {
@@ -116,7 +115,7 @@ final class SocketHttpServer implements HttpServer
 
         $middleware[] = new ForwardedForMiddleware($headerType, $trustedProxies);
 
-        if ($compressionMiddleware) {
+        if ($enableCompression && $compressionMiddleware = self::createCompressionMiddleware($logger)) {
             $middleware[] = $compressionMiddleware;
         }
 
@@ -128,6 +127,20 @@ final class SocketHttpServer implements HttpServer
             $allowedMethods,
             $httpDriverFactory,
         );
+    }
+
+    private static function createCompressionMiddleware(PsrLogger $logger): ?CompressionMiddleware
+    {
+        if (!\extension_loaded('zlib')) {
+            $logger->warning(
+                'The zlib extension is not loaded which prevents using compression. ' .
+                'Either activate the zlib extension or set $enableCompression to false'
+            );
+
+            return null;
+        }
+
+        return new CompressionMiddleware();
     }
 
     /**
