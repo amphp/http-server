@@ -10,6 +10,7 @@ use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Socket\CidrMatcher;
 use Amp\Socket\InternetAddress;
+use Amp\Socket\SocketException;
 
 final class ForwardedForMiddleware implements Middleware
 {
@@ -72,14 +73,13 @@ final class ForwardedForMiddleware implements Middleware
      */
     private function getForwarded(Request $request): array
     {
-        $maps = Http\parseFieldValueComponents($request, 'forwarded');
+        $maps = Http\parseMultipleHeaderFields($request, 'forwarded');
         if (!$maps) {
-            $forwardedFor = $request->getHeaderArray('x-forwarded-for');
+            $forwardedFor = Http\splitHeader($request, 'x-forwarded-for');
             if (!$forwardedFor) {
                 return [];
             }
 
-            $forwardedFor = \array_map(\trim(...), \explode(',', \implode(',', $forwardedFor)));
             $forwardedFor = \array_values(\array_filter(\array_map($this->tryInternetAddress(...), $forwardedFor)));
             return \array_map(static fn (InternetAddress $address) => new ForwardedFor($address, []), $forwardedFor);
         }
@@ -117,10 +117,10 @@ final class ForwardedForMiddleware implements Middleware
             $ip = \trim($ip, '[]');
         }
 
-        if (!\filter_var($ip, \FILTER_VALIDATE_IP)) {
+        try {
+            return new InternetAddress($ip, $port);
+        } catch (SocketException) {
             return null;
         }
-
-        return new InternetAddress($ip, $port);
     }
 }
