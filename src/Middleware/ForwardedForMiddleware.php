@@ -24,8 +24,11 @@ final class ForwardedForMiddleware implements Middleware
      * @param array<non-empty-string> $trustedProxies Array of IPv4 or IPv6 addresses with an optional subnet mask.
      *      e.g., '172.18.0.0/24'
      */
-    public function __construct(array $trustedProxies, int $cacheSize = 1000)
-    {
+    public function __construct(
+        private readonly ForwardedForHeaderType $headerType,
+        array $trustedProxies,
+        int $cacheSize = 1000
+    ) {
         $this->trustedProxies = \array_map(
             static fn (string $ip) => new CidrMatcher($ip),
             \array_values($trustedProxies),
@@ -38,8 +41,11 @@ final class ForwardedForMiddleware implements Middleware
     {
         $clientAddress = $request->getClient()->getRemoteAddress();
 
-        if ($clientAddress instanceof InternetAddress && $this->isTrusted($clientAddress)) {
-            $request->setAttribute(self::class, $this->getForwarded($request));
+        if ($clientAddress instanceof InternetAddress && $this->isTrustedProxy($clientAddress)) {
+            $request->setAttribute(self::class, match ($this->headerType) {
+                ForwardedForHeaderType::FORWARDED => $this->getForwarded($request),
+                ForwardedForHeaderType::X_FORWARDED_FOR => $this->getForwardedFor($request),
+            });
         } else {
             $request->setAttribute(self::class, []);
         }
@@ -75,13 +81,7 @@ final class ForwardedForMiddleware implements Middleware
     {
         $maps = Http\parseMultipleHeaderFields($request, 'forwarded');
         if (!$maps) {
-            $forwardedFor = Http\splitHeader($request, 'x-forwarded-for');
-            if (!$forwardedFor) {
-                return [];
-            }
-
-            $forwardedFor = \array_values(\array_filter(\array_map($this->tryInternetAddress(...), $forwardedFor)));
-            return \array_map(static fn (InternetAddress $address) => new ForwardedFor($address, []), $forwardedFor);
+            return [];
         }
 
         $forwardedFor = [];
@@ -100,6 +100,17 @@ final class ForwardedForMiddleware implements Middleware
         }
 
         return $forwardedFor;
+    }
+
+    private function getForwardedFor(Request $request): array
+    {
+        $forwardedFor = Http\splitHeader($request, 'x-forwarded-for');
+        if (!$forwardedFor) {
+            return [];
+        }
+
+        $forwardedFor = \array_values(\array_filter(\array_map($this->tryInternetAddress(...), $forwardedFor)));
+        return \array_map(static fn (InternetAddress $address) => new ForwardedFor($address, []), $forwardedFor);
     }
 
     private function tryInternetAddress(string $value): ?InternetAddress

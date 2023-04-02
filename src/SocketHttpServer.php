@@ -13,6 +13,7 @@ use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
+use Amp\Http\Server\Middleware\ForwardedForHeaderType;
 use Amp\Http\Server\Middleware\ForwardedForMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\ResourceServerSocketFactory;
@@ -105,15 +106,15 @@ final class SocketHttpServer implements HttpServer
      */
     public static function createForBehindProxy(
         PsrLogger $logger,
+        ForwardedForHeaderType $headerType,
         array $trustedProxies,
         ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ): self {
         $middleware = [];
-        if ($trustedProxies) {
-            $middleware[] = new ForwardedForMiddleware($trustedProxies);
-        }
+
+        $middleware[] = new ForwardedForMiddleware($headerType, $trustedProxies);
 
         if ($compressionMiddleware) {
             $middleware[] = $compressionMiddleware;

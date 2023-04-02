@@ -7,6 +7,7 @@ use Amp\ByteStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Middleware\ForwardedFor;
+use Amp\Http\Server\Middleware\ForwardedForHeaderType;
 use Amp\Http\Server\Middleware\ForwardedForMiddleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
@@ -34,7 +35,7 @@ $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 $logger->useLoggingLoopDetection(false);
 
-$server = SocketHttpServer::createForBehindProxy($logger, ['127.0.0.1/24']);
+$server = SocketHttpServer::createForBehindProxy($logger, ForwardedForHeaderType::FORWARDED, ['127.0.0.1/24']);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");
