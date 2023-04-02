@@ -47,7 +47,7 @@ final class ForwardedForMiddleware implements Middleware
         return $requestHandler->handleRequest($request);
     }
 
-    private function isTrusted(InternetAddress $address): bool
+    private function isTrustedProxy(InternetAddress $address): bool
     {
         $ip = $address->getAddress();
         $trusted = $this->trustedIps->get($ip);
