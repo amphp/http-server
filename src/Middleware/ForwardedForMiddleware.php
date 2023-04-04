@@ -46,8 +46,6 @@ final class ForwardedForMiddleware implements Middleware
                 ForwardedForHeaderType::FORWARDED => $this->getForwarded($request),
                 ForwardedForHeaderType::X_FORWARDED_FOR => $this->getForwardedFor($request),
             });
-        } else {
-            $request->setAttribute(self::class, []);
         }
 
         return $requestHandler->handleRequest($request);
@@ -74,43 +72,46 @@ final class ForwardedForMiddleware implements Middleware
         return $trusted;
     }
 
-    /**
-     * @return list<ForwardedFor>
-     */
-    private function getForwarded(Request $request): array
+    private function getForwarded(Request $request): ?ForwardedFor
     {
-        $maps = Http\parseMultipleHeaderFields($request, 'forwarded');
-        if (!$maps) {
-            return [];
+        $headers = Http\parseMultipleHeaderFields($request, 'forwarded');
+        if (!$headers) {
+            return null;
         }
 
-        $forwardedFor = [];
-        foreach ($maps as $map) {
-            $for = $map['for'] ?? null;
+        foreach ($headers as $header) {
+            $for = $header['for'] ?? null;
             if ($for === null) {
                 continue;
             }
 
             $address = $this->tryInternetAddress($for);
-            if (!$address) {
+            if (!$address || $this->isTrustedProxy($address)) {
                continue;
             }
 
-            $forwardedFor[] = new ForwardedFor($address, $map);
+            return new ForwardedFor($address, $header);
         }
 
-        return $forwardedFor;
+        return null;
     }
 
-    private function getForwardedFor(Request $request): array
+    private function getForwardedFor(Request $request): ?ForwardedFor
     {
         $forwardedFor = Http\splitHeader($request, 'x-forwarded-for');
         if (!$forwardedFor) {
-            return [];
+            return null;
         }
 
-        $forwardedFor = \array_values(\array_filter(\array_map($this->tryInternetAddress(...), $forwardedFor)));
-        return \array_map(static fn (InternetAddress $address) => new ForwardedFor($address, []), $forwardedFor);
+        /** @var InternetAddress[] $forwardedFor */
+        $forwardedFor = \array_filter(\array_map($this->tryInternetAddress(...), $forwardedFor));
+        foreach ($forwardedFor as $address) {
+            if (!$this->isTrustedProxy($address)) {
+                return new ForwardedFor($address, []);
+            }
+        }
+
+        return null;
     }
 
     private function tryInternetAddress(string $value): ?InternetAddress
