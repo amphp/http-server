@@ -10,7 +10,6 @@ use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Socket\CidrMatcher;
 use Amp\Socket\InternetAddress;
-use Amp\Socket\SocketException;
 
 final class ForwardedForMiddleware implements Middleware
 {
@@ -79,13 +78,17 @@ final class ForwardedForMiddleware implements Middleware
             return null;
         }
 
-        foreach ($headers as $header) {
+        foreach (\array_reverse($headers) as $header) {
             $for = $header['for'] ?? null;
             if ($for === null) {
                 continue;
             }
 
-            $address = $this->tryInternetAddress($for);
+            if (!\str_contains($for, ':') || \str_ends_with($for, ']')) {
+                $for .= ':0';
+            }
+
+            $address = InternetAddress::tryFromString($for);
             if (!$address || $this->isTrustedProxy($address)) {
                continue;
             }
@@ -103,36 +106,22 @@ final class ForwardedForMiddleware implements Middleware
             return null;
         }
 
+        $forwardedFor = \array_map(static function (string $ip): string {
+            if (\str_contains($ip, ':')) {
+                return '[' . \trim($ip, '[]') . ']:0';
+            }
+
+            return $ip . ':0';
+        }, $forwardedFor);
+
         /** @var InternetAddress[] $forwardedFor */
-        $forwardedFor = \array_filter(\array_map($this->tryInternetAddress(...), $forwardedFor));
-        foreach ($forwardedFor as $address) {
+        $forwardedFor = \array_filter(\array_map(InternetAddress::tryFromString(...), $forwardedFor));
+        foreach (\array_reverse($forwardedFor) as $address) {
             if (!$this->isTrustedProxy($address)) {
                 return new ForwardedFor($address, []);
             }
         }
 
         return null;
-    }
-
-    private function tryInternetAddress(string $value): ?InternetAddress
-    {
-        if (!\str_contains($value, ':') || \str_ends_with($value, ']')) {
-            $value .= ':0';
-        }
-
-        $colon = \strrpos($value, ':');
-        \assert($colon !== false);
-
-        $ip = \substr($value, 0, $colon);
-        $port = (int) \substr($value, $colon + 1);
-        if (\str_contains($ip, ':')) {
-            $ip = \trim($ip, '[]');
-        }
-
-        try {
-            return new InternetAddress($ip, $port);
-        } catch (SocketException) {
-            return null;
-        }
     }
 }
