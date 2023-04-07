@@ -42,8 +42,8 @@ final class ForwardedForMiddleware implements Middleware
 
         if ($clientAddress instanceof InternetAddress && $this->isTrustedProxy($clientAddress)) {
             $request->setAttribute(self::class, match ($this->headerType) {
-                ForwardedForHeaderType::FORWARDED => $this->getForwarded($request),
-                ForwardedForHeaderType::X_FORWARDED_FOR => $this->getForwardedFor($request),
+                ForwardedForHeaderType::Forwarded => $this->getForwarded($request),
+                ForwardedForHeaderType::XForwardedFor => $this->getForwardedFor($request),
             });
         }
 
