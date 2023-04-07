@@ -26,7 +26,7 @@ final class ForwardedForMiddleware implements Middleware
     public function __construct(
         private readonly ForwardedForHeaderType $headerType,
         array $trustedProxies,
-        int $cacheSize = 1000
+        int $cacheSize = 1000,
     ) {
         $this->trustedProxies = \array_map(
             static fn (string $ip) => new CidrMatcher($ip),
@@ -84,19 +84,29 @@ final class ForwardedForMiddleware implements Middleware
                 continue;
             }
 
-            if (!\str_contains($for, ':') || \str_ends_with($for, ']')) {
-                $for .= ':0';
-            }
-
-            $address = InternetAddress::tryFromString($for);
-            if (!$address || $this->isTrustedProxy($address)) {
+            $for = InternetAddress::tryFromString($this->addPortIfMissing($for));
+            if (!$for || $this->isTrustedProxy($for)) {
                continue;
             }
 
-            return new ForwardedFor($address, $header);
+            $by = $header['by'] ?? null;
+            if ($by !== null) {
+                $by = InternetAddress::tryFromString($this->addPortIfMissing($by));
+            }
+
+            return new ForwardedFor($for, $by, $header['host'] ?? null, $header['proto'] ?? null);
         }
 
         return null;
+    }
+
+    private function addPortIfMissing(string $address): string
+    {
+        if (!\str_contains($address, ':') || \str_ends_with($address, ']')) {
+            $address .= ':0';
+        }
+
+        return $address;
     }
 
     private function getForwardedFor(Request $request): ?ForwardedFor
@@ -116,9 +126,13 @@ final class ForwardedForMiddleware implements Middleware
 
         /** @var InternetAddress[] $forwardedFor */
         $forwardedFor = \array_filter(\array_map(InternetAddress::tryFromString(...), $forwardedFor));
-        foreach (\array_reverse($forwardedFor) as $address) {
-            if (!$this->isTrustedProxy($address)) {
-                return new ForwardedFor($address, []);
+        foreach (\array_reverse($forwardedFor) as $for) {
+            if (!$this->isTrustedProxy($for)) {
+                return new ForwardedFor(
+                    for: $for,
+                    host: $request->getHeader('x-forwarded-host'),
+                    proto: $request->getHeader('x-forwarded-proto'),
+                );
             }
         }
 
