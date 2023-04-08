@@ -45,15 +45,10 @@ $server->expose("[::]:1338", $context);
 $server->start(new class implements RequestHandler {
     public function handleRequest(Request $request): Response
     {
-        $forwardedFor = \implode(', ', \array_map(
-            fn (ForwardedFor $ff) => $ff->getAddress(),
-            $request->getAttribute(ForwardedForMiddleware::class),
-        ));
-
         return new Response(
             status: HttpStatus::OK,
             headers: ["content-type" => "text/plain; charset=utf-8"],
-            body: "Hello, World! " . $forwardedFor,
+            body: "Hello, World! " . $request->getAttribute(ForwardedForMiddleware::class)?->getFor(),
         );
     }
 }, new DefaultErrorHandler());
