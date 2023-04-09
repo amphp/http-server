@@ -8,7 +8,6 @@ use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Middleware\ForwardedFor;
 use Amp\Http\Server\Middleware\ForwardedForHeaderType;
-use Amp\Http\Server\Middleware\ForwardedForMiddleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
@@ -48,7 +47,7 @@ $server->start(new class implements RequestHandler {
         return new Response(
             status: HttpStatus::OK,
             headers: ["content-type" => "text/plain; charset=utf-8"],
-            body: "Hello, World! " . $request->getAttribute(ForwardedForMiddleware::class)?->getFor(),
+            body: "Hello, World! " . $request->getAttribute(ForwardedFor::class)?->getFor(),
         );
     }
 }, new DefaultErrorHandler());

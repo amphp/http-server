@@ -41,7 +41,7 @@ final class ForwardedForMiddleware implements Middleware
         $clientAddress = $request->getClient()->getRemoteAddress();
 
         if ($clientAddress instanceof InternetAddress && $this->isTrustedProxy($clientAddress)) {
-            $request->setAttribute(self::class, match ($this->headerType) {
+            $request->setAttribute(ForwardedFor::class, match ($this->headerType) {
                 ForwardedForHeaderType::Forwarded => $this->getForwarded($request),
                 ForwardedForHeaderType::XForwardedFor => $this->getForwardedFor($request),
             });
