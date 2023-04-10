@@ -13,8 +13,8 @@ use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
-use Amp\Http\Server\Middleware\ForwardedForHeaderType;
-use Amp\Http\Server\Middleware\ForwardedForMiddleware;
+use Amp\Http\Server\Middleware\ForwardedHeaderType;
+use Amp\Http\Server\Middleware\ForwardedMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\ResourceServerSocketFactory;
 use Amp\Socket\ServerSocket;
@@ -105,7 +105,7 @@ final class SocketHttpServer implements HttpServer
      */
     public static function createForBehindProxy(
         PsrLogger $logger,
-        ForwardedForHeaderType $headerType,
+        ForwardedHeaderType $headerType,
         array $trustedProxies,
         bool $enableCompression = true,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
@@ -113,7 +113,7 @@ final class SocketHttpServer implements HttpServer
     ): self {
         $middleware = [];
 
-        $middleware[] = new ForwardedForMiddleware($headerType, $trustedProxies);
+        $middleware[] = new ForwardedMiddleware($headerType, $trustedProxies);
 
         if ($enableCompression && $compressionMiddleware = self::createCompressionMiddleware($logger)) {
             $middleware[] = $compressionMiddleware;

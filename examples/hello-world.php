@@ -6,8 +6,8 @@ require dirname(__DIR__) . "/vendor/autoload.php";
 use Amp\ByteStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
-use Amp\Http\Server\Middleware\ForwardedFor;
-use Amp\Http\Server\Middleware\ForwardedForHeaderType;
+use Amp\Http\Server\Middleware\Forwarded;
+use Amp\Http\Server\Middleware\ForwardedHeaderType;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
@@ -34,7 +34,7 @@ $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 $logger->useLoggingLoopDetection(false);
 
-$server = SocketHttpServer::createForBehindProxy($logger, ForwardedForHeaderType::Forwarded, ['127.0.0.1/24']);
+$server = SocketHttpServer::createForBehindProxy($logger, ForwardedHeaderType::Forwarded, ['127.0.0.1/24']);
 
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");
@@ -47,7 +47,7 @@ $server->start(new class implements RequestHandler {
         return new Response(
             status: HttpStatus::OK,
             headers: ["content-type" => "text/plain; charset=utf-8"],
-            body: "Hello, World! " . $request->getAttribute(ForwardedFor::class)?->getFor(),
+            body: "Hello, World! " . $request->getAttribute(Forwarded::class)?->getFor(),
         );
     }
 }, new DefaultErrorHandler());

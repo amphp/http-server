@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Middleware;
 
-enum ForwardedForHeaderType
+enum ForwardedHeaderType
 {
     case Forwarded;
     case XForwardedFor;

@@ -2,7 +2,7 @@
 
 namespace Amp\Http\Server\Middleware;
 
-final class ForwardedFor
+final class Forwarded
 {
     public function __construct(
         private readonly string $for,

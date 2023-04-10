@@ -11,7 +11,7 @@ use Amp\Http\Server\Response;
 use Amp\Socket\CidrMatcher;
 use Amp\Socket\InternetAddress;
 
-final class ForwardedForMiddleware implements Middleware
+final class ForwardedMiddleware implements Middleware
 {
     /** @var list<CidrMatcher> */
     private readonly array $trustedProxies;
@@ -24,7 +24,7 @@ final class ForwardedForMiddleware implements Middleware
      *      e.g., '172.18.0.0/24'
      */
     public function __construct(
-        private readonly ForwardedForHeaderType $headerType,
+        private readonly ForwardedHeaderType $headerType,
         array $trustedProxies,
         int $cacheSize = 1000,
     ) {
@@ -41,9 +41,9 @@ final class ForwardedForMiddleware implements Middleware
         $clientAddress = $request->getClient()->getRemoteAddress();
 
         if ($clientAddress instanceof InternetAddress && $this->isTrustedProxy($clientAddress)) {
-            $request->setAttribute(ForwardedFor::class, match ($this->headerType) {
-                ForwardedForHeaderType::Forwarded => $this->getForwarded($request),
-                ForwardedForHeaderType::XForwardedFor => $this->getForwardedFor($request),
+            $request->setAttribute(Forwarded::class, match ($this->headerType) {
+                ForwardedHeaderType::Forwarded => $this->getForwarded($request),
+                ForwardedHeaderType::XForwardedFor => $this->getForwardedFor($request),
             });
         }
 
@@ -71,7 +71,7 @@ final class ForwardedForMiddleware implements Middleware
         return $trusted;
     }
 
-    private function getForwarded(Request $request): ?ForwardedFor
+    private function getForwarded(Request $request): ?Forwarded
     {
         $headers = Http\parseMultipleHeaderFields($request, 'forwarded');
         if (!$headers) {
@@ -89,7 +89,7 @@ final class ForwardedForMiddleware implements Middleware
                continue;
             }
 
-            return new ForwardedFor(
+            return new Forwarded(
                 $for,
                 $headers['by'] ?? null,
                 $header['host'] ?? null,
@@ -109,7 +109,7 @@ final class ForwardedForMiddleware implements Middleware
         return $address;
     }
 
-    private function getForwardedFor(Request $request): ?ForwardedFor
+    private function getForwardedFor(Request $request): ?Forwarded
     {
         $forwardedFor = Http\splitHeader($request, 'x-forwarded-for');
         if (!$forwardedFor) {
@@ -128,7 +128,7 @@ final class ForwardedForMiddleware implements Middleware
         $forwardedFor = \array_filter(\array_map(InternetAddress::tryFromString(...), $forwardedFor));
         foreach (\array_reverse($forwardedFor) as $for) {
             if (!$this->isTrustedProxy($for)) {
-                return new ForwardedFor(
+                return new Forwarded(
                     for: $for->getAddress(),
                     host: $request->getHeader('x-forwarded-host'),
                     proto: $request->getHeader('x-forwarded-proto'),
