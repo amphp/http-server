@@ -84,17 +84,17 @@ final class ForwardedForMiddleware implements Middleware
                 continue;
             }
 
-            $for = InternetAddress::tryFromString($this->addPortIfMissing($for));
-            if (!$for || $this->isTrustedProxy($for)) {
+            $address = InternetAddress::tryFromString($this->addPortIfMissing($for));
+            if ($address && $this->isTrustedProxy($address)) {
                continue;
             }
 
-            $by = $header['by'] ?? null;
-            if ($by !== null) {
-                $by = InternetAddress::tryFromString($this->addPortIfMissing($by));
-            }
-
-            return new ForwardedFor($for, $by, $header['host'] ?? null, $header['proto'] ?? null);
+            return new ForwardedFor(
+                $for,
+                $headers['by'] ?? null,
+                $header['host'] ?? null,
+                $header['proto'] ?? null,
+            );
         }
 
         return null;
@@ -129,7 +129,7 @@ final class ForwardedForMiddleware implements Middleware
         foreach (\array_reverse($forwardedFor) as $for) {
             if (!$this->isTrustedProxy($for)) {
                 return new ForwardedFor(
-                    for: $for,
+                    for: $for->getAddress(),
                     host: $request->getHeader('x-forwarded-host'),
                     proto: $request->getHeader('x-forwarded-proto'),
                 );

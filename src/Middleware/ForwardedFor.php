@@ -2,24 +2,22 @@
 
 namespace Amp\Http\Server\Middleware;
 
-use Amp\Socket\InternetAddress;
-
 final class ForwardedFor
 {
     public function __construct(
-        private readonly InternetAddress $for,
-        private readonly ?InternetAddress $by = null,
+        private readonly string $for,
+        private readonly ?string $by = null,
         private readonly ?string $host = null,
         private readonly ?string $proto = null,
     ) {
     }
 
-    public function getFor(): InternetAddress
+    public function getFor(): string
     {
         return $this->for;
     }
 
-    public function getBy(): ?InternetAddress
+    public function getBy(): ?string
     {
         return $this->by;
     }
