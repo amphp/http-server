@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Amp\Http\Server\Middleware;
 
@@ -86,7 +86,7 @@ final class ForwardedMiddleware implements Middleware
 
             $address = InternetAddress::tryFromString($this->addPortIfMissing($for));
             if ($address && $this->isTrustedProxy($address)) {
-               continue;
+                continue;
             }
 
             return new Forwarded(
