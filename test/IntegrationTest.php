@@ -3,10 +3,10 @@
 namespace Amp\Http\Server\Test;
 
 use Amp\ByteStream\ReadableIterableStream;
-use Amp\Http\Client\Body\StreamBody;
 use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Client\StreamedContent;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
@@ -116,9 +116,10 @@ class IntegrationTest extends AsyncTestCase
             $queue->complete();
         });
 
-        $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo", 'POST', new StreamBody(
-            new ReadableIterableStream($queue->pipe())
-        )));
+        $response = $this->httpClient->request(new ClientRequest(
+            $this->getAuthority() . "/foo", 'POST',
+            StreamedContent::fromStream(new ReadableIterableStream($queue->pipe())),
+        ));
 
         self::assertStringContainsString($request->getHeader("Host"), $this->getAuthority());
         self::assertSame("/foo", $request->getUri()->getPath());
