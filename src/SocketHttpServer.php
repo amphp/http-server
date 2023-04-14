@@ -57,7 +57,7 @@ final class SocketHttpServer implements HttpServer
      * @param positive-int $connectionLimitPerIp Default is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
      * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
-    public static function createForEndpoint(
+    public static function createForDirectAccess(
         PsrLogger $logger,
         ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
         int $connectionLimit = self::DEFAULT_CONNECTION_LIMIT,
