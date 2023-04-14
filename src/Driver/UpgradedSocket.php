@@ -134,12 +134,12 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
             : null;
     }
 
-    public function setupTls(?Cancellation $cancellation = null): void
+    public function setupTls(?Cancellation $cancellation = null): never
     {
         throw new TlsException('Not implemented on upgraded sockets; TLS should already be enabled if available');
     }
 
-    public function shutdownTls(?Cancellation $cancellation = null): void
+    public function shutdownTls(?Cancellation $cancellation = null): never
     {
         throw new TlsException('Not implemented on upgraded sockets');
     }
