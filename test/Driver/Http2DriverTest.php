@@ -346,8 +346,8 @@ class Http2DriverTest extends HttpDriverTest
         $hpackBuffer = $hpack->encode([
             [":status", (string) HttpStatus::OK],
             ["content-length", (string) \strlen($body)],
-            ["trailer", "expires"],
             ["date", formatDateHeader()],
+            ["trailer", "expires"],
         ]);
         self::assertSame([
             'length' => \strlen($hpackBuffer),
@@ -452,8 +452,8 @@ class Http2DriverTest extends HttpDriverTest
         $hpackBuffer = $hpack->encode([
             [":status", (string) HttpStatus::OK],
             ["content-length", (string) \strlen($body)],
-            ["trailer", "expires"],
             ["date", formatDateHeader()],
+            ["trailer", "expires"],
         ]);
         self::assertSame([
             'length' => \strlen($hpackBuffer),
