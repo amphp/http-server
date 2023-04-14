@@ -2,33 +2,27 @@
 
 namespace Amp\Http\Server\Middleware;
 
+use Amp\Socket\InternetAddress;
+
 final class Forwarded
 {
+    /**
+     * @param InternetAddress $for
+     * @param array<non-empty-string, string|null> $fields
+     */
     public function __construct(
-        private readonly string $for,
-        private readonly ?string $by = null,
-        private readonly ?string $host = null,
-        private readonly ?string $proto = null,
+        private readonly InternetAddress $for,
+        private readonly array $fields,
     ) {
     }
 
-    public function getFor(): string
+    public function getFor(): InternetAddress
     {
         return $this->for;
     }
 
-    public function getBy(): ?string
+    public function getField(string $name): ?string
     {
-        return $this->by;
-    }
-
-    public function getHost(): ?string
-    {
-        return $this->host;
-    }
-
-    public function getProto(): ?string
-    {
-        return $this->proto;
+        return $this->fields[$name] ?? null;
     }
 }
