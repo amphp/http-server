@@ -29,8 +29,8 @@ use Amp\Socket\InternetAddress;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\async;
-use function Amp\Http\mapHeaderPairs;
 use function Amp\Http\formatDateHeader;
+use function Amp\Http\mapHeaderPairs;
 
 final class Http1Driver extends AbstractHttpDriver
 {

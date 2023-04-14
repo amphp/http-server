@@ -295,7 +295,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 );
             }
 
-            $headers = [':status' => [$status], ...$response->getHeaders()];
+            $headers = [
+                ':status' => [$status],
+                ...$response->getHeaders(),
+                'date' => [formatDateHeader()],
+            ];
 
             // Remove headers that are obsolete in HTTP/2.
             unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
@@ -305,8 +309,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             if ($trailers !== null && !isset($headers["trailer"]) && ($fields = $trailers->getFields())) {
                 $headers["trailer"] = [\implode(", ", $fields)];
             }
-
-            $headers["date"] = [formatDateHeader()];
 
             foreach ($response->getPushes() as $push) {
                 $headers["link"][] = "<{$push->getUri()}>; rel=preload";
@@ -963,10 +965,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             );
         }
 
-        $method = $pseudo[":method"];
-        $target = $pseudo[":path"];
-        $scheme = $pseudo[":scheme"];
-        $host = $pseudo[":authority"];
+        [':method' => $method, ':path' => $target, ':scheme' => $scheme, ':authority' => $host] = $pseudo;
         $query = null;
 
         if (!\preg_match("#^([A-Z\d.\-]+|\[[\d:]+])(?::([1-9]\d*))?$#i", $host, $matches)) {

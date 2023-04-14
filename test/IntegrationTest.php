@@ -3,10 +3,10 @@
 namespace Amp\Http\Server\Test;
 
 use Amp\ByteStream\ReadableIterableStream;
-use Amp\Http\Client\Body\StreamBody;
 use Amp\Http\Client\HttpClient;
 use Amp\Http\Client\HttpClientBuilder;
 use Amp\Http\Client\Request as ClientRequest;
+use Amp\Http\Client\StreamedContent;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
@@ -34,7 +34,7 @@ class IntegrationTest extends AsyncTestCase
 
         $this->httpClient = HttpClientBuilder::buildDefault();
 
-        $this->httpServer = SocketHttpServer::createForEndpoint($this->createMock(PsrLogger::class));
+        $this->httpServer = SocketHttpServer::createForDirectAccess($this->createMock(PsrLogger::class));
         $this->httpServer->expose(new Socket\InternetAddress('127.0.0.1', 0));
     }
 
@@ -49,7 +49,7 @@ class IntegrationTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage('No bind addresses specified');
 
-        $server = SocketHttpServer::createForEndpoint($this->createMock(PsrLogger::class));
+        $server = SocketHttpServer::createForDirectAccess($this->createMock(PsrLogger::class));
         $server->start($this->createMock(RequestHandler::class), $this->createMock(ErrorHandler::class));
     }
 
@@ -116,9 +116,10 @@ class IntegrationTest extends AsyncTestCase
             $queue->complete();
         });
 
-        $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo", 'POST', new StreamBody(
-            new ReadableIterableStream($queue->pipe())
-        )));
+        $response = $this->httpClient->request(new ClientRequest(
+            $this->getAuthority() . "/foo", 'POST',
+            StreamedContent::fromStream(new ReadableIterableStream($queue->pipe())),
+        ));
 
         self::assertStringContainsString($request->getHeader("Host"), $this->getAuthority());
         self::assertSame("/foo", $request->getUri()->getPath());
