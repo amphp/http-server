@@ -22,6 +22,7 @@ final class ForwardedMiddleware implements Middleware
     /**
      * @param array<non-empty-string> $trustedProxies Array of IPv4 or IPv6 addresses with an optional subnet mask.
      *      e.g., '172.18.0.0/24'
+     * @param positive-int $cacheSize
      */
     public function __construct(
         private readonly ForwardedHeaderType $headerType,
@@ -85,7 +86,7 @@ final class ForwardedMiddleware implements Middleware
             }
 
             $address = InternetAddress::tryFromString($this->addPortIfMissing($for));
-            if ($address && $this->isTrustedProxy($address)) {
+            if (!$address || $this->isTrustedProxy($address)) {
                 continue;
             }
 

@@ -267,6 +267,7 @@ final class SocketHttpServer implements HttpServer
                     $this->httpDriverFactory->getApplicationLayerProtocols(),
                 );
 
+                /** @psalm-suppress PropertyTypeCoercion */
                 $this->servers[] = $this->serverSocketFactory->listen(
                     $address,
                     $bindContext?->withTlsContext($tlsContext),
@@ -282,7 +283,8 @@ final class SocketHttpServer implements HttpServer
 
                 $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-                EventLoop::queue($this->accept(...), $server, $requestHandler, $errorHandler);
+                // Using short-closure to avoid Psalm bug when using a first-class callable here.
+                EventLoop::queue(fn () => $this->accept($server, $requestHandler, $errorHandler));
             }
         } catch (\Throwable $exception) {
             try {

@@ -33,7 +33,7 @@ $logHandler->setLevel(Level::Info);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
-$server = new SocketHttpServer($logger);
+$server = SocketHttpServer::createForDirectAccess($logger);
 
 $server->expose(new Socket\InternetAddress("0.0.0.0", 1338), $context);
 $server->expose(new Socket\InternetAddress("[::]", 1338), $context);
@@ -49,7 +49,7 @@ $server->start(new ClosureRequestHandler(static function (Request $request) {
     }
 
     return new Response(HttpStatus::OK, [
-            "content-type" => "text/plain; charset=utf-8",
+        "content-type" => "text/plain; charset=utf-8",
     ], "Hello, World!");
 }), new DefaultErrorHandler());
 
