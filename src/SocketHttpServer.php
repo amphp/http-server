@@ -13,6 +13,8 @@ use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
+use Amp\Http\Server\Middleware\ForwardedHeaderType;
+use Amp\Http\Server\Middleware\ForwardedMiddleware;
 use Amp\Socket\BindContext;
 use Amp\Socket\ResourceServerSocketFactory;
 use Amp\Socket\ServerSocket;
@@ -52,14 +54,13 @@ final class SocketHttpServer implements HttpServer
     /**
      * Creates an instance appropriate for direct access by the public.
      *
-     * @param CompressionMiddleware|null $compressionMiddleware Use null to disable compression.
      * @param positive-int $connectionLimit Default is {@see self::DEFAULT_CONNECTION_LIMIT}.
      * @param positive-int $connectionLimitPerIp Default is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
      * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public static function createForDirectAccess(
         PsrLogger $logger,
-        ?CompressionMiddleware $compressionMiddleware = new CompressionMiddleware(),
+        bool $enableCompression = true,
         int $connectionLimit = self::DEFAULT_CONNECTION_LIMIT,
         int $connectionLimitPerIp = self::DEFAULT_CONNECTIONS_PER_IP_LIMIT,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
@@ -80,11 +81,16 @@ final class SocketHttpServer implements HttpServer
             $connectionLimitPerIp,
         ));
 
+        $middleware = [];
+        if ($enableCompression && $compressionMiddleware = self::createCompressionMiddleware($logger)) {
+            $middleware[] = $compressionMiddleware;
+        }
+
         return new self(
             $logger,
             $serverSocketFactory,
             $clientFactory,
-            $compressionMiddleware,
+            $middleware,
             $allowedMethods,
             $httpDriverFactory,
         );
@@ -99,26 +105,54 @@ final class SocketHttpServer implements HttpServer
      */
     public static function createForBehindProxy(
         PsrLogger $logger,
-        ?array $allowedMethods = null,
+        ForwardedHeaderType $headerType,
+        array $trustedProxies,
+        bool $enableCompression = true,
+        ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ): self {
+        $middleware = [];
+
+        $middleware[] = new ForwardedMiddleware($headerType, $trustedProxies);
+
+        if ($enableCompression && $compressionMiddleware = self::createCompressionMiddleware($logger)) {
+            $middleware[] = $compressionMiddleware;
+        }
+
         return new self(
             $logger,
             new ResourceServerSocketFactory(),
             new SocketClientFactory($logger),
-            allowedMethods: $allowedMethods,
-            httpDriverFactory: $httpDriverFactory,
+            $middleware,
+            $allowedMethods,
+            $httpDriverFactory,
         );
     }
 
+    private static function createCompressionMiddleware(PsrLogger $logger): ?CompressionMiddleware
+    {
+        if (!\extension_loaded('zlib')) {
+            $logger->warning(
+                'The zlib extension is not loaded which prevents using compression. ' .
+                'Either activate the zlib extension or set $enableCompression to false'
+            );
+
+            return null;
+        }
+
+        return new CompressionMiddleware();
+    }
+
     /**
+     * @param array<Middleware> $middleware Default middlewares. You may also use {@see Middleware\stack()} before
+     *      passing the {@see RequestHandler} to {@see self::start()}.
      * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public function __construct(
         private readonly PsrLogger $logger,
         private readonly ServerSocketFactory $serverSocketFactory,
         private readonly ClientFactory $clientFactory,
-        private readonly ?CompressionMiddleware $compressionMiddleware = null,
+        private readonly array $middleware = [],
         private readonly ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ) {
@@ -195,17 +229,7 @@ final class SocketHttpServer implements HttpServer
             $this->logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
         }
 
-        if ($this->compressionMiddleware) {
-            if (!\extension_loaded('zlib')) {
-                $this->logger->warning(
-                    "The zlib extension is not loaded which prevents using compression. " .
-                    "Either activate the zlib extension or disable compression in the server's options."
-                );
-            } else {
-                $this->logger->notice('Response compression enabled.');
-                $requestHandler = Middleware\stack($requestHandler, $this->compressionMiddleware);
-            }
-        }
+        $requestHandler = Middleware\stack($requestHandler, ...$this->middleware);
 
         if ($this->allowedMethods !== null) {
             $this->logger->notice(\sprintf(
@@ -243,6 +267,7 @@ final class SocketHttpServer implements HttpServer
                     $this->httpDriverFactory->getApplicationLayerProtocols(),
                 );
 
+                /** @psalm-suppress PropertyTypeCoercion */
                 $this->servers[] = $this->serverSocketFactory->listen(
                     $address,
                     $bindContext?->withTlsContext($tlsContext),
@@ -258,7 +283,8 @@ final class SocketHttpServer implements HttpServer
 
                 $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-                EventLoop::queue($this->accept(...), $server, $requestHandler, $errorHandler);
+                // Using short-closure to avoid Psalm bug when using a first-class callable here.
+                EventLoop::queue(fn () => $this->accept($server, $requestHandler, $errorHandler));
             }
         } catch (\Throwable $exception) {
             try {

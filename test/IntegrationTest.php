@@ -117,7 +117,8 @@ class IntegrationTest extends AsyncTestCase
         });
 
         $response = $this->httpClient->request(new ClientRequest(
-            $this->getAuthority() . "/foo", 'POST',
+            $this->getAuthority() . "/foo",
+            'POST',
             StreamedContent::fromStream(new ReadableIterableStream($queue->pipe())),
         ));
 

@@ -15,7 +15,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
     public function __construct(
         private readonly ClientFactory $clientFactory,
         private readonly PsrLogger $logger,
-        private readonly int $connectionsPerIpLimit = 10,
+        private readonly int $connectionsPerIpLimit,
     ) {
     }
 

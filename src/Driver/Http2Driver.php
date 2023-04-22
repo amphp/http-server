@@ -73,6 +73,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private int $initialWindowSize = self::DEFAULT_WINDOW_SIZE;
 
+    /** @var positive-int */
     private int $maxFrameSize = self::DEFAULT_MAX_FRAME_SIZE;
 
     private bool $allowsPush;
@@ -569,7 +570,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
             if ($length > $this->maxFrameSize) {
                 $split = \str_split($stream->buffer, $this->maxFrameSize);
-                \assert(\is_array($split)); // For Psalm
                 $stream->buffer = \array_pop($split);
                 foreach ($split as $part) {
                     $this->writeFrame($part, Http2Parser::DATA, Http2Parser::NO_FLAG, $id);
@@ -626,7 +626,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             // Header frames must be sent as one contiguous block without frames from any other stream being
             // interleaved between due to HPack. See https://datatracker.ietf.org/doc/html/rfc7540#section-4.3
             $split = \str_split($headers, $this->maxFrameSize);
-            \assert(\is_array($split)); // For Psalm
             $headers = \array_pop($split);
 
             $writeFrame = $this->writeFrame(...);
