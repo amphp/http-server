@@ -7,7 +7,6 @@ use Amp\Socket\InternetAddress;
 final class Forwarded
 {
     /**
-     * @param InternetAddress $for
      * @param array<non-empty-string, string|null> $fields
      */
     public function __construct(
