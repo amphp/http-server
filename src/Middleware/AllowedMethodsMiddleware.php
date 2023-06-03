@@ -64,7 +64,7 @@ final class AllowedMethodsMiddleware implements Middleware
      */
     public function getAllowedMethods(): array
     {
-        return array_values($this->allowedMethods);
+        return \array_values($this->allowedMethods);
     }
 
     private function handleInvalidMethod(Request $request, int $status): Response
