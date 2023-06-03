@@ -10,7 +10,7 @@ use Amp\Http\Server\Response;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Psr\Log\LogLevel;
 
-class AccessLoggerMiddleware implements Middleware
+final class AccessLoggerMiddleware implements Middleware
 {
     public function __construct(
         private readonly PsrLogger $logger,
