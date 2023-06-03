@@ -32,7 +32,7 @@ final class AllowedMethodsMiddleware implements Middleware
     public const DEFAULT_ALLOWED_METHODS = ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS", "DELETE"];
 
     /**
-     * @param list<non-empty-string> $allowedMethods
+     * @param array<non-empty-string> $allowedMethods
      */
     public function __construct(
         private readonly ErrorHandler $errorHandler,
@@ -64,7 +64,7 @@ final class AllowedMethodsMiddleware implements Middleware
      */
     public function getAllowedMethods(): array
     {
-        return $this->allowedMethods;
+        return array_values($this->allowedMethods);
     }
 
     private function handleInvalidMethod(Request $request, int $status): Response

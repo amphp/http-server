@@ -56,7 +56,7 @@ final class SocketHttpServer implements HttpServer
      *
      * @param positive-int $connectionLimit Default is {@see self::DEFAULT_CONNECTION_LIMIT}.
      * @param positive-int $connectionLimitPerIp Default is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
-     * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
+     * @param array<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public static function createForDirectAccess(
         PsrLogger $logger,
@@ -98,10 +98,12 @@ final class SocketHttpServer implements HttpServer
 
     /**
      * Creates an instance appropriate for use when behind a proxy service such as nginx. It is not recommended
-     * to allow public traffic to access the created server directly. Compression is disabled, there are no limits
-     * on the total number of connections or connections per IP, and methods are not filtered by default.
+     * to allow public traffic to access the created server directly. There are no limits on the total number of
+     * connections or connections per IP.
      *
-     * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
+     * @param array<non-empty-string> $trustedProxies Array of IPv4 or IPv6 addresses with an optional subnet mask.
+     *      e.g., '172.18.0.0/24'
+     * @param array<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public static function createForBehindProxy(
         PsrLogger $logger,
@@ -146,7 +148,7 @@ final class SocketHttpServer implements HttpServer
     /**
      * @param array<Middleware> $middleware Default middlewares. You may also use {@see Middleware\stack()} before
      *      passing the {@see RequestHandler} to {@see self::start()}.
-     * @param list<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
+     * @param array<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public function __construct(
         private readonly PsrLogger $logger,
