@@ -13,6 +13,7 @@ use Amp\Http\Server\Driver\HttpDriverFactory;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
+use Amp\Http\Server\Middleware\ConcurrencyLimitingMiddleware;
 use Amp\Http\Server\Middleware\ForwardedHeaderType;
 use Amp\Http\Server\Middleware\ForwardedMiddleware;
 use Amp\Socket\BindContext;
@@ -29,6 +30,7 @@ use function Amp\async;
 
 final class SocketHttpServer implements HttpServer
 {
+    private const DEFAULT_CONCURRENCY_LIMIT = 1000;
     private const DEFAULT_CONNECTION_LIMIT = 1000;
     private const DEFAULT_CONNECTIONS_PER_IP_LIMIT = 10;
 
@@ -54,6 +56,8 @@ final class SocketHttpServer implements HttpServer
     /**
      * Creates an instance appropriate for direct access by the public.
      *
+     * @param positive-int|null $concurrencyLimit Default is {@see self::DEFAULT_CONCURRENCY_LIMIT}.
+     *      Use null for no limit.
      * @param positive-int $connectionLimit Default is {@see self::DEFAULT_CONNECTION_LIMIT}.
      * @param positive-int $connectionLimitPerIp Default is {@see self::DEFAULT_CONNECTIONS_PER_IP_LIMIT}.
      * @param array<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
@@ -63,6 +67,7 @@ final class SocketHttpServer implements HttpServer
         bool $enableCompression = true,
         int $connectionLimit = self::DEFAULT_CONNECTION_LIMIT,
         int $connectionLimitPerIp = self::DEFAULT_CONNECTIONS_PER_IP_LIMIT,
+        ?int $concurrencyLimit = self::DEFAULT_CONCURRENCY_LIMIT,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ): self {
@@ -82,6 +87,12 @@ final class SocketHttpServer implements HttpServer
         ));
 
         $middleware = [];
+
+        if ($concurrencyLimit !== null) {
+            $logger->notice(\sprintf("Request concurrency limited to %s simultaneous requests", $concurrencyLimit));
+            $middleware[] = new ConcurrencyLimitingMiddleware($concurrencyLimit);
+        }
+
         if ($enableCompression && $compressionMiddleware = self::createCompressionMiddleware($logger)) {
             $middleware[] = $compressionMiddleware;
         }
@@ -101,6 +112,8 @@ final class SocketHttpServer implements HttpServer
      * to allow public traffic to access the created server directly. There are no limits on the total number of
      * connections or connections per IP.
      *
+     * @param positive-int|null $concurrencyLimit Default is {@see self::DEFAULT_CONCURRENCY_LIMIT}.
+     *      Use null for no limit.
      * @param array<non-empty-string> $trustedProxies Array of IPv4 or IPv6 addresses with an optional subnet mask.
      *      e.g., '172.18.0.0/24'
      * @param array<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
@@ -110,10 +123,15 @@ final class SocketHttpServer implements HttpServer
         ForwardedHeaderType $headerType,
         array $trustedProxies,
         bool $enableCompression = true,
+        ?int $concurrencyLimit = self::DEFAULT_CONCURRENCY_LIMIT,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
     ): self {
         $middleware = [];
+
+        if ($concurrencyLimit !== null) {
+            $middleware[] = new ConcurrencyLimitingMiddleware($concurrencyLimit);
+        }
 
         $middleware[] = new ForwardedMiddleware($headerType, $trustedProxies);
 
