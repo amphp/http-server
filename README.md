@@ -115,7 +115,7 @@ Incoming requests are represented by `Request` objects. A request is provided to
 public function handleRequest(Request $request): Response
 ```
 
-Each client request (i.e., call to `RequestHandler::handleRequest()`) is executed within a separate [coroutine](https://amphp.org/architecture#coroutines) so requests are automatically handled cooperatively within the server process. When a request handler waits on [non-blocking I/O](#io), other client requests are processed in concurrent coroutines. Your request handler may itself create other coroutines using [Amp\async()](https://amphp.org/amp#coroutines) to execute multiple tasks for a single request.
+Each client request (i.e., call to `RequestHandler::handleRequest()`) is executed within a separate [coroutine](https://amphp.org/architecture#coroutines) so requests are automatically handled cooperatively within the server process. When a request handler waits on [non-blocking I/O](#io), other client requests are processed in concurrent coroutines. Your request handler may itself create other coroutines using [`Amp\async()`](https://amphp.org/amp#coroutines) to execute multiple tasks for a single request.
 
 Usually a `RequestHandler` directly generates a response, but it might also delegate to another `RequestHandler`.
 An example for such a delegating `RequestHandler` is the [`Router`](https://github.com/amphp/http-server-router).
