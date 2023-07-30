@@ -652,7 +652,7 @@ $handler = new ClosureRequestHandler(function () {
 // You'll have to wait until the 5 seconds are over until the second request is handled.
 ```
 
-# Bottlenecks
+## Bottlenecks
 
 The HTTP server won't be the bottleneck. Misconfiguration, use of blocking I/O, or inefficient applications are.
 
@@ -686,8 +686,8 @@ This exception is thrown for both the `read()` and `buffer()` API.
 
 Instead of setting the generic body limit high, you should consider increasing the body limit only where needed, which is dynamically possible with the `increaseSizeLimit()` method on `RequestBody`.
 
-{:.note}
-> Note that `RequestBody` itself doesn't provide parsing of form data. You can use [`amphp/http-server-form-parser`](https://github.com/amphp/http-server-form-parser) if you need it.
+> **Note**
+> `RequestBody` itself doesn't provide parsing of form data. You can use [`amphp/http-server-form-parser`](https://github.com/amphp/http-server-form-parser) if you need it.
 
 #### Constructor
 
