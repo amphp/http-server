@@ -43,6 +43,39 @@ public function handleRequest(Request $request): Response
 
 Request handlers are covered in greater detail in the [`RequestHandler` section](#requesthandler).
 
+This HTTP server is built on top of [the Revolt event-loop](https://revolt.run) and [the non-blocking concurrency framework Amp](https://amphp.org/amp).
+Thus it inherits full support of all their primitives and it is possible to use all the non-blocking libraries built on top of Revolt.
+
+> **Note**
+> In general, you should make yourself familiar with [the `Future` **concept**](https://amphp.org/amp#future), with [coroutines](https://amphp.org/amp#coroutines), and be aware of the several [combinator](https://amphp.org/amp#combinators) functions to really succeed at using the HTTP server.
+
+### Blocking I/O
+
+Nearly every built-in function of PHP is doing blocking I/O, that means, the executing thread (mostly equivalent to the process in the case of PHP) will effectively be halted until the response is received.
+A few examples of such functions: `mysqli_query`, `file_get_contents`, `usleep` and many more.
+
+A good rule of thumb is: Every built-in PHP function doing I/O is doing it in a blocking way, unless you know for sure it doesn't.
+
+There are [libraries providing implementations that use non-blocking I/O](https://amphp.org/packages). You should use these instead of the built-in functions.
+
+We cover the most common I/O needs, such as [network sockets](https://github.com/amphp/socket), [file access](https://github.com/amphp/file), [HTTP requests](https://github.com/amphp/http-client) and [websockets](http://github.com/amphp/websocket-client), [MySQL](https://github.com/amphp/mysql) and [Postgres](http://github.com/amphp/postgres) database clients, and [Redis](https://github.com/amphp/redis). If using blocking I/O or long computations are necessary to fulfill a request, consider using the [Parallel library](https://github.com/amphp/parallel) to run that code in a separate process or thread.
+
+> **Warning**
+> Do not use any blocking I/O functions in the HTTP server.
+
+```php
+// Here's a bad example, DO NOT do something like the following!
+
+$handler = new ClosureRequestHandler(function () {
+    sleep(5); // Equivalent to a blocking I/O function with a 5 second timeout
+
+    return new Response;
+});
+
+// Start a server with this handler and hit it twice.
+// You'll have to wait until the 5 seconds are over until the second request is handled.
+```
+
 ### Creating an HTTP Server
 
 Your application will be served by an instance of `HttpServer`. This library provides `SocketHttpServer`, which will be suitable for most applications, built on components found in this library and in [`amphp/socket`](https://github.com/amphp/socket).
@@ -617,60 +650,7 @@ public function setTrailers(Trailers $trailers): void
 
 Assigns the [`Trailers`](#trailers) object to be used in the response. Trailers are sent once the entire response body has been set to the client.
 
-## I/O
-
-This HTTP server is built on top of [the Revolt event-loop](https://revolt.run) and [the non-blocking concurrency framework Amp](https://amphp.org/amp).
-Thus it inherits full support of all their primitives and it is possible to use all the non-blocking libraries built on top of Revolt.
-
-> **Note**
-> In general, you should make yourself familiar with [the `Future` **concept**](https://amphp.org/amp#future), with [coroutines](https://amphp.org/amp#coroutines), and be aware of the several [combinator](https://amphp.org/amp#combinators) functions to really succeed at using the HTTP server.
-
-### Blocking I/O
-
-Nearly every built-in function of PHP is doing blocking I/O, that means, the executing thread (mostly equivalent to the process in the case of PHP) will effectively be halted until the response is received.
-A few examples of such functions: `mysqli_query`, `file_get_contents`, `usleep` and many more.
-
-A good rule of thumb is: Every built-in PHP function doing I/O is doing it in a blocking way, unless you know for sure it doesn't.
-
-There are [libraries providing implementations that use non-blocking I/O](https://amphp.org/packages). You should use these instead of the built-in functions.
-
-We cover the most common I/O needs, such as [network sockets](https://github.com/amphp/socket), [file access](https://github.com/amphp/file), [HTTP requests](https://github.com/amphp/http-client) and [websockets](http://github.com/amphp/websocket-client), [MySQL](https://github.com/amphp/mysql) and [Postgres](http://github.com/amphp/postgres) database clients, and [Redis](https://github.com/amphp/redis). If using blocking I/O or long computations are necessary to fulfill a request, consider using the [Parallel library](https://github.com/amphp/parallel) to run that code in a separate process or thread.
-
-> **Warning**
-> Do not use any blocking I/O functions in the HTTP server.
-
-```php
-// Here's a bad example, DO NOT do something like the following!
-
-$handler = new ClosureRequestHandler(function () {
-    sleep(5); // Equivalent to a blocking I/O function with a 5 second timeout
-
-    return new Response;
-});
-
-// Start a server with this handler and hit it twice.
-// You'll have to wait until the 5 seconds are over until the second request is handled.
-```
-
-## Bottlenecks
-
-The HTTP server won't be the bottleneck. Misconfiguration, use of blocking I/O, or inefficient applications are.
-
-The server is well-optimized and can handle tens of thousands of requests per second on typical hardware while maintaining a high level of concurrency of thousands of clients.
-
-But that performance will decrease drastically with inefficient applications.
-The server has the nice advantage of classes and handlers being always loaded, so there's no time lost with compilation and initialization.
-
-A common trap is to begin operating on big data with simple string operations, requiring many inefficient big copies.
-Instead, streaming should be used where possible for larger request and response bodies.
-
-The problem really is CPU cost.
-Inefficient I/O management (as long as it is non-blocking!) is just delaying individual requests.
-It is recommended to dispatch simultaneously and eventually bundle multiple independent I/O requests via Amp's combinators, but a slow handler will slow down every other request too.
-While one handler is computing, all the other handlers can't continue.
-Thus it is imperative to reduce computation times of the handlers to a minimum.
-
-## Body
+### Body
 
 `RequestBody`, returned from `Request::getBody()`, provides buffered and streamed access to the request body.
 Use the streamed access to handle large messages, which is particularly important if you have larger message limits (like tens of megabytes) and don't want to buffer it all in memory.
@@ -717,6 +697,24 @@ The **`Trailers`** class allows access to the trailers of an HTTP request, acces
 $trailers = $request->getTrailers();
 $message = $trailers?->await();
 ```
+
+## Bottlenecks
+
+The HTTP server won't be the bottleneck. Misconfiguration, use of blocking I/O, or inefficient applications are.
+
+The server is well-optimized and can handle tens of thousands of requests per second on typical hardware while maintaining a high level of concurrency of thousands of clients.
+
+But that performance will decrease drastically with inefficient applications.
+The server has the nice advantage of classes and handlers being always loaded, so there's no time lost with compilation and initialization.
+
+A common trap is to begin operating on big data with simple string operations, requiring many inefficient big copies.
+Instead, streaming should be used where possible for larger request and response bodies.
+
+The problem really is CPU cost.
+Inefficient I/O management (as long as it is non-blocking!) is just delaying individual requests.
+It is recommended to dispatch simultaneously and eventually bundle multiple independent I/O requests via Amp's combinators, but a slow handler will slow down every other request too.
+While one handler is computing, all the other handlers can't continue.
+Thus it is imperative to reduce computation times of the handlers to a minimum.
 
 ## Examples
 
