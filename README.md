@@ -47,7 +47,12 @@ Request handlers are covered in greater detail in the [`RequestHandler` section]
 
 Your application will be served by an instance of `HttpServer`. This library provides `SocketHttpServer`, which will be suitable for most applications, built on components found in this library and in [`amphp/socket`](https://github.com/amphp/socket).
 
-To create an instance of `SocketHttpServer` and listen for requests, minimally four things are required: an instance of [`RequestHandler`](#requesthandler) to respond to incoming requests, an instance of [`ErrorHander`](#errorhandler) to provide responses to invalid requests, an instance of `Psr\Log\LoggerInterface`, and at least one host+port on which to listen for connections.
+To create an instance of `SocketHttpServer` and listen for requests, minimally four things are required:
+
+* an instance of [`RequestHandler`](#requesthandler) to respond to incoming requests,
+* an instance of [`ErrorHander`](#errorhandler) to provide responses to invalid requests,
+* an instance of `Psr\Log\LoggerInterface`, and
+* at least one host+port on which to listen for connections.
 
 ```php
 use Amp\ByteStream;
