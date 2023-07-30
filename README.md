@@ -619,8 +619,8 @@ Assigns the [`Trailers`](#trailers) object to be used in the response. Trailers 
 
 ## I/O
 
-This HTTP server is built on top of [the non-blocking concurrency framework Amp](https://amphp.org/amp).
-Thus it inherits full support of all its primitives and it is possible to use all the non-blocking libraries built on top of it.
+This HTTP server is built on top of [the Revolt event-loop](https://revolt.run) and [the non-blocking concurrency framework Amp](https://amphp.org/amp).
+Thus it inherits full support of all their primitives and it is possible to use all the non-blocking libraries built on top of Revolt.
 
 > **Note**
 > In general, you should make yourself familiar with [the `Future` **concept**](https://amphp.org/amp#future), with [coroutines](https://amphp.org/amp#coroutines), and be aware of the several [combinator](https://amphp.org/amp#combinators) functions to really succeed at using the HTTP server.
@@ -632,7 +632,9 @@ A few examples of such functions: `mysqli_query`, `file_get_contents`, `usleep` 
 
 A good rule of thumb is: Every built-in PHP function doing I/O is doing it in a blocking way, unless you know for sure it doesn't.
 
-There are [libraries built on top of Amp](https://amphp.org/packages) providing implementations that use non-blocking I/O. You should use these instead of the built-in functions.
+There are [libraries providing implementations that use non-blocking I/O](https://amphp.org/packages). You should use these instead of the built-in functions.
+
+We cover the most common I/O needs, such as [network sockets](https://github.com/amphp/socket), [file access](https://github.com/amphp/file), [HTTP requests](https://github.com/amphp/http-client) and [websockets](http://github.com/amphp/websocket-client), [MySQL](https://github.com/amphp/mysql) and [Postgres](http://github.com/amphp/postgres) database clients, and [Redis](https://github.com/amphp/redis). If using blocking I/O or long computations are necessary to fulfill a request, consider using the [Parallel library](https://github.com/amphp/parallel) to run that code in a separate process or thread.
 
 > **Warning**
 > Do not use any blocking I/O functions in the HTTP server.
@@ -649,8 +651,6 @@ $handler = new ClosureRequestHandler(function () {
 // Start a server with this handler and hit it twice.
 // You'll have to wait until the 5 seconds are over until the second request is handled.
 ```
-
-Amp provides libraries for common I/O needs, such as [network sockets](https://github.com/amphp/socket), [file access](https://github.com/amphp/file), [HTTP requests](https://github.com/amphp/http-client) and [websockets](http://github.com/amphp/websocket-client), [MySQL](https://github.com/amphp/mysql) and [Postgres](http://github.com/amphp/postgres) database clients, and [Redis](https://github.com/amphp/redis). If using blocking I/O or long computations are necessary to fulfill a request, consider using the [Parallel library](https://github.com/amphp/parallel) to run that code in a separate process or thread.
 
 # Bottlenecks
 
