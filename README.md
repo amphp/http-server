@@ -156,9 +156,6 @@ An example for such a delegating `RequestHandler` is the [`Router`](https://gith
 The `RequestHandler` interface is meant to be implemented by custom classes.
 For very simple use cases or quick mocking, you can use `CallableRequestHandler`, which can wrap any `callable` and accepting a `Request` and returning a `Response`.
 
-> **Note**
-> The naming of `RequestHandler` and `Middleware` is chosen based on [PSR-15](https://www.php-fig.org/psr/psr-15/), but the API is adjusted and expanded to meet the requirements of asynchronous PHP.
-
 ### Middleware
 
 Middleware allows pre-processing of requests and post-processing of responses.
