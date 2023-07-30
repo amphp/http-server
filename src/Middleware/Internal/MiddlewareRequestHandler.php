@@ -10,7 +10,7 @@ use Amp\Http\Server\Response;
 /**
  * Wraps a request handler with a single middleware.
  *
- * @see stack()
+ * @see stackMiddleware()
  * @internal
  */
 final class MiddlewareRequestHandler implements RequestHandler

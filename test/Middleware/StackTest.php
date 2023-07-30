@@ -11,7 +11,7 @@ use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\PHPUnit\AsyncTestCase;
 use League\Uri;
-use function Amp\Http\Server\Middleware\stack;
+use function Amp\Http\Server\Middleware\stackMiddleware;
 
 class StackTest extends AsyncTestCase
 {
@@ -19,7 +19,7 @@ class StackTest extends AsyncTestCase
     {
         $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
 
-        $stack = stack(new ClosureRequestHandler(function (Request $request) {
+        $stack = stackMiddleware(new ClosureRequestHandler(function (Request $request) {
             $response = new Response(HttpStatus::OK, [], "OK");
             $response->setHeader("stack", $request->getAttribute(StackTest::class));
 
@@ -45,6 +45,6 @@ class StackTest extends AsyncTestCase
     public function testEmptyMiddlewareSet(): void
     {
         $mock = $this->createMock(RequestHandler::class);
-        self::assertSame($mock, stack($mock));
+        self::assertSame($mock, stackMiddleware($mock));
     }
 }

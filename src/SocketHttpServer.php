@@ -164,8 +164,8 @@ final class SocketHttpServer implements HttpServer
     }
 
     /**
-     * @param array<Middleware> $middleware Default middlewares. You may also use {@see Middleware\stack()} before
-     *      passing the {@see RequestHandler} to {@see self::start()}.
+     * @param array<Middleware> $middleware Default middlewares. You may also use {@see Middleware\stackMiddleware()}
+     *      before passing the {@see RequestHandler} to {@see self::start()}.
      * @param array<non-empty-string>|null $allowedMethods Use null to disable request method filtering.
      */
     public function __construct(
@@ -249,7 +249,7 @@ final class SocketHttpServer implements HttpServer
             $this->logger->warning("The 'xdebug' extension is loaded, which has a major impact on performance.");
         }
 
-        $requestHandler = Middleware\stack($requestHandler, ...$this->middleware);
+        $requestHandler = Middleware\stackMiddleware($requestHandler, ...$this->middleware);
 
         if ($this->allowedMethods !== null) {
             $this->logger->notice(\sprintf(
@@ -257,7 +257,7 @@ final class SocketHttpServer implements HttpServer
                 \implode(', ', $this->allowedMethods),
             ));
 
-            $requestHandler = Middleware\stack(
+            $requestHandler = Middleware\stackMiddleware(
                 $requestHandler,
                 new AllowedMethodsMiddleware($errorHandler, $this->logger, $this->allowedMethods),
             );

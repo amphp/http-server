@@ -5,7 +5,7 @@ namespace Amp\Http\Server;
 /**
  * Middlewares allow pre-processing of requests and post-processing of responses.
  *
- * @see stack() for how to apply a middleware to a request handler.
+ * @see stackMiddleware() for how to apply a middleware to a request handler.
  */
 interface Middleware
 {

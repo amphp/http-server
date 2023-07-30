@@ -173,10 +173,10 @@ public function handleRequest(Request $request, RequestHandler $next): Response
 `handleRequest` is the only method of the `Middleware` interface. If the `Middleware` doesn't handle the request itself, it should delegate the response creation to the received `RequestHandler`.
 
 ```php
-function stack(RequestHandler $handler, Middleware ...$middleware): RequestHandler
+function stackMiddleware(RequestHandler $handler, Middleware ...$middleware): RequestHandler
 ```
 
-Multiple middlewares can be stacked by using `Amp\Http\Server\Middleware\stack()`, which accepts a `RequestHandler` as first argument and a variable number of `Middleware` instances. The returned `RequestHandler` will invoke each middleware in the provided order.
+Multiple middlewares can be stacked by using `Amp\Http\Server\Middleware\stackMiddleware()`, which accepts a `RequestHandler` as first argument and a variable number of `Middleware` instances. The returned `RequestHandler` will invoke each middleware in the provided order.
 
 ```php
 $requestHandler = new class implements RequestHandler {
@@ -202,7 +202,7 @@ $middleware = new class implements Middleware {
     }
 };
 
-$stackedHandler = Middleware\stack($requestHandler, $middleware);
+$stackedHandler = Middleware\stackMiddleware($requestHandler, $middleware);
 $errorHandler = new DefaultErrorHandler();
 
 // $logger is a PSR-7 logger instance.

@@ -14,7 +14,7 @@ use Amp\Http\Server\RequestHandler;
  *
  * @return RequestHandler Wrapped request handler.
  */
-function stack(RequestHandler $requestHandler, Middleware ...$middlewares): RequestHandler
+function stackMiddleware(RequestHandler $requestHandler, Middleware ...$middlewares): RequestHandler
 {
     foreach (\array_reverse($middlewares) as $middleware) {
         $requestHandler = new MiddlewareRequestHandler($middleware, $requestHandler);
