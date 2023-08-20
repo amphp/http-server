@@ -7,6 +7,7 @@ use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\HttpErrorException;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
@@ -53,6 +54,8 @@ abstract class AbstractHttpDriver implements HttpDriver
             $response = $this->requestHandler->handleRequest($request);
         } catch (ClientException $exception) {
             throw $exception;
+        } catch (HttpErrorException $exception) {
+            $response = $this->handleError($exception->getStatus(), $exception->getReason(), $request);
         } catch (\Throwable $exception) {
             $response = $this->handleInternalServerError($request, $exception);
         } finally {
@@ -118,8 +121,13 @@ abstract class AbstractHttpDriver implements HttpDriver
             ],
         );
 
+        return $this->handleError($status, null, $request);
+    }
+
+    private function handleError(int $status, ?string $reason, Request $request): Response
+    {
         try {
-            return $this->errorHandler->handleError($status, null, $request);
+            return $this->errorHandler->handleError($status, $reason, $request);
         } catch (\Throwable $exception) {
             // If the error handler throws, fallback to returning the default error page.
             $this->logger->error(
