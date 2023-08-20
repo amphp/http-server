@@ -10,6 +10,7 @@ use Amp\Http\Client\StreamedContent;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\HttpErrorException;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
@@ -142,5 +143,17 @@ class IntegrationTest extends AsyncTestCase
         $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
 
         self::assertSame(HttpStatus::INTERNAL_SERVER_ERROR, $response->getStatus());
+    }
+
+    public function testHttpError(): void
+    {
+        $this->httpServer->start(new ClosureRequestHandler(function (Request $req) {
+            throw new HttpErrorException(401, 'test');
+        }), new DefaultErrorHandler());
+
+        $response = $this->httpClient->request(new ClientRequest($this->getAuthority() . "/foo"));
+
+        self::assertSame(401, $response->getStatus());
+        self::assertSame('test', $response->getReason());
     }
 }
