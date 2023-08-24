@@ -138,7 +138,7 @@ The above example creates a simple server which sends a plain-text response to e
 - `SocketHttpServer::createForDirectAccess()`: Used in the example above, this creates an HTTP application server suitable for direct network access. Adjustable limits are imposed on connections per IP, total connections, and concurrent requests (10, 1000, and 1000 by default, respectively). Response compression may be toggled on or off (on by default) and request methods are limited to a known set of HTTP verbs by default.
 - `SocketHttpServer::createForBehindProxy()`: Creates a server appropriate for use when behind a proxy service such as nginx. This static constructor requires a list of trusted proxy IPs (with optional subnet masks) and an enum case of `ForwardedHeaderType` (corresponding to either `Forwarded` or `X-Forwarded-For`) to parse the original client IP from request headers. No limits are imposed on the number of connections to the server, however the number of concurrent requests are limited (1000 by default, adjustable or can be removed). Response compression may be toggled on or off (on by default). Request methods are limited to a known set of HTTP verbs by default.
 
-If neither of these methods serve your application needs, the `SocketHttpServer` constructor may be used directly. This provides an enormous amount of flexibility in how incoming connections client connections are created and handled, but will require more code to create. The constructor requires the user to pass an instance of `SocketServerFactory`, used to create client `Socket` instances (both components of the [`amphp/socket`](https://github.com/amphp/socket) library), and an instance of [`ClientFactory`](#client-factory), which appropriately creates [`Client`](#request-clients) instances which are attached to each `Request` made by the client.
+If neither of these methods serve your application needs, the `SocketHttpServer` constructor may be used directly. This provides an enormous amount of flexibility in how incoming connections client connections are created and handled, but will require more code to create. The constructor requires the user to pass an instance of `SocketServerFactory`, used to create client `Socket` instances (both components of the [`amphp/socket`](https://github.com/amphp/socket) library), and an instance of `ClientFactory`, which appropriately creates [`Client`](#request-clients) instances which are attached to each `Request` made by the client.
 
 ### `RequestHandler`
 
@@ -148,7 +148,7 @@ Incoming requests are represented by `Request` objects. A request is provided to
 public function handleRequest(Request $request): Response
 ```
 
-Each client request (i.e., call to `RequestHandler::handleRequest()`) is executed within a separate [coroutine](https://amphp.org/architecture#coroutines) so requests are automatically handled cooperatively within the server process. When a request handler waits on [non-blocking I/O](#io), other client requests are processed in concurrent coroutines. Your request handler may itself create other coroutines using [`Amp\async()`](https://amphp.org/amp#coroutines) to execute multiple tasks for a single request.
+Each client request (i.e., call to `RequestHandler::handleRequest()`) is executed within a separate [coroutine](https://amphp.org/architecture#coroutines) so requests are automatically handled cooperatively within the server process. When a request handler waits on [non-blocking I/O](#blocking-io), other client requests are processed in concurrent coroutines. Your request handler may itself create other coroutines using [`Amp\async()`](https://amphp.org/amp#coroutines) to execute multiple tasks for a single request.
 
 Usually a `RequestHandler` directly generates a response, but it might also delegate to another `RequestHandler`.
 An example for such a delegating `RequestHandler` is the [`Router`](https://github.com/amphp/http-server-router).
@@ -715,7 +715,7 @@ Thus it is imperative to reduce computation times of the handlers to a minimum.
 
 ## Examples
 
-Several examples can be found in the [`./examples`](https://github.com/amphp/http-server/tree/master/examples) directory of the [repository](https://github.com/amphp/http-server).
+Several examples can be found in the [`./examples`](https://github.com/amphp/http-server/tree/3.x/examples) directory of the [repository](https://github.com/amphp/http-server).
 These can be executed as normal PHP scripts on the command line.
 
 ```bash
@@ -723,10 +723,6 @@ php examples/hello-world.php
 ```
 
 You can then access the example server at [`http://localhost:1337/`](http://localhost:1337/) in your browser.
-
-## Contributing
-
-Please read [`CONTRIBUTING.md`](https://github.com/amphp/amp/blob/master/CONTRIBUTING.md) for details on our code of conduct, and the process for submitting pull requests to us.
 
 ## Security
 
