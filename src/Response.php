@@ -313,6 +313,7 @@ final class Response extends HttpResponse
     public function push(string $url, array $headers = []): void
     {
         try {
+            /** @psalm-suppress DeprecatedMethod */
             $uri = Uri\Http::createFromString($url);
         } catch (\Exception $exception) {
             throw new \Error("Invalid push URI: " . $exception->getMessage(), 0, $exception);
