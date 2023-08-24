@@ -19,13 +19,14 @@ namespace Amp\Http\Server;
  */
 class ClientException extends \Exception
 {
-    private Driver\Client $client;
-
     /** @internal Do not instantiate instances of this exception in your request handlers or middleware! */
-    public function __construct(Driver\Client $client, string $message, int $code = 0, \Throwable $previous = null)
-    {
+    public function __construct(
+        private readonly Driver\Client $client,
+        string $message,
+        int $code = 0,
+        ?\Throwable $previous = null,
+    ) {
         parent::__construct($message, $code, $previous);
-        $this->client = $client;
     }
 
     final public function getClient(): Driver\Client
