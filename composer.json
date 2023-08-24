@@ -38,10 +38,10 @@
         "amphp/pipeline": "^1",
         "amphp/socket": "^2.1",
         "amphp/sync": "^2",
-        "league/uri": "^6",
-        "league/uri-interfaces": "^2.3",
+        "league/uri": "^6.8 | ^7.1",
+        "league/uri-interfaces": "^2.4.2 | ^7.1",
         "psr/http-message": "^1",
-        "psr/log": "^1|^2|^3",
+        "psr/log": "^1 | ^2 | ^3",
         "revolt/event-loop": "^1"
     },
     "require-dev": {
@@ -49,7 +49,7 @@
         "amphp/http-client": "^5",
         "amphp/log": "^2",
         "amphp/php-cs-fixer-config": "^2",
-        "league/uri-components": "^2",
+        "league/uri-components": "^2.4.2 | ^7.1",
         "monolog/monolog": "^3",
         "phpunit/phpunit": "^9",
         "psalm/phar": "^5.4"
