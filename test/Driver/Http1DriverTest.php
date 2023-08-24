@@ -7,6 +7,7 @@ use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\WritableBuffer;
 use Amp\Future;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
+use Amp\Http\Client\Connection\Stream;
 use Amp\Http\Client\Request as ClientRequest;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\HttpMessage;
@@ -27,6 +28,7 @@ use League\Uri;
 use Psr\Log\NullLogger;
 use function Amp\async;
 use function Amp\delay;
+use function Amp\Http\Client\events;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -769,9 +771,16 @@ class Http1DriverTest extends HttpDriverTest
     public function verifyWrite(string $input, int $status, array $headers, string $data): void
     {
         $actualBody = "";
-        $parser = new Http1Parser(new ClientRequest("/"), static function ($chunk) use (&$actualBody) {
-            $actualBody .= $chunk;
-        }, $this->createCallback(0));
+        $stream = $this->createMock(Stream::class);
+        $request = $this->createMockClientRequest($stream, "/");
+        $parser = new Http1Parser(
+            $request,
+            $stream,
+            static function (string $chunk) use (&$actualBody) {
+                $actualBody .= $chunk;
+            },
+            $this->createCallback(0),
+        );
 
         $response = $parser->parse($input);
         while (!$parser->isComplete()) {
@@ -784,6 +793,20 @@ class Http1DriverTest extends HttpDriverTest
         self::assertEquals($status, $response->getStatus());
         self::assertEquals($headers, $responseHeaders);
         self::assertEquals($data, $actualBody);
+    }
+
+    private function createMockClientRequest(Stream $stream, string $uri): ClientRequest
+    {
+        $request = new ClientRequest($uri);
+
+        $eventListener = events();
+        $eventListener->requestStart($request);
+        $eventListener->requestHeaderStart($request, $stream);
+        $eventListener->requestHeaderEnd($request, $stream);
+        $eventListener->requestBodyStart($request, $stream);
+        $eventListener->requestBodyEnd($request, $stream);
+
+        return $request;
     }
 
     public function testWrite(): void
