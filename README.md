@@ -205,7 +205,7 @@ $middleware = new class implements Middleware {
 $stackedHandler = Middleware\stackMiddleware($requestHandler, $middleware);
 $errorHandler = new DefaultErrorHandler();
 
-// $logger is a PSR-7 logger instance.
+// $logger is a PSR-3 logger instance.
 $server = SocketHttpServer::createForDirectAccess($logger);
 $server->expose('127.0.0.1:1337');
 $server->start($stackedHandler, $errorHandler);
