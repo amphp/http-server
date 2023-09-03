@@ -6,6 +6,7 @@ use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\WritableBuffer;
 use Amp\Future;
+use Amp\Http\Client\Connection\Connection;
 use Amp\Http\Client\Connection\Internal\Http1Parser;
 use Amp\Http\Client\Connection\Stream;
 use Amp\Http\Client\Request as ClientRequest;
@@ -801,6 +802,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $eventListener = events();
         $eventListener->requestStart($request);
+        $eventListener->connectionAcquired($request, $this->createMock(Connection::class), 1);
         $eventListener->requestHeaderStart($request, $stream);
         $eventListener->requestHeaderEnd($request, $stream);
         $eventListener->requestBodyStart($request, $stream);
