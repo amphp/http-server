@@ -19,7 +19,7 @@ use Amp\Cancellation;
  *
  * @implements \IteratorAggregate<int, string>
  */
-final class RequestBody implements ReadableStream, \IteratorAggregate
+final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringable
 {
     use ReadableStreamIteratorAggregate;
 
@@ -46,8 +46,7 @@ final class RequestBody implements ReadableStream, \IteratorAggregate
 
     /**
      * @see Payload::buffer()
-     * @throws ClientException
-     * @throws BufferException|StreamException
+     * @throws ClientException|BufferException|StreamException
      */
     public function buffer(?Cancellation $cancellation = null, int $limit = \PHP_INT_MAX): string
     {
@@ -87,5 +86,16 @@ final class RequestBody implements ReadableStream, \IteratorAggregate
         }
 
         ($this->upgradeSize)($size);
+    }
+
+    /**
+     * Buffers entire stream before returning. Use {@see self::buffer()} to optionally provide a {@see Cancellation}
+     * and/or length limit.
+     *
+     * @throws ClientException|BufferException|StreamException
+     */
+    public function __toString(): string
+    {
+        return $this->buffer();
     }
 }

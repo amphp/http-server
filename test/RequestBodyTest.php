@@ -12,6 +12,6 @@ class RequestBodyTest extends AsyncTestCase
     {
         $body = new RequestBody(new ReadableBuffer("foobar"));
         $body->increaseSizeLimit(1);
-        $this->assertSame("foobar", $body->buffer());
+        $this->assertSame("foobar", (string) $body);
     }
 }
