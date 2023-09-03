@@ -175,7 +175,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 \pack(
                     "nNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->bodySizeLimit,
+                    $this->initialWindowSize,
                     Http2Parser::MAX_CONCURRENT_STREAMS,
                     $this->concurrentStreamLimit,
                     Http2Parser::MAX_HEADER_LIST_SIZE,
@@ -727,7 +727,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 \pack(
                     "nNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->bodySizeLimit,
+                    $this->initialWindowSize,
                     Http2Parser::MAX_CONCURRENT_STREAMS,
                     $this->concurrentStreamLimit,
                     Http2Parser::MAX_HEADER_LIST_SIZE,
@@ -1055,9 +1055,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $bodySizeLimit = $this->bodySizeLimit;
 
         if ($this->serverWindow <= $bodySizeLimit >> 1) {
-            $increment = $bodySizeLimit - $this->serverWindow;
-            $this->serverWindow = $bodySizeLimit;
-            $this->writeFrame(\pack("N", $increment), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
+            $increment = \min($bodySizeLimit - $this->serverWindow, self::MAX_INCREMENT);
+
+            if ($increment > 0) {
+                $this->serverWindow += $increment;
+                $this->writeFrame(\pack("N", $increment), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG);
+            }
         }
 
         if (isset($headers["content-length"])) {
