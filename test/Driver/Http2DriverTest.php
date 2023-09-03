@@ -321,7 +321,7 @@ class Http2DriverTest extends HttpDriverTest
             'buffer' => \pack(
                 "nNnNnNnN",
                 Http2Parser::INITIAL_WINDOW_SIZE,
-                HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
+                Http2Driver::DEFAULT_WINDOW_SIZE,
                 Http2Parser::MAX_CONCURRENT_STREAMS,
                 Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
                 Http2Parser::MAX_HEADER_LIST_SIZE,
@@ -427,7 +427,7 @@ class Http2DriverTest extends HttpDriverTest
             'buffer' => \pack(
                 "nNnNnNnN",
                 Http2Parser::INITIAL_WINDOW_SIZE,
-                HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
+                Http2Driver::DEFAULT_WINDOW_SIZE,
                 Http2Parser::MAX_CONCURRENT_STREAMS,
                 Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
                 Http2Parser::MAX_HEADER_LIST_SIZE,

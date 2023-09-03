@@ -995,7 +995,7 @@ class Http1DriverTest extends HttpDriverTest
             Http2DriverTest::packFrame(\pack(
                 "nNnNnNnN",
                 Http2Parser::INITIAL_WINDOW_SIZE,
-                HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
+                Http2Driver::DEFAULT_WINDOW_SIZE,
                 Http2Parser::MAX_CONCURRENT_STREAMS,
                 Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
                 Http2Parser::MAX_HEADER_LIST_SIZE,
@@ -1038,7 +1038,7 @@ class Http1DriverTest extends HttpDriverTest
         $expected = Http2DriverTest::packFrame(\pack(
             "nNnNnNnN",
             Http2Parser::INITIAL_WINDOW_SIZE,
-            HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
+            Http2Driver::DEFAULT_WINDOW_SIZE,
             Http2Parser::MAX_CONCURRENT_STREAMS,
             Http2Driver::DEFAULT_CONCURRENT_STREAM_LIMIT,
             Http2Parser::MAX_HEADER_LIST_SIZE,

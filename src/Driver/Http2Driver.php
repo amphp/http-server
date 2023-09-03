@@ -175,7 +175,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 \pack(
                     "nNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->initialWindowSize,
+                    self::DEFAULT_WINDOW_SIZE,
                     Http2Parser::MAX_CONCURRENT_STREAMS,
                     $this->concurrentStreamLimit,
                     Http2Parser::MAX_HEADER_LIST_SIZE,
@@ -727,7 +727,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 \pack(
                     "nNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
-                    $this->initialWindowSize,
+                    self::DEFAULT_WINDOW_SIZE,
                     Http2Parser::MAX_CONCURRENT_STREAMS,
                     $this->concurrentStreamLimit,
                     Http2Parser::MAX_HEADER_LIST_SIZE,
