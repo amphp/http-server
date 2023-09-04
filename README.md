@@ -88,6 +88,7 @@ To create an instance of `SocketHttpServer` and listen for requests, minimally f
 * at least one host+port on which to listen for connections.
 
 ```php
+<?php
 use Amp\ByteStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\DefaultErrorHandler;
@@ -99,6 +100,8 @@ use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Monolog\Logger;
 use Monolog\Processor\PsrLogMessageProcessor;
+
+require __DIR__.'/vendor/autoload.php';
 
 // Note any PSR-3 logger may be used, Monolog is only an example.
 $logHandler = new StreamHandler(ByteStream\getStdout());
