@@ -12,7 +12,7 @@ use Amp\Cancellation;
 /**
  * This class allows streamed and buffered access to a request body with an API similar to {@see Payload}.
  *
- * The {@see read()} and {@see buffer()} methods can also throw {@see ClientException} in addition to the usual
+ * The {@see read()} and {@see buffer()} methods can throw {@see ClientException}, which extends
  * {@see StreamException}, though generally there is no need to catch this exception.
  *
  * Additionally, this class allows increasing the body size limit dynamically.
@@ -37,7 +37,6 @@ final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringab
 
     /**
      * @throws ClientException
-     * @throws StreamException
      */
     public function read(?Cancellation $cancellation = null): ?string
     {
@@ -46,7 +45,7 @@ final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringab
 
     /**
      * @see Payload::buffer()
-     * @throws ClientException|BufferException|StreamException
+     * @throws ClientException|BufferException
      */
     public function buffer(?Cancellation $cancellation = null, int $limit = \PHP_INT_MAX): string
     {
@@ -92,7 +91,7 @@ final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringab
      * Buffers entire stream before returning. Use {@see self::buffer()} to optionally provide a {@see Cancellation}
      * and/or length limit.
      *
-     * @throws ClientException|BufferException|StreamException
+     * @throws ClientException|BufferException
      */
     public function __toString(): string
     {

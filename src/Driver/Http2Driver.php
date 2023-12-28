@@ -165,7 +165,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         if ($this->settings !== null) {
             // Upgraded connections automatically assume an initial stream with ID 1.
-            // No date will be incoming on this stream, so body size of 0.
+            // No data will be incoming on this stream, so body size of 0.
             $this->createStream(1, 0, Http2Stream::RESERVED | Http2Stream::REMOTE_CLOSED);
             $this->remoteStreamId = \max(1, $this->remoteStreamId);
             $this->remainingStreams--;
@@ -364,11 +364,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                     $id,
                 );
             }
-        } catch (StreamException|CancelledException) {
-            // Client disconnected, ignore and proceed to clean up below.
-            $chunk = null;
         } catch (ClientException $exception) {
             $error = $exception->getCode() ?? Http2Parser::CANCEL; // Set error code to be used below.
+        } catch (StreamException|CancelledException) {
+            // Body stream threw or client disconnected, ignore and proceed to clean up below.
+            $chunk = null;
         } catch (\Throwable $throwable) {
             // Will be rethrown after cleanup below.
         }

@@ -749,13 +749,13 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->pendingResponse->await(); // Wait for response to be generated.
                 $this->pendingResponseCount--;
             } while ($this->continue);
-        } catch (StreamException) {
-            // Client disconnected, finally block will clean up.
         } catch (ClientException $exception) {
             if ($this->bodyQueue === null || !$this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
                 $this->sendErrorResponse($exception, $request ?? null)->await();
             }
+        } catch (StreamException) {
+            // Client disconnected, finally block will clean up.
         } finally {
             $this->pendingResponse->finally(function (): void {
                 $this->removeTimeout();
