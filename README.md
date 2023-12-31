@@ -186,7 +186,7 @@ $requestHandler = new class implements RequestHandler {
     public function handleRequest(Request $request): Response
     {
         return new Response(
-            status: Status::OK,
+            status: HttpStatus::OK,
             headers: ["content-type" => "text/plain; charset=utf-8"],
             body: "Hello, World!",
         );
