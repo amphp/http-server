@@ -18,8 +18,8 @@ use Amp\Http\Http2\Http2StreamException;
 use Amp\Http\HttpStatus;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\ClientException;
-use Amp\Http\Server\Driver\Internal\AbstractHttpDriver;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
+use Amp\Http\Server\Driver\Internal\StreamHttpDriver;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Push;
 use Amp\Http\Server\Request;
@@ -35,7 +35,7 @@ use Revolt\EventLoop;
 use function Amp\async;
 use function Amp\Http\formatDateHeader;
 
-final class Http2Driver extends AbstractHttpDriver implements Http2Processor
+final class Http2Driver extends StreamHttpDriver implements Http2Processor
 {
     public const DEFAULT_CONCURRENT_STREAM_LIMIT = 100;
 

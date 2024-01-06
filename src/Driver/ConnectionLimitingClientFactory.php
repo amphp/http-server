@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\Quic\QuicConnection;
 use Amp\Socket\InternetAddress;
 use Amp\Socket\InternetAddressVersion;
 use Amp\Socket\Socket;
@@ -19,7 +20,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
     ) {
     }
 
-    public function createClient(Socket $socket): ?Client
+    public function createClient(Socket|QuicConnection $socket): ?Client
     {
         $address = $socket->getRemoteAddress();
 

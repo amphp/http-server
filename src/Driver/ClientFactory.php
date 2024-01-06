@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Http\Client\SocketException;
+use Amp\Quic\QuicConnection;
 use Amp\Socket\Socket;
 
 interface ClientFactory
@@ -12,5 +13,5 @@ interface ClientFactory
      *
      * @throws SocketException
      */
-    public function createClient(Socket $socket): ?Client;
+    public function createClient(Socket|QuicConnection $socket): ?Client;
 }

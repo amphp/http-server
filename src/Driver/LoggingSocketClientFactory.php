@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\Quic\QuicConnection;
 use Amp\Socket\Socket;
 use Psr\Log\LoggerInterface as PsrLogger;
 
@@ -13,7 +14,7 @@ final class LoggingSocketClientFactory implements ClientFactory
     ) {
     }
 
-    public function createClient(Socket $socket): ?Client
+    public function createClient(Socket|QuicConnection $socket): ?Client
     {
         $local = $socket->getLocalAddress()->toString();
         $remote = $socket->getRemoteAddress()->toString();

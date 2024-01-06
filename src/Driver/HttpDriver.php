@@ -4,6 +4,8 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\WritableStream;
+use Amp\Quic\QuicConnection;
+use Amp\Socket\Socket;
 
 interface HttpDriver
 {
@@ -18,12 +20,20 @@ interface HttpDriver
     public function getApplicationLayerProtocols(): array;
 
     /**
-     * Set up the driver.
+     * Set up the driver in a socket independent way.
      */
     public function handleClient(
         Client $client,
         ReadableStream $readableStream,
         WritableStream $writableStream,
+    ): void;
+
+    /**
+     * Set up the driver directly through a connection.
+     */
+    public function handleConnection(
+        Client $client,
+        Socket|QuicConnection $connection
     ): void;
 
     /**

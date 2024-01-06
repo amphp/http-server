@@ -2,9 +2,12 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\WritableStream;
 use Amp\Http\HttpStatus;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\HttpErrorException;
@@ -14,7 +17,7 @@ use Amp\Http\Server\Response;
 use Psr\Log\LoggerInterface;
 
 /** @internal */
-abstract class AbstractHttpDriver implements HttpDriver
+abstract class ConnectionHttpDriver implements HttpDriver
 {
     private static ?TimeoutQueue $timeoutQueue = null;
     private static ?ErrorHandler $defaultErrorHandler = null;
@@ -142,5 +145,13 @@ abstract class AbstractHttpDriver implements HttpDriver
             // The default error handler will never throw, otherwise there's a bug
             return self::getDefaultErrorHandler()->handleError($status, null, $request);
         }
+    }
+
+    public function handleClient(
+        Client $client,
+        ReadableStream $readableStream,
+        WritableStream $writableStream,
+    ): void {
+        throw new \Error(get_class($this) . " cannot handle Clients in a stream independent way. Use handleConnection() instead.");
     }
 }

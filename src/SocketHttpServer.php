@@ -16,6 +16,10 @@ use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Http\Server\Middleware\ConcurrencyLimitingMiddleware;
 use Amp\Http\Server\Middleware\ForwardedHeaderType;
 use Amp\Http\Server\Middleware\ForwardedMiddleware;
+use Amp\Quic;
+use Amp\Quic\QuicConnection;
+use Amp\Quic\QuicServerConfig;
+use Amp\Quic\QuicServerSocket;
 use Amp\Socket\BindContext;
 use Amp\Socket\ResourceServerSocketFactory;
 use Amp\Socket\ServerSocket;
@@ -185,14 +189,14 @@ final class SocketHttpServer implements HttpServer
      *
      * @throws SocketException
      */
-    public function expose(SocketAddress|string $socketAddress, ?BindContext $bindContext = null): void
+    public function expose(SocketAddress|string $socketAddress, BindContext|QuicServerConfig|null $bindContext = null): void
     {
         if (\is_string($socketAddress)) {
             $socketAddress = SocketAddress\fromString($socketAddress);
         }
 
         $name = $socketAddress->toString();
-        if (isset($this->addresses[$name])) {
+        if (isset($this->addresses[$name]) && ($bindContext instanceof QuicServerConfig) != ($this->addresses[$name][1] instanceof QuicServerConfig)) {
             throw new \Error(\sprintf('Already exposing %s on HTTP server', $name));
         }
 
@@ -278,33 +282,56 @@ final class SocketHttpServer implements HttpServer
                 throw new CompositeException($exceptions);
             }
 
+            $quicConnections = new \SplObjectStorage;
+            /** @var ServerSocket[] $tcpServers */
+            $tcpServers = [];
+            /** @var QuicServerSocket[] $quicServers */
+            $quicServers = [];
+
             /**
              * @var SocketAddress $address
-             * @var BindContext|null $bindContext
+             * @var QuicServerConfig|BindContext|null $bindContext
              */
             foreach ($this->addresses as [$address, $bindContext]) {
-                $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
-                    $this->httpDriverFactory->getApplicationLayerProtocols(),
-                );
+                if ($bindContext instanceof QuicServerConfig) {
+                    $quicConnections[$bindContext][] = $address;
+                } else {
+                    $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
+                        $this->httpDriverFactory->getApplicationLayerProtocols(),
+                    );
 
-                /** @psalm-suppress PropertyTypeCoercion */
-                $this->servers[] = $this->serverSocketFactory->listen(
-                    $address,
-                    $bindContext?->withTlsContext($tlsContext),
-                );
+                    /** @psalm-suppress PropertyTypeCoercion */
+                    $this->servers[] = $tcpServers[] = $this->serverSocketFactory->listen(
+                        $address,
+                        $bindContext?->withTlsContext($tlsContext),
+                    );
+                }
+            }
+
+            foreach ($quicConnections as $bindContext => $addresses) {
+                $this->servers[] = $quicServers = Quic\bind($addresses, $bindContext);
             }
 
             $this->logger->info("Started server");
             $this->status = HttpServerStatus::Started;
 
-            foreach ($this->servers as $server) {
+            foreach ($tcpServers as $server) {
                 $scheme = $server->getBindContext()->getTlsContext() !== null ? 'https' : 'http';
                 $serverName = $server->getAddress()->toString();
 
-                $this->logger->info("Listening on {$scheme}://{$serverName}/");
+                $this->logger->info("Listening on {$scheme}://{$serverName}/ over TCP");
 
                 // Using short-closure to avoid Psalm bug when using a first-class callable here.
                 EventLoop::queue(fn () => $this->accept($server, $requestHandler, $errorHandler));
+            }
+
+            foreach ($quicServers as $server) {
+                $serverNames = \array_map(fn ($address) => "https://{$address->toString()}/", $server->getAddresses());
+
+                $this->logger->info("Listening on " . \implode(", ", $serverNames) . " over QUIC");
+
+                // Using short-closure to avoid Psalm bug when using a first-class callable here.
+                EventLoop::queue(fn () => $this->acceptConnections($server, $requestHandler, $errorHandler));
             }
         } catch (\Throwable $exception) {
             try {
@@ -326,9 +353,19 @@ final class SocketHttpServer implements HttpServer
         }
     }
 
-    private function handleClient(
-        Socket $socket,
+    private function acceptConnections(
+        QuicServerSocket $server,
         RequestHandler $requestHandler,
+        ErrorHandler $errorHandler,
+    ): void {
+        while ($connection = $server->acceptConnection()) {
+            EventLoop::queue($this->handleClient(...), $connection, $requestHandler, $errorHandler);
+        }
+    }
+
+    private function handleClient(
+        RequestHandler $requestHandler,
+        Socket|QuicConnection $socket,
         ErrorHandler $errorHandler,
     ): void {
         try {
@@ -352,7 +389,7 @@ final class SocketHttpServer implements HttpServer
             );
 
             try {
-                $driver->handleClient($client, $socket, $socket);
+                $driver->handleConnection($client, $socket);
             } finally {
                 unset($this->drivers[$id]);
             }

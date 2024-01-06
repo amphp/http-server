@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\CancelledException;
+use Amp\Quic\QuicConnection;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketException;
 use Amp\TimeoutCancellation;
@@ -16,7 +17,7 @@ final class SocketClientFactory implements ClientFactory
     ) {
     }
 
-    public function createClient(Socket $socket): ?Client
+    public function createClient(Socket|QuicConnection $socket): ?Client
     {
         $local = $socket->getLocalAddress()->toString();
         $remote = $socket->getRemoteAddress()->toString();

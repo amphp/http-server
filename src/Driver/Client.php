@@ -27,4 +27,9 @@ interface Client extends Closable
      * If the client is encrypted a TlsInfo object is returned, otherwise null.
      */
     public function getTlsInfo(): ?TlsInfo;
+
+    /**
+     * @return bool Whether the client uses QUIC.
+     */
+    public function isQuicClient(): bool;
 }

@@ -16,7 +16,7 @@ use Amp\Http\Http1\Rfc7230;
 use Amp\Http\HttpStatus;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\ClientException;
-use Amp\Http\Server\Driver\Internal\AbstractHttpDriver;
+use Amp\Http\Server\Driver\Internal\StreamHttpDriver;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
@@ -32,7 +32,7 @@ use function Amp\async;
 use function Amp\Http\formatDateHeader;
 use function Amp\Http\mapHeaderPairs;
 
-final class Http1Driver extends AbstractHttpDriver
+final class Http1Driver extends StreamHttpDriver
 {
     private static function makeHeaderReduceClosure(string $search): \Closure
     {

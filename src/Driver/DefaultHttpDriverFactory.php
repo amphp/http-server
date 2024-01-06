@@ -29,6 +29,18 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         ErrorHandler $errorHandler,
         Client $client,
     ): HttpDriver {
+        if ($client->isQuicClient()) {
+            return new Http3Driver(
+                requestHandler: $requestHandler,
+                errorHandler: $errorHandler,
+                logger: $this->logger,
+                streamTimeout: $this->streamTimeout,
+                headerSizeLimit: $this->headerSizeLimit,
+                bodySizeLimit: $this->bodySizeLimit,
+                pushEnabled: $this->pushEnabled,
+            );
+        }
+
         if ($client->getTlsInfo()?->getApplicationLayerProtocol() === "h2") {
             return new Http2Driver(
                 requestHandler: $requestHandler,
