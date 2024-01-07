@@ -196,7 +196,7 @@ final class SocketHttpServer implements HttpServer
         }
 
         $name = $socketAddress->toString();
-        if (isset($this->addresses[$name]) && ($bindContext instanceof QuicServerConfig) != ($this->addresses[$name][1] instanceof QuicServerConfig)) {
+        if (isset($this->addresses[$name]) && ($bindContext instanceof QuicServerConfig) == ($this->addresses[$name][1] instanceof QuicServerConfig)) {
             throw new \Error(\sprintf('Already exposing %s on HTTP server', $name));
         }
 
@@ -294,7 +294,8 @@ final class SocketHttpServer implements HttpServer
              */
             foreach ($this->addresses as [$address, $bindContext]) {
                 if ($bindContext instanceof QuicServerConfig) {
-                    $quicConnections[$bindContext][] = $address;
+                    $quicConnections[$bindContext] ??= [];
+                    $quicConnections[$bindContext] = array_merge($quicConnections[$bindContext], [$address]);
                 } else {
                     $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
                         $this->httpDriverFactory->getApplicationLayerProtocols(),
@@ -308,8 +309,8 @@ final class SocketHttpServer implements HttpServer
                 }
             }
 
-            foreach ($quicConnections as $bindContext => $addresses) {
-                $this->servers[] = $quicServers = Quic\bind($addresses, $bindContext);
+            foreach ($quicConnections as $bindContext) {
+                $this->servers[] = $quicServers[] = Quic\bind($quicConnections[$bindContext], $bindContext);
             }
 
             $this->logger->info("Started server");
@@ -364,8 +365,8 @@ final class SocketHttpServer implements HttpServer
     }
 
     private function handleClient(
-        RequestHandler $requestHandler,
         Socket|QuicConnection $socket,
+        RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
     ): void {
         try {

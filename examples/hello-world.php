@@ -43,6 +43,7 @@ $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");
 $server->expose("0.0.0.0:1338", $context);
 $server->expose("[::]:1338", $context);
+$server->expose("0.0.0.0:1339", new \Amp\Quic\QuicServerConfig($context->getTlsContext()->withApplicationLayerProtocols(["h3"])));
 
 $server->start(new class implements RequestHandler {
     public function handleRequest(Request $request): Response
