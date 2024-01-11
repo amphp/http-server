@@ -4,13 +4,19 @@ namespace Amp\Http\Server\Driver;
 
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\DeferredFuture;
+use Amp\Http\Http2\Http2ConnectionException;
 use Amp\Http\Http2\Http2Parser;
+use Amp\Http\Http2\Http2StreamException;
 use Amp\Http\InvalidHeaderException;
+use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\ConnectionHttpDriver;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
+use Amp\Http\Server\Driver\Internal\Http3\Http3ConnectionException;
+use Amp\Http\Server\Driver\Internal\Http3\Http3Error;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Frame;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Parser;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Settings;
+use Amp\Http\Server\Driver\Internal\Http3\Http3StreamException;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Writer;
 use Amp\Http\Server\Driver\Internal\Http3\QPack;
 use Amp\Http\Server\ErrorHandler;
@@ -51,7 +57,7 @@ class Http3Driver extends ConnectionHttpDriver
         private readonly int $streamTimeout = Http2Driver::DEFAULT_STREAM_TIMEOUT,
         private readonly int $headerSizeLimit = Http2Driver::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = Http2Driver::DEFAULT_BODY_SIZE_LIMIT,
-        private readonly bool $pushEnabled = true,
+        private bool $pushEnabled = true,
         private readonly ?string $settings = null,
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger);
@@ -145,171 +151,287 @@ class Http3Driver extends ConnectionHttpDriver
         $this->client = $client;
         $this->connection = $connection;
         $this->writer = new Http3Writer($connection, [[Http3Settings::MAX_FIELD_SECTION_SIZE, $this->headerSizeLimit]]);
+        $largestPushId = (1 << 62) - 1;
+        $maxAllowedPushId = 0;
 
         $parser = new Http3Parser($connection, $this->headerSizeLimit, $this->qpack);
-        foreach ($parser->process() as $frame) {
-            $type = $frame[0];
-            switch ($type) {
-                case Http3Frame::SETTINGS:
-                    // something to do?
-                    break;
+        try {
+            foreach ($parser->process() as $frame) {
+                $type = $frame[0];
+                switch ($type) {
+                    case Http3Frame::SETTINGS:
+                        // something to do?
+                        break;
 
-                case Http3Frame::HEADERS:
-                    EventLoop::queue(function () use ($frame) {
-                        /** @var QuicSocket $stream */
-                        $stream = $frame[1];
-                        $generator = $frame[2];
+                    case Http3Frame::HEADERS:
+                        EventLoop::queue(function () use ($parser, $frame) {
+                            try {
+                                /** @var QuicSocket $stream */
+                                $stream = $frame[1];
+                                $generator = $frame[2];
 
-                        [$headers, $pseudo] = $generator->current();
-                        foreach ($pseudo as $name => $value) {
-                            if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
-                                return;
-                            }
-                        }
-
-                        if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"], $pseudo[":authority"])
-                            || isset($headers["connection"])
-                            || $pseudo[":path"] === ''
-                            || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
-                        ) {
-                            return; // "Invalid header values"
-                        }
-
-                        [':method' => $method, ':path' => $target, ':scheme' => $scheme, ':authority' => $host] = $pseudo;
-                        $query = null;
-
-                        if (!\preg_match("#^([A-Z\d.\-]+|\[[\d:]+])(?::([1-9]\d*))?$#i", $host, $matches)) {
-                            return; // "Invalid authority (host) name"
-                        }
-
-                        $address = $this->client->getLocalAddress();
-
-                        $host = $matches[1];
-                        $port = isset($matches[2])
-                            ? (int) $matches[2]
-                            : ($address instanceof InternetAddress ? $address->getPort() : null);
-
-                        if ($position = \strpos($target, "#")) {
-                            $target = \substr($target, 0, $position);
-                        }
-
-                        if ($position = \strpos($target, "?")) {
-                            $query = \substr($target, $position + 1);
-                            $target = \substr($target, 0, $position);
-                        }
-
-                        try {
-                            if ($target === "*") {
-                                /** @psalm-suppress DeprecatedMethod */
-                                $uri = Uri\Http::createFromComponents([
-                                    "scheme" => $scheme,
-                                    "host" => $host,
-                                    "port" => $port,
-                                ]);
-                            } else {
-                                /** @psalm-suppress DeprecatedMethod */
-                                $uri = Uri\Http::createFromComponents([
-                                    "scheme" => $scheme,
-                                    "host" => $host,
-                                    "port" => $port,
-                                    "path" => $target,
-                                    "query" => $query,
-                                ]);
-                            }
-                        } catch (Uri\Contracts\UriException $exception) {
-                            return; // "Invalid request URI",
-                        }
-
-                        $trailerDeferred = new DeferredFuture;
-                        $bodyQueue = new Queue();
-
-                        try {
-                            $trailers = new Trailers(
-                                $trailerDeferred->getFuture(),
-                                isset($headers['trailers'])
-                                    ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
-                                    : []
-                            );
-                        } catch (InvalidHeaderException $exception) {
-                            return; // "Invalid headers field in trailers"
-                        }
-
-                        $dataSuspension = null;
-                        $body = new RequestBody(
-                            new ReadableIterableStream($bodyQueue->pipe()),
-                            function (int $bodySize) use (&$bodySizeLimit, &$dataSuspension) {
-                                if ($bodySizeLimit >= $bodySize) {
-                                    return;
+                                [$headers, $pseudo] = $generator->current();
+                                foreach ($pseudo as $name => $value) {
+                                    if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
+                                        throw new Http3StreamException(
+                                            "Invalid pseudo header",
+                                            $stream,
+                                            Http3Error::H3_MESSAGE_ERROR
+                                        );
+                                    }
                                 }
 
-                                $bodySizeLimit = $bodySize;
+                                if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"], $pseudo[":authority"])
+                                    || isset($headers["connection"])
+                                    || $pseudo[":path"] === ''
+                                    || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
+                                ) {
+                                    throw new Http3StreamException(
+                                        "Invalid header values",
+                                        $stream,
+                                        Http3Error::H3_MESSAGE_ERROR
+                                    );
+                                }
 
-                                $dataSuspension?->resume();
-                                $dataSuspension = null;
-                            }
-                        );
+                                [':method' => $method, ':path' => $target, ':scheme' => $scheme, ':authority' => $host] = $pseudo;
+                                $query = null;
 
-                        $request = new Request(
-                            $this->client,
-                            $method,
-                            $uri,
-                            $headers,
-                            $body,
-                            "3",
-                            $trailers
-                        );
-                        $this->requestStreams[$request] = $stream;
-                        async($this->handleRequest(...), $request);
+                                if (!\preg_match("#^([A-Z\d.\-]+|\[[\d:]+])(?::([1-9]\d*))?$#i", $host, $matches)) {
+                                    throw new Http3StreamException(
+                                        "Invalid authority (host) name",
+                                        $stream,
+                                        Http3Error::H3_MESSAGE_ERROR
+                                    );
+                                }
 
-                        $generator->next();
-                        $currentBodySize = 0;
-                        if ($generator->valid()) {
-                            foreach ($generator as $type => $data) {
-                                if ($type === Http3Frame::DATA) {
-                                    $bodyQueue->push($data);
-                                    while ($currentBodySize > $bodySizeLimit) {
-                                        $dataSuspension = EventLoop::getSuspension();
-                                        $dataSuspension->suspend();
+                                $address = $this->client->getLocalAddress();
+
+                                $host = $matches[1];
+                                $port = isset($matches[2])
+                                    ? (int)$matches[2]
+                                    : ($address instanceof InternetAddress ? $address->getPort() : null);
+
+                                if ($position = \strpos($target, "#")) {
+                                    $target = \substr($target, 0, $position);
+                                }
+
+                                if ($position = \strpos($target, "?")) {
+                                    $query = \substr($target, $position + 1);
+                                    $target = \substr($target, 0, $position);
+                                }
+
+                                try {
+                                    if ($target === "*") {
+                                        /** @psalm-suppress DeprecatedMethod */
+                                        $uri = Uri\Http::createFromComponents([
+                                            "scheme" => $scheme,
+                                            "host" => $host,
+                                            "port" => $port,
+                                        ]);
+                                    } else {
+                                        /** @psalm-suppress DeprecatedMethod */
+                                        $uri = Uri\Http::createFromComponents([
+                                            "scheme" => $scheme,
+                                            "host" => $host,
+                                            "port" => $port,
+                                            "path" => $target,
+                                            "query" => $query,
+                                        ]);
                                     }
-                                } elseif ($type === Http3Frame::HEADERS) {
-                                    // Trailers must not contain pseudo-headers.
-                                    if (!empty($pseudo)) {
-                                        return; // "Trailers must not contain pseudo headers"
+                                } catch (Uri\Contracts\UriException $exception) {
+                                    throw new Http3StreamException(
+                                        "Invalid request URI",
+                                        $stream,
+                                        Http3Error::H3_MESSAGE_ERROR,
+                                        $exception
+                                    );
+                                }
+
+                                $trailerDeferred = new DeferredFuture;
+                                $bodyQueue = new Queue();
+
+                                try {
+                                    $trailers = new Trailers(
+                                        $trailerDeferred->getFuture(),
+                                        isset($headers['trailers'])
+                                            ? \array_map('trim', \explode(',', \implode(',', $headers['trailers'])))
+                                            : []
+                                    );
+                                } catch (InvalidHeaderException $exception) {
+                                    throw new Http3StreamException(
+                                        "Invalid headers field in trailers",
+                                        $stream,
+                                        Http3Error::H3_MESSAGE_ERROR,
+                                        $exception
+                                    );
+                                }
+
+                                if (isset($headers["content-length"])) {
+                                    if (isset($headers["content-length"][1])) {
+                                        throw new Http3StreamException(
+                                            "Received multiple content-length headers",
+                                            $stream,
+                                            Http3Error::H3_MESSAGE_ERROR
+                                        );
                                     }
 
-                                    // Trailers must not contain any disallowed fields.
-                                    if (\array_intersect_key($headers, Trailers::DISALLOWED_TRAILERS)) {
-                                        return; // "Disallowed trailer field name"
+                                    $contentLength = $headers["content-length"][0];
+                                    if (!\preg_match('/^0|[1-9]\d*$/', $contentLength)) {
+                                        throw new Http3StreamException(
+                                            "Invalid content-length header value",
+                                            $stream,
+                                            Http3Error::H3_MESSAGE_ERROR
+                                        );
                                     }
 
-                                    $trailerDeferred->complete($headers);
-                                    $trailerDeferred = null;
-                                    break;
+                                    $expectedLength = (int)$contentLength;
                                 } else {
-                                    return; // Boo for push promise
+                                    $expectedLength = null;
+                                }
+
+                                $dataSuspension = null;
+                                $body = new RequestBody(
+                                    new ReadableIterableStream($bodyQueue->pipe()),
+                                    function (int $bodySize) use (&$bodySizeLimit, &$dataSuspension) {
+                                        if ($bodySizeLimit >= $bodySize) {
+                                            return;
+                                        }
+
+                                        $bodySizeLimit = $bodySize;
+
+                                        $dataSuspension?->resume();
+                                        $dataSuspension = null;
+                                    }
+                                );
+
+                                $request = new Request(
+                                    $this->client,
+                                    $method,
+                                    $uri,
+                                    $headers,
+                                    $body,
+                                    "3",
+                                    $trailers
+                                );
+                                $this->requestStreams[$request] = $stream;
+                                async($this->handleRequest(...), $request);
+
+                                $generator->next();
+                                $currentBodySize = 0;
+                                if ($generator->valid()) {
+                                    foreach ($generator as $type => $data) {
+                                        if ($type === Http3Frame::DATA) {
+                                            $len = \strlen($data);
+                                            if ($expectedLength !== null) {
+                                                $expectedLength -= $len;
+                                                if ($expectedLength < 0) {
+                                                    throw new Http3StreamException(
+                                                        "Body length does not match content-length header",
+                                                        $stream,
+                                                        Http3Error::H3_MESSAGE_ERROR
+                                                    );
+                                                }
+                                            }
+                                            $currentBodySize += $len;
+                                            $bodyQueue->push($data);
+                                            while ($currentBodySize > $bodySizeLimit) {
+                                                $dataSuspension = EventLoop::getSuspension();
+                                                $dataSuspension->suspend();
+                                            }
+                                        } elseif ($type === Http3Frame::HEADERS) {
+                                            // Trailers must not contain pseudo-headers.
+                                            if (!empty($pseudo)) {
+                                                throw new Http3StreamException(
+                                                    "Trailers must not contain pseudo headers",
+                                                    $stream,
+                                                    Http3Error::H3_MESSAGE_ERROR
+                                                );
+                                            }
+
+                                            // Trailers must not contain any disallowed fields.
+                                            if (\array_intersect_key($headers, Trailers::DISALLOWED_TRAILERS)) {
+                                                throw new Http3StreamException(
+                                                    "Disallowed trailer field name",
+                                                    $stream,
+                                                    Http3Error::H3_MESSAGE_ERROR
+                                                );
+                                            }
+
+                                            $trailerDeferred->complete($headers);
+                                            $trailerDeferred = null;
+                                            break;
+                                        } elseif ($type === Http3Frame::PUSH_PROMISE) {
+                                            throw new Http3ConnectionException("A PUSH_PROMISE may not be sent on the request stream", Http3Error::H3_FRAME_UNEXPECTED);
+                                        } else {
+                                            // Stream reset
+                                            $ex = new ClientException($this->client, "Client aborted the request", Http3Error::H3_REQUEST_REJECTED->value);
+                                            $bodyQueue->error($ex);
+                                            $trailerDeferred->error($ex);
+                                            return;
+                                        }
+                                    }
+                                }
+                                if ($expectedLength) {
+                                    throw new Http3StreamException(
+                                        "Body length does not match content-length header",
+                                        $stream,
+                                        Http3Error::H3_MESSAGE_ERROR
+                                    );
+                                }
+                                $bodyQueue->complete();
+                                $trailerDeferred?->complete();
+                            } catch (\Throwable $e) {
+                                if (isset($bodyQueue)) {
+                                    $bodyQueue->error($e);
+                                }
+                                if (isset($trailerDeferred)) {
+                                    $trailerDeferred->error($e);
+                                }
+                                if ($e instanceof Http3ConnectionException) {
+                                    $parser->abort($e);
+                                } elseif ($e instanceof Http3StreamException) {
+                                    $stream->resetSending($e->getCode());
+                                } else {
+                                    $stream->resetSending(Http3Error::H3_INTERNAL_ERROR->value);
+                                    throw $e; // rethrow it right into the event loop
                                 }
                             }
+                        });
+                        break;
+
+                    case Http3Frame::GOAWAY:
+                        $maxPushId = $frame[1];
+                        if ($maxPushId > $largestPushId) {
+                            $parser->abort(new Http3ConnectionException("A GOAWAY id must not be larger than a prior one", Http3Error::H3_ID_ERROR));
+                            break;
                         }
-                        $bodyQueue->complete();
-                        $trailerDeferred?->complete();
-                    });
+                        $this->pushEnabled = false;
+                        // TODO abort pending server pushes
+                        break;
 
-                case Http3Frame::GOAWAY:
-                    // TODO bye bye
-                    break;
+                    case Http3Frame::MAX_PUSH_ID:
+                        $maxPushId = $frame[1];
+                        if ($maxPushId < $maxAllowedPushId) {
+                            $parser->abort(new Http3ConnectionException("A MAX_PUSH_ID id must not be smaller than a prior one", Http3Error::H3_ID_ERROR));
+                            break;
+                        }
+                        $maxAllowedPushId = $maxPushId;
+                        break;
 
-                case Http3Frame::MAX_PUSH_ID:
-                    // TODO push
-                    break;
+                    case Http3Frame::CANCEL_PUSH:
+                        $pushId = $frame[1];
+                        // TODO stop push
+                        break;
 
-                case Http3Frame::CANCEL_PUSH:
-                    // TODO stop push
-                    break;
-
-                default:
-                    // TODO invalid
-                    return;
+                    default:
+                        $parser->abort(new Http3ConnectionException("An unexpected stream or frame was received", Http3Error::H3_FRAME_UNEXPECTED));
+                }
             }
+        } catch (Http3ConnectionException $e) {
+            $this->logger->notice("HTTP/3 connection error for client {address}: {message}", [
+                'address' => $this->client->getRemoteAddress()->toString(),
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 
@@ -320,6 +442,6 @@ class Http3Driver extends ConnectionHttpDriver
 
     public function stop(): void
     {
-
+        // TODO emit goaway frames
     }
 }

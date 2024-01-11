@@ -67,16 +67,23 @@ class Http3Parser
     {
         $frametype = self::decodeVarintFromStream($stream, $buf, $off);
         $maxPadding = 0x1000;
-        while ($frametype >= 0x21 && $frametype % 0x1f === 2) {
+        while (null === $frame = Http3Frame::tryFrom($frametype)) {
+            // RFC 9114 Section 9 explicitly requires all known frames to be skipped
+            if ($frametype >= 0 && $frametype <= 0x09) {
+                throw new Http3ConnectionException("Encountered reserved frame type $frametype", Http3Error::H3_FRAME_UNEXPECTED);
+            }
             $length = self::decodeVarintFromStream($stream, $buf, $off);
-            if ($length > $maxPadding) {
+            if ($length === -1) {
                 return null;
+            }
+            if ($length > $maxPadding) {
+                throw new Http3ConnectionException("An excessively large unknown frame of type $frametype was received", Http3Error::H3_EXCESSIVE_LOAD);
             }
             $maxPadding -= $length;
             $off += $length;
             $frametype = self::decodeVarintFromStream($stream, $buf, $off);
         }
-        return Http3Frame::tryFrom($frametype);
+        return $frame;
     }
 
     public static function readFullFrame(QuicSocket $stream, string &$buf, int &$off, $maxSize): ?array
@@ -95,7 +102,7 @@ class Http3Parser
             return null;
         }
         if ($length > $maxSize) {
-            return null;
+            throw new Http3ConnectionException("An excessively large message was received", Http3Error::H3_FRAME_ERROR);
         }
         if (\strlen($buf) >= $off + $length) {
             $frame = \substr($buf, $off, $length);
@@ -107,6 +114,9 @@ class Http3Parser
         $off = 0;
         while (\strlen($buf) < $length) {
             if (null === $chunk = $stream->read()) {
+                if (!$stream->wasReset()) {
+                    throw new Http3ConnectionException("Received an incomplete frame", Http3Error::H3_FRAME_ERROR);
+                }
                 return null;
             }
             $buf .= $chunk;
@@ -145,7 +155,6 @@ class Http3Parser
     {
         while (true) {
             if (![$frame, $contents] = self::readFullFrame($stream, $buf, $off, $this->headerSizeLimit)) {
-                $this->queue->complete();
                 return;
             }
             if ($frame === Http3Frame::PUSH_PROMISE) {
@@ -155,7 +164,7 @@ class Http3Parser
             }
         }
         if ($frame !== Http3Frame::HEADERS) {
-            return;
+            throw new Http3ConnectionException("A request or response stream may not start with any other frame than HEADERS", Http3Error::H3_FRAME_UNEXPECTED);
         }
         $headerOff = 0;
         yield Http3Frame::HEADERS => self::processHeaders($this->qpack->decode($contents, $headerOff));
@@ -164,7 +173,9 @@ class Http3Parser
             switch ($type) {
                 // At most one trailing header
                 case Http3Frame::HEADERS:
-                    $headers = self::readFrameWithoutType($stream, $buf, $off, $this->headerSizeLimit);
+                    if (!$headers = self::readFrameWithoutType($stream, $buf, $off, $this->headerSizeLimit)) {
+                        return;
+                    }
                     $headerOff = 0;
                     yield Http3Frame::HEADERS => self::processHeaders($this->qpack->decode($headers, $headerOff));
                     if ($hadData) {
@@ -186,6 +197,11 @@ class Http3Parser
                         $off = 0;
                         while (true) {
                             if (null === $buf = $stream->read()) {
+                                if ($stream->wasReset()) {
+                                    yield null => null;
+                                } else {
+                                    throw new Http3ConnectionException("Received an incomplete data frame", Http3Error::H3_FRAME_ERROR);
+                                }
                                 return;
                             }
                             if (\strlen($buf) < $length) {
@@ -200,22 +216,25 @@ class Http3Parser
                     }
                     // no break
                 case Http3Frame::PUSH_PROMISE:
-                    $headers = self::readFrameWithoutType($stream, $buf, $off, $this->headerSizeLimit);
+                    if (!$headers = self::readFrameWithoutType($stream, $buf, $off, $this->headerSizeLimit)) {
+                        return;
+                    }
                     yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($headers);
                     break;
 
                 default:
-                    $this->queue->complete();
+                    throw new Http3ConnectionException("Found unexpected frame {$type->name} on message frame", Http3Error::H3_FRAME_UNEXPECTED);
             }
         }
-        if (![$frame, $contents] = self::readFullFrame($stream, $buf, $off, $this->headerSizeLimit)) {
-            $this->queue->complete();
-            return;
+        if ($stream->wasReset()) {
+            yield null => null;
         }
-        if ($frame === Http3Frame::PUSH_PROMISE) {
-            yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($contents);
-        } else {
-            $this->queue->complete();
+        while ([$frame, $contents] = self::readFullFrame($stream, $buf, $off, $this->headerSizeLimit)) {
+            if ($frame === Http3Frame::PUSH_PROMISE) {
+                yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($contents);
+            } else {
+                throw new Http3ConnectionException("Expecting only push promises after a message frame, found {$frame->type}", Http3Error::H3_FRAME_UNEXPECTED);
+            }
         }
     }
 
@@ -254,82 +273,106 @@ class Http3Parser
         EventLoop::queue(function () {
             while ($stream = $this->connection->accept()) {
                 EventLoop::queue(function () use ($stream) {
-                    $off = 0;
-                    $buf = $stream->read();
-                    if ($stream->isWritable()) {
-                        // client-initiated bidirectional stream
-                        $messageGenerator = $this->readHttpMessage($stream, $buf, $off);
-                        if (!$messageGenerator->valid()) {
-                            return;
-                        }
-                        if ($messageGenerator->key() !== Http3Frame::HEADERS) {
-                            $this->queue->complete();
-                            return;
-                        }
-                        $this->queue->push([Http3Frame::HEADERS, $stream, $messageGenerator]);
-                    } else {
-                        // unidirectional stream
-                        $type = self::decodeVarintFromStream($stream, $buf, $off);
-                        switch (Http3StreamType::tryFrom($type)) {
-                            case Http3StreamType::Control:
-                                if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x1000)) {
-                                    $this->queue->complete();
-                                    return;
-                                }
-                                if ($frame !== Http3Frame::SETTINGS) {
-                                    $this->queue->complete();
-                                    return;
-                                }
-                                $this->parseSettings($contents);
-
-                                while (true) {
-                                    if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x100)) {
-                                        $this->queue->complete();
+                    try {
+                        $off = 0;
+                        $buf = $stream->read();
+                        if ($stream->isWritable()) {
+                            // client-initiated bidirectional stream
+                            $messageGenerator = $this->readHttpMessage($stream, $buf, $off);
+                            if (!$messageGenerator->valid()) {
+                                return; // Nothing happens. That's allowed. Just bye then.
+                            }
+                            if ($messageGenerator->key() !== Http3Frame::HEADERS) {
+                                throw new Http3ConnectionException("Bi-directional message streams must start with a HEADERS frame", Http3Error::H3_FRAME_UNEXPECTED);
+                            }
+                            $this->queue->push([Http3Frame::HEADERS, $stream, $messageGenerator]);
+                        } else {
+                            // unidirectional stream
+                            $type = self::decodeVarintFromStream($stream, $buf, $off);
+                            switch (Http3StreamType::tryFrom($type)) {
+                                case Http3StreamType::Control:
+                                    if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x1000)) {
+                                        if (!$stream->getConnection()->isClosed()) {
+                                            throw new Http3ConnectionException("The control stream was closed", Http3Error::H3_CLOSED_CRITICAL_STREAM);
+                                        }
                                         return;
                                     }
+                                    if ($frame !== Http3Frame::SETTINGS) {
+                                        throw new Http3ConnectionException("A settings frame must be the first frame on the control stream", Http3Error::H3_MISSING_SETTINGS);
+                                    }
+                                    $this->parseSettings($contents);
 
-                                    if ($frame !== Http3Frame::GOAWAY || $frame !== Http3Frame::MAX_PUSH_ID || $frame !== Http3Frame::CANCEL_PUSH) {
-                                        $this->queue->complete();
-                                        return;
+                                    while (true) {
+                                        if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x100)) {
+                                            if (!$stream->getConnection()->isClosed()) {
+                                                throw new Http3ConnectionException("The control stream was closed", Http3Error::H3_CLOSED_CRITICAL_STREAM);
+                                            }
+                                            return;
+                                        }
+
+                                        if ($frame !== Http3Frame::GOAWAY || $frame !== Http3Frame::MAX_PUSH_ID || $frame !== Http3Frame::CANCEL_PUSH) {
+                                            throw new Http3ConnectionException("An unexpected frame was received on the control stream", Http3Error::H3_FRAME_UNEXPECTED);
+                                        }
+
+                                        $tmpOff = 0;
+                                        if (0 > $id = self::decodeVarint($contents, $tmpOff)) {
+                                            if (!$stream->getConnection()->isClosed()) {
+                                                throw new Http3ConnectionException("The control stream was closed", Http3Error::H3_CLOSED_CRITICAL_STREAM);
+                                            }
+                                            return;
+                                        }
+                                        $this->queue->push([$frame, $id]);
                                     }
 
-                                    $tmpOff = 0;
-                                    if (null === $id = self::decodeVarint($contents, $tmpOff)) {
-                                        $this->queue->complete();
+                                    // no break
+                                case Http3StreamType::Push:
+                                    $pushId = self::decodeVarintFromStream($stream, $buf, $off);
+                                    if ($pushId < 0) {
+                                        if (!$stream->wasReset()) {
+                                            throw new Http3ConnectionException("The push stream was closed too early", Http3Error::H3_FRAME_ERROR);
+                                        }
+                                    }
+                                    $this->queue->push([Http3StreamType::Push, $pushId, fn () => $this->readHttpMessage($stream, $buf, $off)]);
+                                    break;
+
+                                    // We don't do anything with these streams yet, but we must not close them according to RFC 9204 Section 4.2
+                                case Http3StreamType::QPackEncode:
+                                    if ($this->qpackEncodeStream) {
                                         return;
                                     }
-                                    $this->queue->push([$frame, $id]);
-                                }
+                                    $this->qpackEncodeStream = $stream;
+                                    break;
 
-                                // no break
-                            case Http3StreamType::Push:
-                                $pushId = self::decodeVarintFromStream($stream, $buf, $off);
-                                $this->queue->push([Http3StreamType::Push, $pushId, fn () => $this->readHttpMessage($stream, $buf, $off)]);
-                                break;
+                                case Http3StreamType::QPackDecode:
+                                    if ($this->qpackDecodeStream) {
+                                        return;
+                                    }
+                                    $this->qpackDecodeStream = $stream;
+                                    break;
 
-                                // We don't do anything with these streams yet, but we must not close them according to RFC 9204 Section 4.2
-                            case Http3StreamType::QPackEncode:
-                                if ($this->qpackEncodeStream) {
+                                default:
+                                    // Stream was probably reset or unknown type. Just don't care.
                                     return;
-                                }
-                                $this->qpackEncodeStream = $stream;
-                                break;
-
-                            case Http3StreamType::QPackDecode:
-                                if ($this->qpackDecodeStream) {
-                                    return;
-                                }
-                                $this->qpackDecodeStream = $stream;
-                                break;
-
-                            default:
-                                return;
+                            }
                         }
+                    } catch (Http3ConnectionException $e) {
+                        $this->abort($e);
                     }
                 });
+            }
+            if (!$this->queue->isComplete()) {
+                $this->queue->complete();
             }
         });
 
         return $this->queue->iterate();
+    }
+
+    public function abort(Http3ConnectionException $exception)
+    {
+        if (!$this->queue->isComplete()) {
+            $this->connection->close($exception->getCode(), $exception->getMessage());
+            $this->queue->error($exception);
+        }
     }
 }
