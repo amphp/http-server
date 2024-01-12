@@ -7,7 +7,7 @@ use Amp\Quic\QuicSocket;
 
 class Http3Writer
 {
-    private $controlStream;
+    private QuicSocket $controlStream;
 
     public function __construct(private QuicConnection $connection, private array $settings)
     {
@@ -43,6 +43,11 @@ class Http3Writer
         self::sendFrame($stream, Http3Frame::DATA, $payload);
     }
 
+    public function sendGoaway(int $highestStreamId)
+    {
+        self::sendFrame($this->controlStream, Http3Frame::GOAWAY, self::encodeVarint($highestStreamId));
+    }
+
     private function startControlStream()
     {
         $this->controlStream = $this->connection->openStream();
@@ -56,4 +61,8 @@ class Http3Writer
         self::sendFrame($this->controlStream, Http3Frame::SETTINGS, \implode($ints));
     }
 
+    public function close()
+    {
+        $this->connection->close(Http3Error::H3_NO_ERROR->value);
+    }
 }

@@ -37,7 +37,6 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
                 streamTimeout: $this->streamTimeout,
                 headerSizeLimit: $this->headerSizeLimit,
                 bodySizeLimit: $this->bodySizeLimit,
-                pushEnabled: $this->pushEnabled,
             );
         }
 

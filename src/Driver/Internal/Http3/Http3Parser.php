@@ -332,7 +332,7 @@ class Http3Parser
                                             throw new Http3ConnectionException("The push stream was closed too early", Http3Error::H3_FRAME_ERROR);
                                         }
                                     }
-                                    $this->queue->push([Http3StreamType::Push, $pushId, fn () => $this->readHttpMessage($stream, $buf, $off)]);
+                                    $this->queue->push([Http3Frame::PUSH_PROMISE, $pushId, fn () => $this->readHttpMessage($stream, $buf, $off)]);
                                     break;
 
                                     // We don't do anything with these streams yet, but we must not close them according to RFC 9204 Section 4.2

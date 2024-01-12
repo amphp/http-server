@@ -2,15 +2,15 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\ByteStream\ClosedException;
 use Amp\ByteStream\ReadableIterableStream;
+use Amp\CancelledException;
+use Amp\DeferredCancellation;
 use Amp\DeferredFuture;
-use Amp\Http\Http2\Http2ConnectionException;
 use Amp\Http\Http2\Http2Parser;
-use Amp\Http\Http2\Http2StreamException;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\ConnectionHttpDriver;
-use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\Driver\Internal\Http3\Http3ConnectionException;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Error;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Frame;
@@ -25,7 +25,6 @@ use Amp\Http\Server\RequestBody;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
-use Amp\NullCancellation;
 use Amp\Pipeline\Queue;
 use Amp\Quic\QuicConnection;
 use Amp\Quic\QuicSocket;
@@ -39,16 +38,16 @@ use function Amp\Http\formatDateHeader;
 
 class Http3Driver extends ConnectionHttpDriver
 {
-    private bool $allowsPush;
-
     private Client $client;
-    private QuicConnection $connection;
 
     /** @var \WeakMap<Request, QuicSocket> */
     private \WeakMap $requestStreams;
 
     private Http3Writer $writer;
     private QPack $qpack;
+    private int $highestStreamId = 0;
+    private bool $stopping = false;
+    private DeferredCancellation $closeCancellation;
 
     public function __construct(
         RequestHandler $requestHandler,
@@ -57,15 +56,13 @@ class Http3Driver extends ConnectionHttpDriver
         private readonly int $streamTimeout = Http2Driver::DEFAULT_STREAM_TIMEOUT,
         private readonly int $headerSizeLimit = Http2Driver::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = Http2Driver::DEFAULT_BODY_SIZE_LIMIT,
-        private bool $pushEnabled = true,
         private readonly ?string $settings = null,
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger);
 
-        $this->allowsPush = $pushEnabled;
-
         $this->qpack = new QPack;
         $this->requestStreams = new \WeakMap;
+        $this->closeCancellation = new DeferredCancellation;
     }
 
     // TODO copied from Http2Driver...
@@ -88,7 +85,6 @@ class Http3Driver extends ConnectionHttpDriver
     {
         /** @var QuicSocket $stream */
         $stream = $this->requestStreams[$request];
-        unset($this->requestStreams[$request]);
 
         $status = $response->getStatus();
         $headers = [
@@ -108,9 +104,6 @@ class Http3Driver extends ConnectionHttpDriver
 
         foreach ($response->getPushes() as $push) {
             $headers["link"][] = "<{$push->getUri()}>; rel=preload";
-            if ($this->allowsPush) {
-                // TODO $this->sendPushPromise($request, $id, $push);
-            }
         }
 
         $this->writer->sendHeaderFrame($stream, $this->encodeHeaders($headers));
@@ -119,23 +112,31 @@ class Http3Driver extends ConnectionHttpDriver
             return;
         }
 
-        $cancellation = new NullCancellation; // TODO just dummy
+        try {
+            $cancellation = $this->closeCancellation->getCancellation();
 
-        $body = $response->getBody();
-        $chunk = $body->read($cancellation);
-
-        while ($chunk !== null) {
-            $this->writer->sendData($stream, $chunk);
-
+            $body = $response->getBody();
             $chunk = $body->read($cancellation);
+
+            while ($chunk !== null) {
+                $this->writer->sendData($stream, $chunk);
+
+                $chunk = $body->read($cancellation);
+            }
+
+            if ($trailers !== null) {
+                $trailers = $trailers->await($cancellation);
+                $this->writer->sendHeaderFrame($stream, $this->encodeHeaders($trailers->getHeaders()));
+            }
+
+            $stream->end();
+            if (!$stream->isClosed()) {
+                $stream->endReceiving();
+            }
+        } catch (CancelledException) {
         }
 
-        if ($trailers !== null) {
-            $trailers = $trailers->await($cancellation);
-            $this->writer->sendHeaderFrame($stream, $this->encodeHeaders($trailers->getHeaders()));
-        }
-
-        $stream->end();
+        unset($this->requestStreams[$request]);
     }
 
     public function getApplicationLayerProtocols(): array
@@ -149,10 +150,11 @@ class Http3Driver extends ConnectionHttpDriver
         \assert(!isset($this->client), "The driver has already been setup");
 
         $this->client = $client;
-        $this->connection = $connection;
         $this->writer = new Http3Writer($connection, [[Http3Settings::MAX_FIELD_SECTION_SIZE, $this->headerSizeLimit]]);
         $largestPushId = (1 << 62) - 1;
         $maxAllowedPushId = 0;
+
+        $connection->onClose($this->closeCancellation->cancel(...));
 
         $parser = new Http3Parser($connection, $this->headerSizeLimit, $this->qpack);
         try {
@@ -164,11 +166,16 @@ class Http3Driver extends ConnectionHttpDriver
                         break;
 
                     case Http3Frame::HEADERS:
-                        EventLoop::queue(function () use ($parser, $frame) {
+                        /** @var QuicSocket $stream */
+                        [, $stream, $generator] = $frame;
+                        if ($this->stopping) {
+                            [, $stream] = $frame;
+                            $stream->close(Http3Error::H3_NO_ERROR->value);
+                            break;
+                        }
+                        EventLoop::queue(function () use ($parser, $stream, $generator) {
                             try {
-                                /** @var QuicSocket $stream */
-                                $stream = $frame[1];
-                                $generator = $frame[2];
+                                $streamId = $stream->getId();
 
                                 [$headers, $pseudo] = $generator->current();
                                 foreach ($pseudo as $name => $value) {
@@ -208,7 +215,7 @@ class Http3Driver extends ConnectionHttpDriver
 
                                 $host = $matches[1];
                                 $port = isset($matches[2])
-                                    ? (int)$matches[2]
+                                    ? (int) $matches[2]
                                     : ($address instanceof InternetAddress ? $address->getPort() : null);
 
                                 if ($position = \strpos($target, "#")) {
@@ -284,7 +291,7 @@ class Http3Driver extends ConnectionHttpDriver
                                         );
                                     }
 
-                                    $expectedLength = (int)$contentLength;
+                                    $expectedLength = (int) $contentLength;
                                 } else {
                                     $expectedLength = null;
                                 }
@@ -314,6 +321,11 @@ class Http3Driver extends ConnectionHttpDriver
                                     $trailers
                                 );
                                 $this->requestStreams[$request] = $stream;
+
+                                if ($this->highestStreamId < $streamId) {
+                                    $this->highestStreamId = $streamId;
+                                }
+
                                 async($this->handleRequest(...), $request);
 
                                 $generator->next();
@@ -400,17 +412,16 @@ class Http3Driver extends ConnectionHttpDriver
                         break;
 
                     case Http3Frame::GOAWAY:
-                        $maxPushId = $frame[1];
+                        [, $maxPushId] = $frame;
                         if ($maxPushId > $largestPushId) {
                             $parser->abort(new Http3ConnectionException("A GOAWAY id must not be larger than a prior one", Http3Error::H3_ID_ERROR));
                             break;
                         }
-                        $this->pushEnabled = false;
-                        // TODO abort pending server pushes
+                        // Nothing to do here, we don't support pushes.
                         break;
 
                     case Http3Frame::MAX_PUSH_ID:
-                        $maxPushId = $frame[1];
+                        [, $maxPushId] = $frame;
                         if ($maxPushId < $maxAllowedPushId) {
                             $parser->abort(new Http3ConnectionException("A MAX_PUSH_ID id must not be smaller than a prior one", Http3Error::H3_ID_ERROR));
                             break;
@@ -419,8 +430,13 @@ class Http3Driver extends ConnectionHttpDriver
                         break;
 
                     case Http3Frame::CANCEL_PUSH:
-                        $pushId = $frame[1];
-                        // TODO stop push
+                        [, $pushId] = $frame;
+                        // Without pushes sent, this frame is always invalid
+                        $parser->abort(new Http3ConnectionException("An CANCEL_PUSH for a not promised $pushId was received", Http3Error::H3_ID_ERROR));
+                        break;
+
+                    case Http3Frame::PUSH_PROMISE:
+                        $parser->abort(new Http3ConnectionException("A push stream must not be initiated by the client", Http3Error::H3_STREAM_CREATION_ERROR));
                         break;
 
                     default:
@@ -437,11 +453,47 @@ class Http3Driver extends ConnectionHttpDriver
 
     public function getPendingRequestCount(): int
     {
-        return 0;
+        return $this->requestStreams->count();
     }
 
     public function stop(): void
     {
-        // TODO emit goaway frames
+        if ($this->stopping) {
+            return;
+        }
+
+        $this->stopping = true;
+        $this->writer->sendGoaway($this->highestStreamId);
+
+        /** @psalm-suppress RedundantCondition */
+        \assert($this->logger->debug(\sprintf(
+            "Gracefully shutting down HTTP/3 client @ %s #%d; last-id: %d",
+            $this->client->getRemoteAddress()->toString(),
+            $this->client->getId(),
+            $this->highestStreamId,
+        )) || true);
+
+
+        $outstanding = $this->requestStreams->count();
+        if ($outstanding === 0) {
+            $this->writer->close();
+            return;
+        }
+
+        $deferred = new DeferredFuture;
+        foreach ($this->requestStreams as $stream) {
+            $stream->onClose(function () use (&$outstanding, $deferred) {
+                if (--$outstanding === 0) {
+                    $deferred->complete();
+                }
+            });
+        }
+
+        try {
+            $deferred->getFuture()->await($this->closeCancellation->getCancellation());
+        } catch (CancelledException) {
+        } finally {
+            $this->writer->close();
+        }
     }
 }
