@@ -2,7 +2,6 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\ByteStream\ClosedException;
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\CancelledException;
 use Amp\DeferredCancellation;
@@ -255,7 +254,7 @@ class Http3Driver extends ConnectionHttpDriver
                                 }
 
                                 $trailerDeferred = new DeferredFuture;
-                                $bodyQueue = new Queue();
+                                $bodyQueue = new Queue;
 
                                 try {
                                     $trailers = new Trailers(
@@ -294,6 +293,10 @@ class Http3Driver extends ConnectionHttpDriver
                                     $expectedLength = (int) $contentLength;
                                 } else {
                                     $expectedLength = null;
+                                }
+
+                                if (isset($headers["priority"])) {
+                                    $this->updatePriority($stream, $headers["priority"]);
                                 }
 
                                 $dataSuspension = null;
@@ -439,6 +442,18 @@ class Http3Driver extends ConnectionHttpDriver
                         $parser->abort(new Http3ConnectionException("A push stream must not be initiated by the client", Http3Error::H3_STREAM_CREATION_ERROR));
                         break;
 
+                    case Http3Frame::PRIORITY_UPDATE_Request:
+                        [, $streamId, $structuredUpdate] = $frame;
+                        // The RFC says we _should_ temporarily buffer unknown stream ids. We currently don't for simplicity. To eventually improve?
+                        if ($stream = $connection->getStream($streamId)) {
+                            $this->updatePriority($stream, $structuredUpdate);
+                        }
+                        break;
+
+                    case Http3Frame::PRIORITY_UPDATE_Push:
+                        $parser->abort(new Http3ConnectionException("No PRIORITY_UPDATE frame may be sent for unpromised push streams", Http3Error::H3_ID_ERROR));
+                        break;
+
                     default:
                         $parser->abort(new Http3ConnectionException("An unexpected stream or frame was received", Http3Error::H3_FRAME_UNEXPECTED));
                 }
@@ -449,6 +464,12 @@ class Http3Driver extends ConnectionHttpDriver
                 'message' => $e->getMessage(),
             ]);
         }
+    }
+
+    public function updatePriority(QuicSocket $socket, array|string $headers)
+    {
+        [$urgency, $incremental] = Http3Parser::parsePriority($headers);
+        $socket->setPriority($urgency + 124 /* 127 is default for QUIC, 3 is default for HTTP */, $incremental);
     }
 
     public function getPendingRequestCount(): int
@@ -472,7 +493,6 @@ class Http3Driver extends ConnectionHttpDriver
             $this->client->getId(),
             $this->highestStreamId,
         )) || true);
-
 
         $outstanding = $this->requestStreams->count();
         if ($outstanding === 0) {

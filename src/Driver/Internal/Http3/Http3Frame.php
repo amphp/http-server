@@ -13,5 +13,5 @@ enum Http3Frame: int
     case ORIGIN = 0x0c;
     case MAX_PUSH_ID = 0x0d;
     case PRIORITY_UPDATE_Request = 0xF0700;
-    case PRIORITY_UPDATE_Response = 0xF0701;
+    case PRIORITY_UPDATE_Push = 0xF0701;
 }

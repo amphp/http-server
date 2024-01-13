@@ -3,6 +3,8 @@
 namespace Amp\Http\Server\Driver\Internal\Http3;
 
 use Amp\Http\Http2\Http2Parser;
+use Amp\Http\Server\Driver\Internal\Http3\Rfc8941\Boolean;
+use Amp\Http\Server\Driver\Internal\Http3\Rfc8941\Number;
 use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Queue;
 use Amp\Quic\QuicConnection;
@@ -310,7 +312,7 @@ class Http3Parser
                                             return;
                                         }
 
-                                        if ($frame !== Http3Frame::GOAWAY || $frame !== Http3Frame::MAX_PUSH_ID || $frame !== Http3Frame::CANCEL_PUSH) {
+                                        if ($frame !== Http3Frame::GOAWAY && $frame !== Http3Frame::MAX_PUSH_ID && $frame !== Http3Frame::CANCEL_PUSH && $frame !== Http3Frame::PRIORITY_UPDATE_Request && $frame !== Http3Frame::PRIORITY_UPDATE_Push) {
                                             throw new Http3ConnectionException("An unexpected frame was received on the control stream", Http3Error::H3_FRAME_UNEXPECTED);
                                         }
 
@@ -321,7 +323,11 @@ class Http3Parser
                                             }
                                             return;
                                         }
-                                        $this->queue->push([$frame, $id]);
+                                        if ($frame === Http3Frame::PRIORITY_UPDATE_Request || $frame === Http3Frame::PRIORITY_UPDATE_Push) {
+                                            $this->queue->push([$frame, $id, \substr($contents, $tmpOff)]);
+                                        } else {
+                                            $this->queue->push([$frame, $id]);
+                                        }
                                     }
 
                                     // no break
@@ -366,6 +372,31 @@ class Http3Parser
         });
 
         return $this->queue->iterate();
+    }
+
+    // Note: format is shared with HTTP/2
+    public static function parsePriority(array|string $headers): ?array
+    {
+        $urgency = 3;
+        $incremental = false;
+        if ($priority = Rfc8941::parseDictionary($headers)) {
+            if (isset($priority["u"])) {
+                $number = $priority["u"];
+                if ($number instanceof Number) {
+                    $value = $number->item;
+                    if (\is_int($value) && $value >= 0 && $value <= 7) {
+                        $urgency = $number->item;
+                    }
+                }
+            }
+            if (isset($priority["i"])) {
+                $bool = $priority["i"];
+                if ($bool instanceof Boolean) {
+                    $incremental = $bool->item;
+                }
+            }
+        }
+        return [$urgency, $incremental];
     }
 
     public function abort(Http3ConnectionException $exception)
