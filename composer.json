@@ -34,7 +34,7 @@
         "amphp/byte-stream": "^2",
         "amphp/cache": "^2",
         "amphp/hpack": "^3",
-        "amphp/http": "^2",
+        "amphp/http": "dev-structured-fields as v2.1.0",
         "amphp/pipeline": "^1",
         "amphp/quic": "dev-master",
         "amphp/socket": "^2.1",
@@ -50,7 +50,6 @@
         "amphp/http-client": "^5",
         "amphp/log": "^2",
         "amphp/php-cs-fixer-config": "^2",
-        "httpwg/structured-field-tests": "1.0",
         "league/uri-components": "^2.4.2 | ^7.1",
         "monolog/monolog": "^3",
         "phpunit/phpunit": "^9",
@@ -83,20 +82,6 @@
         "test": "@php -dzend.assertions=1 -dassert.exception=1 ./vendor/bin/phpunit",
         "code-style": "@php ./vendor/bin/php-cs-fixer fix"
     },
-    "repositories": [
-        {
-            "type": "package",
-            "package": {
-                "name": "httpwg/structured-field-tests",
-                "version": "1.0",
-                "source": {
-                    "url": "https://github.com/httpwg/structured-field-tests",
-                    "type": "git",
-                    "reference": "origin/main"
-                }
-            }
-        }
-    ],
     "config": {
         "allow-plugins": {
             "ocramius/package-versions": false

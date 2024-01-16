@@ -2,9 +2,9 @@
 
 namespace Amp\Http\Server\Driver\Internal\Http3;
 
-use Amp\Http\Http2\Http2Parser;
-use Amp\Http\Server\Driver\Internal\Http3\Rfc8941\Boolean;
-use Amp\Http\Server\Driver\Internal\Http3\Rfc8941\Number;
+use Amp\Http\StructuredFields\Rfc8941;
+use Amp\Http\StructuredFields\Rfc8941\Boolean;
+use Amp\Http\StructuredFields\Rfc8941\Number;
 use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Queue;
 use Amp\Quic\QuicConnection;
