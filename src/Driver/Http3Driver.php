@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\ByteStream\Pipe;
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\CancelledException;
 use Amp\DeferredCancellation;
@@ -11,6 +12,7 @@ use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\ConnectionHttpDriver;
 use Amp\Http\Server\Driver\Internal\Http3\Http3ConnectionException;
+use Amp\Http\Server\Driver\Internal\Http3\Http3DatagramStream;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Error;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Frame;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Parser;
@@ -18,6 +20,7 @@ use Amp\Http\Server\Driver\Internal\Http3\Http3Settings;
 use Amp\Http\Server\Driver\Internal\Http3\Http3StreamException;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Writer;
 use Amp\Http\Server\Driver\Internal\Http3\QPack;
+use Amp\Http\Server\Driver\Internal\UnbufferedBodyStream;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestBody;
@@ -42,11 +45,17 @@ class Http3Driver extends ConnectionHttpDriver
     /** @var \WeakMap<Request, QuicSocket> */
     private \WeakMap $requestStreams;
 
+    private Http3Parser $parser;
     private Http3Writer $writer;
     private QPack $qpack;
     private int $highestStreamId = 0;
     private bool $stopping = false;
     private DeferredCancellation $closeCancellation;
+    /** @var array<int, int> */
+    private array $settings = [];
+    private DeferredFuture $parsedSettings;
+    /** @var array<int, \Closure(string $buf, QuicSocket $stream): void */
+    private array $streamHandlers;
 
     public function __construct(
         RequestHandler $requestHandler,
@@ -55,13 +64,31 @@ class Http3Driver extends ConnectionHttpDriver
         private readonly int $streamTimeout = Http2Driver::DEFAULT_STREAM_TIMEOUT,
         private readonly int $headerSizeLimit = Http2Driver::DEFAULT_HEADER_SIZE_LIMIT,
         private readonly int $bodySizeLimit = Http2Driver::DEFAULT_BODY_SIZE_LIMIT,
-        private readonly ?string $settings = null,
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger);
 
         $this->qpack = new QPack;
         $this->requestStreams = new \WeakMap;
         $this->closeCancellation = new DeferredCancellation;
+        $this->settings[Http3Settings::MAX_FIELD_SECTION_SIZE->value] = $this->headerSizeLimit;
+        $this->settings[Http3Settings::ENABLE_CONNECT_PROTOCOL->value] = 1;
+        $this->parsedSettings = new DeferredFuture;
+    }
+
+    public function getSettings(): \SplObjectStorage
+    {
+        return $this->parsedSettings->getFuture()->await();
+    }
+
+    public function addSetting(Http3Settings|int $setting, int $value)
+    {
+        $this->settings[\is_int($setting) ? $setting : $setting->value] = $value;
+    }
+
+    /** @param \Closure(string $buf, QuicSocket $stream): void $handler */
+    public function addStreamHandler(int $type, \Closure $handler)
+    {
+        $this->streamHandlers[$type] = $handler;
     }
 
     // TODO copied from Http2Driver...
@@ -92,7 +119,7 @@ class Http3Driver extends ConnectionHttpDriver
             'date' => [formatDateHeader()],
         ];
 
-        // Remove headers that are obsolete in HTTP/2.
+        // Remove headers that are obsolete in HTTP/3.
         unset($headers["connection"], $headers["keep-alive"], $headers["transfer-encoding"]);
 
         $trailers = $response->getTrailers();
@@ -109,6 +136,15 @@ class Http3Driver extends ConnectionHttpDriver
 
         if ($request->getMethod() === "HEAD") {
             return;
+        }
+
+        if ($response->isUpgraded()) {
+            if ($request->getMethod() === "CONNECT") {
+                $status = $response->getStatus();
+                if ($status >= 200 && $status <= 299) {
+                    $this->upgrade($stream, $request, $response);
+                }
+            }
         }
 
         try {
@@ -138,6 +174,47 @@ class Http3Driver extends ConnectionHttpDriver
         unset($this->requestStreams[$request]);
     }
 
+    /**
+     * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
+     */
+    private function upgrade(QuicSocket $socket, Request $request, Response $response): void
+    {
+        $upgradeHandler = $response->getUpgradeHandler();
+        if (!$upgradeHandler) {
+            throw new \Error('Response was not upgraded');
+        }
+
+        $client = $request->getClient();
+
+        // The input RequestBody are parsed raw DATA frames - exactly what we need (see CONNECT)
+        $inputStream = new UnbufferedBodyStream($request->getBody());
+        $request->setBody(""); // hide the body from the upgrade handler, it's available in the UpgradedSocket
+
+        // The output of an upgraded connection is just DATA frames
+        $outputPipe = new Pipe(0);
+
+        $settings = $this->parsedSettings->getFuture()->await();
+        $datagramStream = empty($settings[Http3Settings::H3_DATAGRAM->value]) ? null : new Http3DatagramStream($this->parser->receiveDatagram(...), $this->writer->writeDatagram(...), $this->writer->maxDatagramSize(...), $socket);
+
+        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink(), $datagramStream);
+
+        try {
+            $upgradeHandler($upgraded, $request, $response);
+        } catch (\Throwable $exception) {
+            $exceptionClass = $exception::class;
+
+            $this->logger->error(
+                "Unexpected {$exceptionClass} thrown during socket upgrade, closing stream.",
+                ['exception' => $exception]
+            );
+
+            $socket->resetSending(Http3Error::H3_INTERNAL_ERROR->value);
+        }
+
+        $response->removeTrailers();
+        $response->setBody($outputPipe->getSource());
+    }
+
     public function getApplicationLayerProtocols(): array
     {
         return ["h3"]; // that's a property of the server itself...? "h3" is the default mandated by RFC 9114, but section 3.1 allows for custom mechanisms too, technically.
@@ -149,19 +226,20 @@ class Http3Driver extends ConnectionHttpDriver
         \assert(!isset($this->client), "The driver has already been setup");
 
         $this->client = $client;
-        $this->writer = new Http3Writer($connection, [[Http3Settings::MAX_FIELD_SECTION_SIZE, $this->headerSizeLimit]]);
+        $this->writer = new Http3Writer($connection, $this->settings);
         $largestPushId = (1 << 62) - 1;
         $maxAllowedPushId = 0;
 
         $connection->onClose($this->closeCancellation->cancel(...));
 
-        $parser = new Http3Parser($connection, $this->headerSizeLimit, $this->qpack);
+        $this->parser = $parser = new Http3Parser($connection, $this->headerSizeLimit, $this->qpack);
         try {
             foreach ($parser->process() as $frame) {
                 $type = $frame[0];
                 switch ($type) {
                     case Http3Frame::SETTINGS:
-                        // something to do?
+                        [, $settings] = $frame;
+                        $this->parsedSettings->complete($settings);
                         break;
 
                     case Http3Frame::HEADERS:
@@ -177,17 +255,7 @@ class Http3Driver extends ConnectionHttpDriver
                                 $streamId = $stream->getId();
 
                                 [$headers, $pseudo] = $generator->current();
-                                foreach ($pseudo as $name => $value) {
-                                    if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
-                                        throw new Http3StreamException(
-                                            "Invalid pseudo header",
-                                            $stream,
-                                            Http3Error::H3_MESSAGE_ERROR
-                                        );
-                                    }
-                                }
-
-                                if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"], $pseudo[":authority"])
+                                if (!isset($pseudo[":method"], $pseudo[":authority"])
                                     || isset($headers["connection"])
                                     || $pseudo[":path"] === ''
                                     || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
@@ -197,6 +265,41 @@ class Http3Driver extends ConnectionHttpDriver
                                         $stream,
                                         Http3Error::H3_MESSAGE_ERROR
                                     );
+                                }
+
+                                // Per RFC 9220 Section 3 & RFC 8441 Section 4, Extended CONNECT (recognized by the existence of :protocol) must include :path and :scheme,
+                                // but normal CONNECT must not according to RFC 9114 Section 4.4.
+                                if ($pseudo[":method"] === "CONNECT" && !isset($pseudo[":protocol"]) && !isset($pseudo[":path"]) && !isset($pseudo[":scheme"])) {
+                                    $pseudo[":path"] = "";
+                                    $pseudo[":scheme"] = null;
+                                } elseif (!isset($pseudo[":path"], $pseudo[":scheme"])) {
+                                    throw new Http3StreamException(
+                                        "Invalid header values",
+                                        $stream,
+                                        Http3Error::H3_MESSAGE_ERROR
+                                    );
+                                }
+
+                                foreach ($pseudo as $name => $value) {
+                                    if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
+                                        if ($name === ":protocol") {
+                                            if ($pseudo[":method"] !== "CONNECT") {
+                                                throw new Http3StreamException(
+                                                    "The :protocol pseudo header is only allowed for CONNECT methods",
+                                                    $stream,
+                                                    Http3Error::H3_MESSAGE_ERROR
+                                                );
+                                            }
+                                            // Stuff it into the headers for applications to read
+                                            $headers[":protocol"] = [$value];
+                                        } else {
+                                            throw new Http3StreamException(
+                                                "Invalid pseudo header",
+                                                $stream,
+                                                Http3Error::H3_MESSAGE_ERROR
+                                            );
+                                        }
+                                    }
                                 }
 
                                 [':method' => $method, ':path' => $target, ':scheme' => $scheme, ':authority' => $host] = $pseudo;
@@ -455,6 +558,11 @@ class Http3Driver extends ConnectionHttpDriver
                         break;
 
                     default:
+                        if (isset($this->streamHandlers[$type])) {
+                            [, $buf, $stream] = $frame;
+                            $this->streamHandlers[$type]($buf, $stream);
+                            break;
+                        }
                         $parser->abort(new Http3ConnectionException("An unexpected stream or frame was received", Http3Error::H3_FRAME_UNEXPECTED));
                 }
             }

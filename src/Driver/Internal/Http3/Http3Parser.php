@@ -2,13 +2,17 @@
 
 namespace Amp\Http\Server\Driver\Internal\Http3;
 
+use Amp\ByteStream\ReadableStream;
+use Amp\Cancellation;
+use Amp\DeferredCancellation;
+use Amp\Http\StructuredFields\Boolean;
+use Amp\Http\StructuredFields\Number;
 use Amp\Http\StructuredFields\Rfc8941;
-use Amp\Http\StructuredFields\Rfc8941\Boolean;
-use Amp\Http\StructuredFields\Rfc8941\Number;
 use Amp\Pipeline\ConcurrentIterator;
 use Amp\Pipeline\Queue;
 use Amp\Quic\QuicConnection;
 use Amp\Quic\QuicSocket;
+use Amp\Socket\PendingReceiveError;
 use Revolt\EventLoop;
 
 class Http3Parser
@@ -16,8 +20,13 @@ class Http3Parser
     private ?QuicSocket $qpackDecodeStream = null;
     private ?QuicSocket $qpackEncodeStream = null;
     private Queue $queue;
+    /** @var array<int, EventLoop\Suspension> */
+    private array $datagramReceivers = [];
+    private DeferredCancellation $datagramReceiveEmpty;
+    /** @var array<int, true> */
+    private array $datagramCloseHandlerInstalled = [];
 
-    private static function decodeVarint(string $string, int &$off): int
+    public static function decodeVarint(string $string, int &$off): int
     {
         if (!isset($string[$off])) {
             return -1;
@@ -49,7 +58,7 @@ class Http3Parser
         }
     }
 
-    private static function decodeVarintFromStream(QuicSocket $stream, string &$buf, int &$off): int
+    public static function decodeVarintFromStream(ReadableStream $stream, string &$buf, int &$off): int
     {
         while (-1 === $int = self::decodeVarint($buf, $off)) {
             if (null === $chunk = $stream->read()) {
@@ -130,10 +139,10 @@ class Http3Parser
     private function parseSettings(string $contents)
     {
         $off = 0;
-        $settings = [];
+        $settings = new \SplObjectStorage;
         while ((-1 !== $key = self::decodeVarint($contents, $off)) && (-1 !== $value = self::decodeVarint($contents, $off))) {
             if ($key = Http3Settings::tryFrom($key)) {
-                $settings[] = [$key, $value];
+                $settings[$key] = $value;
             }
         }
         $this->queue->push([Http3Frame::SETTINGS, $settings]);
@@ -278,8 +287,15 @@ class Http3Parser
                     try {
                         $off = 0;
                         $buf = $stream->read();
+                        $type = self::decodeVarintFromStream($stream, $buf, $off);
                         if ($stream->isWritable()) {
                             // client-initiated bidirectional stream
+                            if ($type > 0x0d /* bigger than any default frame */ && $type % 0x1f !== 0x2 /* and not a padding frame */) {
+                                // Unknown frame type. Users may handle it (e.g. WebTransport).
+                                $this->queue->push([$type, \substr($buf, $off), $stream]);
+                                return;
+                            }
+                            $off = 0;
                             $messageGenerator = $this->readHttpMessage($stream, $buf, $off);
                             if (!$messageGenerator->valid()) {
                                 return; // Nothing happens. That's allowed. Just bye then.
@@ -290,7 +306,6 @@ class Http3Parser
                             $this->queue->push([Http3Frame::HEADERS, $stream, $messageGenerator]);
                         } else {
                             // unidirectional stream
-                            $type = self::decodeVarintFromStream($stream, $buf, $off);
                             switch (Http3StreamType::tryFrom($type)) {
                                 case Http3StreamType::Control:
                                     if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x1000)) {
@@ -357,7 +372,8 @@ class Http3Parser
                                     break;
 
                                 default:
-                                    // Stream was probably reset or unknown type. Just don't care.
+                                    // Unknown stream type. Users may handle it (e.g. WebTransport).
+                                    $this->queue->push([$type, \substr($buf, $off), $stream]);
                                     return;
                             }
                         }
@@ -404,6 +420,75 @@ class Http3Parser
         if (!$this->queue->isComplete()) {
             $this->connection->close($exception->getCode(), $exception->getMessage());
             $this->queue->error($exception);
+        }
+    }
+
+    private function datagramReceiver()
+    {
+        $this->datagramReceiveEmpty = new DeferredCancellation;
+        $cancellation = $this->datagramReceiveEmpty->getCancellation();
+        EventLoop::queue(function () use ($cancellation) {
+            while (null !== $buf = $this->connection->receive($cancellation)) {
+                $off = 0;
+                $quarterStreamId = self::decodeVarint($buf, $off);
+                if (isset($this->datagramReceivers[$quarterStreamId])) {
+                    $this->datagramReceivers[$quarterStreamId]->resume(\substr($buf, $off));
+                    unset($this->datagramReceivers[$quarterStreamId]);
+
+                    if (!$this->datagramReceivers) {
+                        return;
+                    }
+
+                    // We need to await a tick to allow datagram receivers to request a new datagram to avoid needlessly discarding datagram frames
+                    $suspension = EventLoop::getSuspension();
+                    EventLoop::queue($suspension->resume(...));
+                    $suspension->suspend();
+                }
+            }
+        });
+    }
+
+    public function receiveDatagram(QuicSocket $stream, ?Cancellation $cancellation = null): ?string
+    {
+        $quarterStreamId = $stream->getId() >> 2;
+        if (isset($this->datagramReceivers[$quarterStreamId])) {
+            throw new PendingReceiveError;
+        }
+
+        if (!$stream->isReadable()) {
+            return null;
+        }
+
+        if (!isset($this->datagramCloseHandlerInstalled[$quarterStreamId])) {
+            $this->datagramCloseHandlerInstalled[$quarterStreamId] = true;
+            $stream->onClose(function () use ($quarterStreamId) {
+                $this->datagramReceivers[$quarterStreamId]->resume();
+                unset($this->datagramReceivers[$quarterStreamId], $this->datagramCloseHandlerInstalled[$quarterStreamId]);
+                if (!$this->datagramReceivers) {
+                    $this->datagramReceiveEmpty->cancel();
+                }
+            });
+        }
+
+        if (!$this->datagramReceivers) {
+            $this->datagramReceiver();
+        }
+
+        $suspension = EventLoop::getSuspension();
+        $this->datagramReceivers[$quarterStreamId] = $suspension;
+
+        $cancellationId = $cancellation?->subscribe(function ($e) use ($suspension, $quarterStreamId) {
+            unset($this->datagramReceivers[$quarterStreamId]);
+            if (!$this->datagramReceivers) {
+                $this->datagramReceiveEmpty->cancel($e);
+            }
+            $suspension->throw($e);
+        });
+
+        try {
+            return $suspension->suspend();
+        } finally {
+            $cancellation?->unsubscribe($cancellationId);
         }
     }
 }

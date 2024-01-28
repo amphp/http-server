@@ -7,6 +7,7 @@ use Amp\ByteStream\ReadableStreamIteratorAggregate;
 use Amp\ByteStream\ResourceStream;
 use Amp\ByteStream\WritableStream;
 use Amp\Cancellation;
+use Amp\Quic\DatagramStream;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsException;
@@ -26,6 +27,7 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
         private readonly Client $client,
         private readonly ReadableStream $readableStream,
         private readonly WritableStream $writableStream,
+        public readonly ?DatagramStream $datagramClient = null,
     ) {
     }
 

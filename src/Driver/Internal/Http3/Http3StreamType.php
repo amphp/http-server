@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Amp\Http\Server\Driver\Internal\Http3;
 
-enum Http3StreamType : int
+enum Http3StreamType: int
 {
     case Control = 0x0;
     case Push = 0x1;

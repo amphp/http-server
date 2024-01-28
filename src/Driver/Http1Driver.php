@@ -825,6 +825,14 @@ final class Http1Driver extends StreamHttpDriver
             $this->send($lastWrite, $response, $request);
 
             if ($response->isUpgraded()) {
+                if ($request->getMethod() === "CONNECT") {
+                    $status = $response->getStatus();
+                    if ($status < 200 || $status > 299) {
+                        return;
+                    }
+                } elseif ($response->getStatus() !== HttpStatus::SWITCHING_PROTOCOLS) {
+                    return;
+                }
                 $this->upgrade($request, $response);
             }
         } finally {
@@ -960,7 +968,7 @@ final class Http1Driver extends StreamHttpDriver
         $shouldClose = $request === null
             || \array_reduce($requestConnectionHeaders, $closeReduce, false)
             || \array_reduce($responseConnectionHeaders, $closeReduce, false)
-            || $protocol === "1.0" && !\array_reduce($requestConnectionHeaders, $keepAliveReduce, false);
+            || ($protocol === "1.0" && !\array_reduce($requestConnectionHeaders, $keepAliveReduce, false));
 
         if ($contentLength !== null) {
             unset($headers["transfer-encoding"]);

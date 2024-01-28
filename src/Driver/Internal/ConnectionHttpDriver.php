@@ -152,6 +152,6 @@ abstract class ConnectionHttpDriver implements HttpDriver
         ReadableStream $readableStream,
         WritableStream $writableStream,
     ): void {
-        throw new \Error(get_class($this) . " cannot handle Clients in a stream independent way. Use handleConnection() instead.");
+        throw new \Error(static::class . " cannot handle Clients in a stream independent way. Use handleConnection() instead.");
     }
 }

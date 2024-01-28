@@ -2,6 +2,7 @@
 
 namespace Amp\Http\Server\Driver;
 
+use Amp\ByteStream\Pipe;
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\StreamException;
@@ -20,6 +21,7 @@ use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\ClientException;
 use Amp\Http\Server\Driver\Internal\Http2Stream;
 use Amp\Http\Server\Driver\Internal\StreamHttpDriver;
+use Amp\Http\Server\Driver\Internal\UnbufferedBodyStream;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Push;
 use Amp\Http\Server\Request;
@@ -324,6 +326,15 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
                 $this->writeData("", $id);
                 return;
+            }
+
+            if ($response->isUpgraded()) {
+                if ($request->getMethod() === "CONNECT") {
+                    $status = $response->getStatus();
+                    if ($status >= 200 && $status <= 299) {
+                        $this->upgrade($request, $response);
+                    }
+                }
             }
 
             $body = $response->getBody();
@@ -733,7 +744,9 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
                     Http2Parser::MAX_HEADER_LIST_SIZE,
                     $this->headerSizeLimit,
                     Http2Parser::MAX_FRAME_SIZE,
-                    self::DEFAULT_MAX_FRAME_SIZE
+                    self::DEFAULT_MAX_FRAME_SIZE,
+                    0x8, // TODO move to Http2Parser::ENABLE_CONNECT_PROTOCOL
+                    1
                 ),
                 Http2Parser::SETTINGS,
                 Http2Parser::NO_FLAG
@@ -867,11 +880,23 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
     {
         foreach ($pseudo as $name => $value) {
             if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
-                throw new Http2StreamException(
-                    "Invalid pseudo header",
-                    $streamId,
-                    Http2Parser::PROTOCOL_ERROR
-                );
+                if ($name === ":protocol") {
+                    if ($pseudo[":method"] !== "CONNECT") {
+                        throw new Http2StreamException(
+                            "The :protocol pseudo header is only allowed for CONNECT methods",
+                            $streamId,
+                            Http2Parser::PROTOCOL_ERROR
+                        );
+                    }
+                    // Stuff it into the headers for applications to read
+                    $headers[":protocol"] = [$value];
+                } else {
+                    throw new Http2StreamException(
+                        "Invalid pseudo header",
+                        $streamId,
+                        Http2Parser::PROTOCOL_ERROR
+                    );
+                }
             }
         }
 
@@ -952,11 +977,24 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
             throw new Http2StreamException("Shutting down", $streamId, Http2Parser::REFUSED_STREAM);
         }
 
-        if (!isset($pseudo[":method"], $pseudo[":path"], $pseudo[":scheme"], $pseudo[":authority"])
+        if (!isset($pseudo[":method"], $pseudo[":authority"])
             || isset($headers["connection"])
             || $pseudo[":path"] === ''
             || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
         ) {
+            throw new Http2StreamException(
+                "Invalid header values",
+                $streamId,
+                Http2Parser::PROTOCOL_ERROR
+            );
+        }
+
+        // Per RFC 8441 Section 4, Extended CONNECT (recognized by the existence of :protocol) must include :path and :scheme,
+        // but normal CONNECT must not according to RFC 9113 Section 8.5.
+        if ($pseudo[":method"] === "CONNECT" && !isset($pseudo[":protocol"]) && !isset($pseudo[":path"]) && !isset($pseudo[":scheme"])) {
+            $pseudo[":path"] = "";
+            $pseudo[":scheme"] = null;
+        } elseif (!isset($pseudo[":path"], $pseudo[":scheme"])) {
             throw new Http2StreamException(
                 "Invalid header values",
                 $streamId,
@@ -1106,6 +1144,44 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
 
         $this->streamIdMap[\spl_object_hash($request)] = $streamId;
         $stream->pendingResponse = async($this->handleRequest(...), $request);
+    }
+
+    /**
+     * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
+     */
+    private function upgrade(Request $request, Response $response): void
+    {
+        $upgradeHandler = $response->getUpgradeHandler();
+        if (!$upgradeHandler) {
+            throw new \Error('Response was not upgraded');
+        }
+
+        $client = $request->getClient();
+
+        // The input RequestBody are parsed raw DATA frames - exactly what we need (see CONNECT)
+        $inputStream = new UnbufferedBodyStream($request->getBody());
+        $request->setBody(""); // hide the body from the upgrade handler, it's available in the UpgradedSocket
+
+        // The output of an upgraded connection is just DATA frames
+        $outputPipe = new Pipe(0);
+
+        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink());
+
+        try {
+            $upgradeHandler($upgraded, $request, $response);
+        } catch (\Throwable $exception) {
+            $exceptionClass = $exception::class;
+
+            $this->logger->error(
+                "Unexpected {$exceptionClass} thrown during socket upgrade, closing stream.",
+                ['exception' => $exception]
+            );
+
+            throw new StreamException(previous: $exception);
+        }
+
+        $response->removeTrailers();
+        $response->setBody($outputPipe->getSource());
     }
 
     public function handleData(int $streamId, string $data): void
@@ -1382,4 +1458,6 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
     {
         return ['h2'];
     }
+
+    // TODO add necessary functions to implement webtransport over HTTP/2 - have a closer read of the draft RFC... Needs new stream handlers.
 }

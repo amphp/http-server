@@ -187,10 +187,6 @@ final class Response extends HttpResponse
     public function setStatus(int $status, string $reason = null): void
     {
         parent::setStatus($this->validateStatusCode($status), $reason);
-
-        if ($this->upgrade && $status !== HttpStatus::SWITCHING_PROTOCOLS) {
-            $this->upgrade = null;
-        }
     }
 
     /**
@@ -331,9 +327,8 @@ final class Response extends HttpResponse
     }
 
     /**
-     * Sets a callback to be invoked once the response has been written to the client and changes the status of the
-     * response to 101 (Switching Protocols) and removes any trailers. The callback may be removed by changing the
-     * response status to any value other than 101.
+     * Sets a callback to be invoked once the response has been written to the client.
+     * The HttpDriver MUST ignore this callback if an incompatible status code was set.
      *
      * @param \Closure(Driver\UpgradedSocket, Request, Response):void $upgrade Callback invoked once the response has
      * been written to the client. The callback is given three parameters: an instance of {@see Driver\UpgradedSocket},
@@ -342,7 +337,6 @@ final class Response extends HttpResponse
     public function upgrade(\Closure $upgrade): void
     {
         $this->upgrade = $upgrade;
-        $this->setStatus(HttpStatus::SWITCHING_PROTOCOLS);
 
         $this->removeTrailers();
     }

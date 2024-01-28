@@ -10,6 +10,7 @@ use Amp\Http\Server\Driver\ConnectionLimitingServerSocketFactory;
 use Amp\Http\Server\Driver\DefaultHttpDriverFactory;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
+use Amp\Http\Server\Driver\HttpDriverMiddleware;
 use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
@@ -295,7 +296,7 @@ final class SocketHttpServer implements HttpServer
             foreach ($this->addresses as [$address, $bindContext]) {
                 if ($bindContext instanceof QuicServerConfig) {
                     $quicConnections[$bindContext] ??= [];
-                    $quicConnections[$bindContext] = array_merge($quicConnections[$bindContext], [$address]);
+                    $quicConnections[$bindContext] = \array_merge($quicConnections[$bindContext], [$address]);
                 } else {
                     $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
                         $this->httpDriverFactory->getApplicationLayerProtocols(),
@@ -383,11 +384,20 @@ final class SocketHttpServer implements HttpServer
                 return;
             }
 
-            $this->drivers[$id] = $driver = $this->httpDriverFactory->createHttpDriver(
-                $requestHandler,
-                $errorHandler,
-                $client,
-            );
+            if ($requestHandler instanceof HttpDriverMiddleware) {
+                $this->drivers[$id] = $driver = $requestHandler->createHttpDriver(
+                    $this->httpDriverFactory,
+                    $requestHandler,
+                    $errorHandler,
+                    $client,
+                );
+            } else {
+                $this->drivers[$id] = $driver = $this->httpDriverFactory->createHttpDriver(
+                    $requestHandler,
+                    $errorHandler,
+                    $client,
+                );
+            }
 
             try {
                 $driver->handleConnection($client, $socket);

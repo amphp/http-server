@@ -14,7 +14,7 @@ class Http3Writer
         $this->startControlStream();
     }
 
-    private static function encodeVarint(int $int): string
+    public static function encodeVarint(int $int): string
     {
         if ($int <= 0x3F) {
             return \chr($int);
@@ -54,11 +54,21 @@ class Http3Writer
         $this->controlStream->endReceiving(); // unidirectional please
 
         $ints = [];
-        foreach ($this->settings as [$setting, $value]) {
-            $ints[] = self::encodeVarint($setting->value);
+        foreach ($this->settings as $setting => $value) {
+            $ints[] = self::encodeVarint($setting);
             $ints[] = self::encodeVarint($value);
         }
         self::sendFrame($this->controlStream, Http3Frame::SETTINGS, \implode($ints));
+    }
+
+    public function maxDatagramSize()
+    {
+        return $this->connection->maxDatagramSize() - 8; // to include the longest quarter stream id varint
+    }
+
+    public function writeDatagram(QuicSocket $stream, string $buf)
+    {
+        $this->connection->send(self::encodeVarint($stream->getId() >> 2) . $buf);
     }
 
     public function close()

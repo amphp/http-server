@@ -1,8 +1,8 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Amp\Http\Server\Driver\Internal\Http3;
 
-enum Http3Settings : int
+enum Http3Settings: int
 {
     case QPACK_MAX_TABLE_CAPACITY = 0x01;
     case MAX_FIELD_SECTION_SIZE = 0x06;
