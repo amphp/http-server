@@ -1,6 +1,6 @@
 <?php declare(strict_types=1);
 
-namespace Amp\Http\Server\Driver\Internal\Http;
+namespace Amp\Http\Server\Driver\Internal\Capsules;
 
 use Amp\ByteStream\WritableStream;
 use Amp\Http\Server\Driver\Internal\Http3\Http3Writer;
