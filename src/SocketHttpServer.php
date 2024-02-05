@@ -22,6 +22,7 @@ use Amp\Quic\QuicConnection;
 use Amp\Quic\QuicServerConfig;
 use Amp\Quic\QuicServerSocket;
 use Amp\Socket\BindContext;
+use Amp\Socket\InternetAddress;
 use Amp\Socket\ResourceServerSocketFactory;
 use Amp\Socket\ServerSocket;
 use Amp\Socket\ServerSocketFactory;
@@ -43,7 +44,7 @@ final class SocketHttpServer implements HttpServer
 
     private readonly HttpDriverFactory $httpDriverFactory;
 
-    /** @var array<string, array{SocketAddress, BindContext|null}> */
+    /** @var array<string, array{SocketAddress, QuicServerConfig|BindContext|null}> */
     private array $addresses = [];
 
     /** @var list<ServerSocket> */
@@ -283,6 +284,7 @@ final class SocketHttpServer implements HttpServer
                 throw new CompositeException($exceptions);
             }
 
+            /** @var \SplObjectStorage<QuicServerConfig, non-empty-list<InternetAddress>> $quicConnections */
             $quicConnections = new \SplObjectStorage;
             /** @var ServerSocket[] $tcpServers */
             $tcpServers = [];
@@ -295,8 +297,12 @@ final class SocketHttpServer implements HttpServer
              */
             foreach ($this->addresses as [$address, $bindContext]) {
                 if ($bindContext instanceof QuicServerConfig) {
-                    $quicConnections[$bindContext] ??= [];
-                    $quicConnections[$bindContext] = \array_merge($quicConnections[$bindContext], [$address]);
+                    \assert($address instanceof InternetAddress);
+                    if (isset($quicConnections[$bindContext])) {
+                        $quicConnections[$bindContext] = \array_merge($quicConnections[$bindContext], [$address]);
+                    } else {
+                        $quicConnections[$bindContext] = [$address];
+                    }
                 } else {
                     $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
                         $this->httpDriverFactory->getApplicationLayerProtocols(),

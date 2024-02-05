@@ -49,7 +49,7 @@ class Http3Parser
                 }
                 return ($int << 24) + (\ord($string[$off++]) << 16) + (\ord($string[$off++]) << 8) + \ord($string[$off++]);
             default:
-                if (\strlen($string) < --$off + 7) {
+                if (\strlen($string) < $off-- + 7) {
                     return -1;
                 }
                 $int = \unpack("J", $string, $off)[1] & 0x3FFFFFFFFFFFFFFF;
@@ -136,18 +136,17 @@ class Http3Parser
         return \substr($buf, 0, $length);
     }
 
-    private function parseSettings(string $contents)
+    private function parseSettings(string $contents): void
     {
         $off = 0;
-        $settings = new \SplObjectStorage;
+        $settings = [];
         while ((-1 !== $key = self::decodeVarint($contents, $off)) && (-1 !== $value = self::decodeVarint($contents, $off))) {
-            if ($key = Http3Settings::tryFrom($key)) {
-                $settings[$key] = $value;
-            }
+            $settings[$key] = $value;
         }
         $this->queue->push([Http3Frame::SETTINGS, $settings]);
     }
 
+    // Function to be used by a client
     public function awaitHttpResponse(QuicSocket $stream): \Generator
     {
         $off = 0;
@@ -202,8 +201,10 @@ class Http3Parser
                         yield Http3Frame::DATA => \substr($buf, $off, $length);
                         $off += $length;
                     } else {
-                        yield \substr($buf, $off);
-                        $length -= \strlen($buf);
+                        if (\strlen($buf) > $off) {
+                            yield Http3Frame::DATA => \substr($buf, $off);
+                        }
+                        $length -= \strlen($buf) - $off;
                         $buf = "";
                         $off = 0;
                         while (true) {
@@ -219,13 +220,14 @@ class Http3Parser
                                 yield Http3Frame::DATA => $buf;
                                 $length -= \strlen($buf);
                             } else {
-                                yield Http3Frame::DATA => \substr($buf, $length);
+                                yield Http3Frame::DATA => \substr($buf, 0, $length);
                                 $off = $length;
                                 break;
                             }
                         }
                     }
-                    // no break
+                    break;
+
                 case Http3Frame::PUSH_PROMISE:
                     if (!$headers = self::readFrameWithoutType($stream, $buf, $off, $this->headerSizeLimit)) {
                         return;
@@ -279,6 +281,7 @@ class Http3Parser
         return [$headers, $pseudo];
     }
 
+    /** @return ConcurrentIterator<list{Http3Frame::HEADERS, QuicSocket, \Generator}|list{Http3Frame::GOAWAY|Http3Frame::MAX_PUSH_ID|Http3Frame::CANCEL_PUSH, int}|list{Http3Frame::PRIORITY_UPDATE_Push|Http3Frame::PRIORITY_UPDATE_Request, int, string}|list{Http3Frame::PUSH_PROMISE, int, callable(): \Generator}|list{int, string, QuicSocket}> */
     public function process(): ConcurrentIterator
     {
         EventLoop::queue(function () {
@@ -415,7 +418,7 @@ class Http3Parser
         return [$urgency, $incremental];
     }
 
-    public function abort(Http3ConnectionException $exception)
+    public function abort(Http3ConnectionException $exception): void
     {
         if (!$this->queue->isComplete()) {
             $this->connection->close($exception->getCode(), $exception->getMessage());
@@ -423,7 +426,7 @@ class Http3Parser
         }
     }
 
-    private function datagramReceiver()
+    private function datagramReceiver(): void
     {
         $this->datagramReceiveEmpty = new DeferredCancellation;
         $cancellation = $this->datagramReceiveEmpty->getCancellation();

@@ -53,6 +53,7 @@ class Http3Driver extends ConnectionHttpDriver
     private DeferredCancellation $closeCancellation;
     /** @var array<int, int> */
     private array $settings = [];
+    /** @var DeferredFuture<array<int, int>> */
     private DeferredFuture $parsedSettings;
     /** @var array<int, \Closure(string $buf, QuicSocket $stream): void */
     private array $streamHandlers;
@@ -75,7 +76,8 @@ class Http3Driver extends ConnectionHttpDriver
         $this->parsedSettings = new DeferredFuture;
     }
 
-    public function getSettings(): \SplObjectStorage
+    /** @return array<int, int> */
+    public function getSettings(): \array
     {
         return $this->parsedSettings->getFuture()->await();
     }

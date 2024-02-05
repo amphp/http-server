@@ -114,6 +114,7 @@ class QPack
         ["x-frame-options", "sameorigin"],
     ];
 
+    /** @return positive-int */
     private static function decodeDynamicInteger(string $input, int $maxBits, int &$off): int
     {
         if (!isset($input[$off])) {
@@ -143,7 +144,7 @@ class QPack
         return $int;
     }
 
-    public static function decodeDynamicField(string $input, int $startBits, int &$off)
+    public static function decodeDynamicField(string $input, int $startBits, int &$off): string
     {
         $startOff = $off;
         $length = self::decodeDynamicInteger($input, $startBits, $off);
@@ -161,7 +162,7 @@ class QPack
         return $string;
     }
 
-    public function decode(string $input, int &$off) /* : array */
+    public function decode(string $input, int &$off): array
     {
         // @TODO implementation is deliberately primitive...: we just enforce dynamic table size 0
         $headers = [];
@@ -234,7 +235,7 @@ class QPack
         return $out . \chr($int >> $i);
     }
 
-    private static function encodeDynamicField(int $startBits, string $input)
+    private static function encodeDynamicField(int $startBits, string $input): string
     {
         return self::encodeDynamicInteger($startBits, \strlen($input)) . $input;
     }

@@ -25,53 +25,65 @@ class Http3Writer
         if ($int <= 0x3FFFFFFF) {
             return \pack("N", 0x80000000 | $int);
         }
-        return \pack("J", 0xC000000000000000 | $int);
+        return \pack("J", -0x4000000000000000 | $int);
     }
 
-    private static function sendFrame(QuicSocket $stream, Http3Frame $type, string $payload)
+    public static function sendFrame(QuicSocket $stream, int $type, string $payload): void
     {
-        $stream->write(self::encodeVarint($type->value) . self::encodeVarint(\strlen($payload)) . $payload);
+        $stream->write(self::encodeVarint($type) . self::encodeVarint(\strlen($payload)) . $payload);
     }
 
-    public function sendHeaderFrame(QuicSocket $stream, string $payload)
+    private static function sendKnownFrame(QuicSocket $stream, Http3Frame $type, string $payload): void
     {
-        self::sendFrame($stream, Http3Frame::HEADERS, $payload);
+        self::sendFrame($stream, $type->value, $payload);
     }
 
-    public function sendData(QuicSocket $stream, string $payload)
+    public function sendHeaderFrame(QuicSocket $stream, string $payload): void
     {
-        self::sendFrame($stream, Http3Frame::DATA, $payload);
+        self::sendKnownFrame($stream, Http3Frame::HEADERS, $payload);
     }
 
-    public function sendGoaway(int $highestStreamId)
+    public function sendData(QuicSocket $stream, string $payload): void
     {
-        self::sendFrame($this->controlStream, Http3Frame::GOAWAY, self::encodeVarint($highestStreamId));
+        self::sendKnownFrame($stream, Http3Frame::DATA, $payload);
     }
 
-    private function startControlStream()
+    public function sendGoaway(int $highestStreamId): void
     {
-        $this->controlStream = $this->connection->openStream();
-        $this->controlStream->endReceiving(); // unidirectional please
+        self::sendKnownFrame($this->controlStream, Http3Frame::GOAWAY, self::encodeVarint($highestStreamId));
+    }
+
+    public function initiateUnidirectionalStream(int $streamType): QuicSocket
+    {
+        $stream = $this->connection->openStream();
+        $stream->endReceiving(); // unidirectional please
+        $stream->write(self::encodeVarint($streamType));
+        return $stream;
+    }
+
+    private function startControlStream(): void
+    {
+        $this->controlStream = $this->initiateUnidirectionalStream(Http3StreamType::Control->value);
 
         $ints = [];
         foreach ($this->settings as $setting => $value) {
             $ints[] = self::encodeVarint($setting);
             $ints[] = self::encodeVarint($value);
         }
-        self::sendFrame($this->controlStream, Http3Frame::SETTINGS, \implode($ints));
+        self::sendKnownFrame($this->controlStream, Http3Frame::SETTINGS, \implode($ints));
     }
 
-    public function maxDatagramSize()
+    public function maxDatagramSize(): int
     {
         return $this->connection->maxDatagramSize() - 8; // to include the longest quarter stream id varint
     }
 
-    public function writeDatagram(QuicSocket $stream, string $buf)
+    public function writeDatagram(QuicSocket $stream, string $buf): void
     {
         $this->connection->send(self::encodeVarint($stream->getId() >> 2) . $buf);
     }
 
-    public function close()
+    public function close(): void
     {
         $this->connection->close(Http3Error::H3_NO_ERROR->value);
     }
