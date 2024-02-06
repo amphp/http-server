@@ -3,11 +3,17 @@
 namespace Amp\Http\Server\Driver\Internal;
 
 use Amp\ByteStream\ReadableStream;
+use Amp\ByteStream\ReadableStreamIteratorAggregate;
 use Amp\Cancellation;
 use Amp\Http\Server\RequestBody;
 
-class UnbufferedBodyStream implements ReadableStream
+/**
+ * @implements \IteratorAggregate<int, string>
+ */
+class UnbufferedBodyStream implements ReadableStream, \IteratorAggregate
 {
+    use ReadableStreamIteratorAggregate;
+
     private int $dataRead = 0;
 
     public function __construct(private RequestBody $body)

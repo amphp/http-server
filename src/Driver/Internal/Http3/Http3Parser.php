@@ -22,6 +22,7 @@ class Http3Parser
     private Queue $queue;
     /** @var array<int, EventLoop\Suspension> */
     private array $datagramReceivers = [];
+    /** @psalm-suppress PropertyNotSetInConstructor */
     private DeferredCancellation $datagramReceiveEmpty;
     /** @var array<int, true> */
     private array $datagramCloseHandlerInstalled = [];
@@ -66,9 +67,11 @@ class Http3Parser
             }
             $buf .= $chunk;
         }
+        /** @psalm-suppress PossiblyUndefinedVariable https://github.com/vimeo/psalm/issues/10548 */
         return $int;
     }
 
+    /** @param positive-int $headerSizeLimit */
     public function __construct(private QuicConnection $connection, private int $headerSizeLimit, private QPack $qpack)
     {
         $this->queue = new Queue;
@@ -94,19 +97,27 @@ class Http3Parser
             $off += $length;
             $frametype = self::decodeVarintFromStream($stream, $buf, $off);
         }
+        /** @psalm-suppress PossiblyUndefinedVariable https://github.com/vimeo/psalm/issues/10548 */
         return $frame;
     }
 
-    public static function readFullFrame(QuicSocket $stream, string &$buf, int &$off, $maxSize): ?array
+    /**
+     * @param positive-int $maxSize
+     * @return list{Http3Frame, string}|null
+     */
+    public static function readFullFrame(QuicSocket $stream, string &$buf, int &$off, int $maxSize): ?array
     {
-        $type = self::decodeFrameTypeFromStream($stream, $buf, $off);
+        if (null === $type = self::decodeFrameTypeFromStream($stream, $buf, $off)) {
+            return null;
+        }
         if (null === $frame = self::readFrameWithoutType($stream, $buf, $off, $maxSize)) {
             return null;
         }
         return [$type, $frame];
     }
 
-    public static function readFrameWithoutType(QuicSocket $stream, string &$buf, int &$off, $maxSize): ?string
+    /** @param positive-int $maxSize */
+    public static function readFrameWithoutType(QuicSocket $stream, string &$buf, int &$off, int $maxSize): ?string
     {
         $length = self::decodeVarintFromStream($stream, $buf, $off);
         if ($length < 0) {
@@ -168,6 +179,7 @@ class Http3Parser
                 return;
             }
             if ($frame === Http3Frame::PUSH_PROMISE) {
+                /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
                 yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($contents);
             } else {
                 break;
@@ -177,6 +189,7 @@ class Http3Parser
             throw new Http3ConnectionException("A request or response stream may not start with any other frame than HEADERS", Http3Error::H3_FRAME_UNEXPECTED);
         }
         $headerOff = 0;
+        /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
         yield Http3Frame::HEADERS => self::processHeaders($this->qpack->decode($contents, $headerOff));
         $hadData = false;
         while (null !== $type = self::decodeFrameTypeFromStream($stream, $buf, $off)) {
@@ -208,7 +221,7 @@ class Http3Parser
                         $buf = "";
                         $off = 0;
                         while (true) {
-                            if (null === $buf = $stream->read()) {
+                            if (null === $chunk = $stream->read()) {
                                 if ($stream->wasReset()) {
                                     yield null => null;
                                 } else {
@@ -216,11 +229,12 @@ class Http3Parser
                                 }
                                 return;
                             }
-                            if (\strlen($buf) < $length) {
-                                yield Http3Frame::DATA => $buf;
-                                $length -= \strlen($buf);
+                            if (\strlen($chunk) < $length) {
+                                yield Http3Frame::DATA => $chunk;
+                                $length -= \strlen($chunk);
                             } else {
-                                yield Http3Frame::DATA => \substr($buf, 0, $length);
+                                yield Http3Frame::DATA => \substr($chunk, 0, $length);
+                                $buf = $chunk;
                                 $off = $length;
                                 break;
                             }
@@ -244,9 +258,11 @@ class Http3Parser
         }
         while ([$frame, $contents] = self::readFullFrame($stream, $buf, $off, $this->headerSizeLimit)) {
             if ($frame === Http3Frame::PUSH_PROMISE) {
+                /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
                 yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($contents);
             } else {
-                throw new Http3ConnectionException("Expecting only push promises after a message frame, found {$frame->type}", Http3Error::H3_FRAME_UNEXPECTED);
+                /** @psalm-suppress PossiblyNullPropertyFetch https://github.com/vimeo/psalm/issues/10668 */
+                throw new Http3ConnectionException("Expecting only push promises after a message frame, found {$frame->name}", Http3Error::H3_FRAME_UNEXPECTED);
             }
         }
     }
@@ -281,7 +297,8 @@ class Http3Parser
         return [$headers, $pseudo];
     }
 
-    /** @return ConcurrentIterator<list{Http3Frame::HEADERS, QuicSocket, \Generator}|list{Http3Frame::GOAWAY|Http3Frame::MAX_PUSH_ID|Http3Frame::CANCEL_PUSH, int}|list{Http3Frame::PRIORITY_UPDATE_Push|Http3Frame::PRIORITY_UPDATE_Request, int, string}|list{Http3Frame::PUSH_PROMISE, int, callable(): \Generator}|list{int, string, QuicSocket}> */
+    // I'm unable to suppress https://github.com/vimeo/psalm/issues/10669
+    /* @return ConcurrentIterator<list{Http3Frame::HEADERS, QuicSocket, \Generator}|list{Http3Frame::GOAWAY|Http3Frame::MAX_PUSH_ID|Http3Frame::CANCEL_PUSH, int}|list{Http3Frame::PRIORITY_UPDATE_Push|Http3Frame::PRIORITY_UPDATE_Request, int, string}|list{Http3Frame::PUSH_PROMISE, int, callable(): \Generator}|list{int, string, QuicSocket}> */
     public function process(): ConcurrentIterator
     {
         EventLoop::queue(function () {
@@ -290,6 +307,10 @@ class Http3Parser
                     try {
                         $off = 0;
                         $buf = $stream->read();
+                        if ($buf === null) {
+                            return; // Nothing happens. That's allowed. Just bye then.
+                        }
+
                         $type = self::decodeVarintFromStream($stream, $buf, $off);
                         if ($stream->isWritable()) {
                             // client-initiated bidirectional stream
@@ -320,6 +341,7 @@ class Http3Parser
                                     if ($frame !== Http3Frame::SETTINGS) {
                                         throw new Http3ConnectionException("A settings frame must be the first frame on the control stream", Http3Error::H3_MISSING_SETTINGS);
                                     }
+                                    /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
                                     $this->parseSettings($contents);
 
                                     while (true) {
@@ -335,6 +357,7 @@ class Http3Parser
                                         }
 
                                         $tmpOff = 0;
+                                        /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
                                         if (0 > $id = self::decodeVarint($contents, $tmpOff)) {
                                             if (!$stream->getConnection()->isClosed()) {
                                                 throw new Http3ConnectionException("The control stream was closed", Http3Error::H3_CLOSED_CRITICAL_STREAM);
@@ -394,6 +417,7 @@ class Http3Parser
     }
 
     // Note: format is shared with HTTP/2
+    /** @return list{int<0, 7>, bool}|null */
     public static function parsePriority(array|string $headers): ?array
     {
         $urgency = 3;
@@ -404,7 +428,7 @@ class Http3Parser
                 if ($number instanceof Number) {
                     $value = $number->item;
                     if (\is_int($value) && $value >= 0 && $value <= 7) {
-                        $urgency = $number->item;
+                        $urgency = $value;
                     }
                 }
             }
@@ -491,6 +515,7 @@ class Http3Parser
         try {
             return $suspension->suspend();
         } finally {
+            /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10553 */
             $cancellation?->unsubscribe($cancellationId);
         }
     }

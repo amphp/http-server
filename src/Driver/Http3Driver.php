@@ -40,12 +40,15 @@ use function Amp\Http\formatDateHeader;
 
 class Http3Driver extends ConnectionHttpDriver
 {
+    /** @psalm-suppress PropertyNotSetInConstructor */
     private Client $client;
 
     /** @var \WeakMap<Request, QuicSocket> */
     private \WeakMap $requestStreams;
 
+    /** @psalm-suppress PropertyNotSetInConstructor */
     private Http3Parser $parser;
+    /** @psalm-suppress PropertyNotSetInConstructor */
     private Http3Writer $writer;
     private QPack $qpack;
     private int $highestStreamId = 0;
@@ -55,9 +58,13 @@ class Http3Driver extends ConnectionHttpDriver
     private array $settings = [];
     /** @var DeferredFuture<array<int, int>> */
     private DeferredFuture $parsedSettings;
-    /** @var array<int, \Closure(string $buf, QuicSocket $stream): void */
-    private array $streamHandlers;
+    /** @var array<int, \Closure(string $buf, QuicSocket $stream): void> */
+    private array $streamHandlers = [];
 
+    /**
+     * @param positive-int $headerSizeLimit
+     * @param non-negative-int $bodySizeLimit
+     */
     public function __construct(
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
@@ -69,6 +76,7 @@ class Http3Driver extends ConnectionHttpDriver
         parent::__construct($requestHandler, $errorHandler, $logger);
 
         $this->qpack = new QPack;
+        /** @var \WeakMap<Request, QuicSocket> See https://github.com/vimeo/psalm/issues/7131 */
         $this->requestStreams = new \WeakMap;
         $this->closeCancellation = new DeferredCancellation;
         $this->settings[Http3Settings::MAX_FIELD_SECTION_SIZE->value] = $this->headerSizeLimit;
@@ -82,13 +90,13 @@ class Http3Driver extends ConnectionHttpDriver
         return $this->parsedSettings->getFuture()->await();
     }
 
-    public function addSetting(Http3Settings|int $setting, int $value)
+    public function addSetting(Http3Settings|int $setting, int $value): void
     {
         $this->settings[\is_int($setting) ? $setting : $setting->value] = $value;
     }
 
     /** @param \Closure(string $buf, QuicSocket $stream): void $handler */
-    public function addStreamHandler(int $type, \Closure $handler)
+    public function addStreamHandler(int $type, \Closure $handler): void
     {
         $this->streamHandlers[$type] = $handler;
     }
@@ -226,6 +234,7 @@ class Http3Driver extends ConnectionHttpDriver
     {
         /** @psalm-suppress RedundantPropertyInitializationCheck */
         \assert(!isset($this->client), "The driver has already been setup");
+        \assert($connection instanceof QuicConnection);
 
         $this->client = $client;
         $this->writer = new Http3Writer($connection, $this->settings);
@@ -404,7 +413,9 @@ class Http3Driver extends ConnectionHttpDriver
                                     $this->updatePriority($stream, $headers["priority"]);
                                 }
 
+                                /** @var EventLoop\Suspension|null $dataSuspension */
                                 $dataSuspension = null;
+                                $bodySizeLimit = $this->bodySizeLimit;
                                 $body = new RequestBody(
                                     new ReadableIterableStream($bodyQueue->pipe()),
                                     function (int $bodySize) use (&$bodySizeLimit, &$dataSuspension) {
@@ -459,6 +470,8 @@ class Http3Driver extends ConnectionHttpDriver
                                                 $dataSuspension->suspend();
                                             }
                                         } elseif ($type === Http3Frame::HEADERS) {
+                                            [$headers, $pseudo] = $data;
+
                                             // Trailers must not contain pseudo-headers.
                                             if (!empty($pseudo)) {
                                                 throw new Http3StreamException(
@@ -576,10 +589,12 @@ class Http3Driver extends ConnectionHttpDriver
         }
     }
 
-    public function updatePriority(QuicSocket $socket, array|string $headers)
+    public function updatePriority(QuicSocket $socket, array|string $headers): void
     {
-        [$urgency, $incremental] = Http3Parser::parsePriority($headers);
-        $socket->setPriority($urgency + 124 /* 127 is default for QUIC, 3 is default for HTTP */, $incremental);
+        if ([$urgency, $incremental] = Http3Parser::parsePriority($headers)) {
+            /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
+            $socket->setPriority($urgency + 124 /* 127 is default for QUIC, 3 is default for HTTP */, $incremental);
+        }
     }
 
     public function getPendingRequestCount(): int

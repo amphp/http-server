@@ -114,7 +114,10 @@ class QPack
         ["x-frame-options", "sameorigin"],
     ];
 
-    /** @return positive-int */
+    /**
+     * @psalm-suppress MoreSpecificReturnType
+     * @return non-negative-int
+     */
     private static function decodeDynamicInteger(string $input, int $maxBits, int &$off): int
     {
         if (!isset($input[$off])) {
@@ -123,6 +126,7 @@ class QPack
 
         $int = \ord($input[$off++]) & $maxBits;
         if ($maxBits !== $int) {
+            /** @psalm-suppress LessSpecificReturnStatement https://github.com/vimeo/psalm/issues/10667 */
             return $int;
         }
 
@@ -141,6 +145,7 @@ class QPack
             }
         } while ($c & 0x80);
 
+        /** @psalm-suppress InvalidReturnStatement https://github.com/vimeo/psalm/issues/9902 */
         return $int;
     }
 
@@ -156,7 +161,10 @@ class QPack
         $off += $length;
 
         if ($huffman) {
-            return HPackNative::huffmanDecode($string);
+            $string = HPackNative::huffmanDecode($string);
+            if ($string === null) {
+                throw new QPackException(Http3Error::QPACK_DECOMPRESSION_FAILED, 'Invalid huffman encoded sequence');
+            }
         }
 
         return $string;

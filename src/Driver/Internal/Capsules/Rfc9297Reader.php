@@ -35,14 +35,15 @@ final class Rfc9297Reader implements CapsuleReader
                 yield $this->buf;
                 $length -= \strlen($this->buf);
 
-                if (null === ($this->buf = $this->read())) {
+                if (null === $buf = $this->stream->read()) {
                     return;
                 }
+                $this->buf = $buf;
             }
             yield \substr($this->buf, 0, $length);
             $this->buf = \substr($this->buf, $length);
             $this->activeReader = false;
         };
-        return [$type, $length, $reader];
+        return [$type, $length, $reader()];
     }
 }

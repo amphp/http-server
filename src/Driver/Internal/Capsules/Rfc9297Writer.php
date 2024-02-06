@@ -11,7 +11,7 @@ final class Rfc9297Writer implements CapsuleWriter
     {
     }
 
-    public function write(int $type, string $buf)
+    public function write(int $type, string $buf): void
     {
         $this->writer->write(Http3Writer::encodeVarint($type) . Http3Writer::encodeVarint(\strlen($buf)) . $buf);
     }

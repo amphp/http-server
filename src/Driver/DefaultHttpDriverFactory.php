@@ -9,6 +9,8 @@ use Psr\Log\LoggerInterface as PsrLogger;
 final class DefaultHttpDriverFactory implements HttpDriverFactory
 {
     /**
+     * @param positive-int $headerSizeLimit
+     * @param non-negative-int $bodySizeLimit
      * @param bool $allowHttp2Upgrade Requires HTTP/2 support to be enabled.
      * @param bool $pushEnabled Requires HTTP/2 support to be enabled.
      */

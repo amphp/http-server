@@ -10,6 +10,7 @@ abstract class StreamHttpDriver extends ConnectionHttpDriver
 {
     public function handleConnection(Client $client, QuicConnection|Socket $connection): void
     {
+        assert($connection instanceof Socket);
         $this->handleClient($client, $connection, $connection);
     }
 }

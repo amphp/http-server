@@ -4,5 +4,5 @@ namespace Amp\Http\Server\Driver\Internal\Capsules;
 
 interface CapsuleWriter
 {
-    public function write(int $type, string $buf);
+    public function write(int $type, string $buf): void;
 }

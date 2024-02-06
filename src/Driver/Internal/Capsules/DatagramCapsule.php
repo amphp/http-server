@@ -12,7 +12,7 @@ class DatagramCapsule implements CapsuleReader, DatagramStream
 {
     const TYPE = 0;
     private ?Suspension $datagramSuspension = null;
-    private ?Cancellation $cancellation;
+    private ?Cancellation $cancellation = null;
     private ?string $cancellationId = null;
     private ?string $nextDatagram = null;
 
@@ -30,7 +30,7 @@ class DatagramCapsule implements CapsuleReader, DatagramStream
                     return null;
                 }
 
-                $buf = \implode(\iterator_to_array($content));
+                $buf = \implode(\is_array($content) ? $content : \iterator_to_array($content));
                 if (\strlen($buf) < $len) {
                     return null;
                 }
@@ -38,6 +38,7 @@ class DatagramCapsule implements CapsuleReader, DatagramStream
                 if ($this->datagramSuspension) {
                     $this->datagramSuspension->resume($buf);
                     $this->datagramSuspension = null;
+                    \assert($this->cancellationId !== null);
                     $this->cancellation?->unsubscribe($this->cancellationId);
                     $this->cancellation = null;
                 } else {
@@ -75,6 +76,7 @@ class DatagramCapsule implements CapsuleReader, DatagramStream
         $this->datagramSuspension = EventLoop::getSuspension();
         $this->cancellation = $cancellation;
         $this->cancellationId = $cancellation?->subscribe(function ($e) {
+            \assert($this->datagramSuspension !== null);
             $this->datagramSuspension->throw($e);
             $this->datagramSuspension = null;
         });
