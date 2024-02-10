@@ -140,7 +140,7 @@ class QPack
             $int += ($c & 0x7f) << $bitshift;
             $bitshift += 7;
 
-            if ($int > 2147483647) {
+            if ($int > 0x7FFFFFFF) {
                 throw new QPackException(Http3Error::QPACK_DECOMPRESSION_FAILED, 'Invalid integer, too large');
             }
         } while ($c & 0x80);

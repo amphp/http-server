@@ -4,6 +4,7 @@ namespace Amp\Http\Server\Driver\Internal\Http3;
 
 use Amp\ByteStream\ReadableStream;
 use Amp\Cancellation;
+use Amp\CancelledException;
 use Amp\DeferredCancellation;
 use Amp\Http\StructuredFields\Boolean;
 use Amp\Http\StructuredFields\Number;
@@ -19,6 +20,7 @@ class Http3Parser
 {
     private ?QuicSocket $qpackDecodeStream = null;
     private ?QuicSocket $qpackEncodeStream = null;
+    private bool $receivedControlStream = false;
     private Queue $queue;
     /** @var array<int, EventLoop\Suspension> */
     private array $datagramReceivers = [];
@@ -42,13 +44,13 @@ class Http3Parser
                     --$off;
                     return -1;
                 }
-                return ($int << 8) + \ord($string[$off++]);
+                return (($int & 0x3F) << 8) + \ord($string[$off++]);
             case 0x80:
                 if (\strlen($string) < $off + 3) {
                     --$off;
                     return -1;
                 }
-                return ($int << 24) + (\ord($string[$off++]) << 16) + (\ord($string[$off++]) << 8) + \ord($string[$off++]);
+                return (($int & 0x3F) << 24) + (\ord($string[$off++]) << 16) + (\ord($string[$off++]) << 8) + \ord($string[$off++]);
             default:
                 if (\strlen($string) < $off-- + 7) {
                     return -1;
@@ -297,8 +299,8 @@ class Http3Parser
         return [$headers, $pseudo];
     }
 
-    // I'm unable to suppress https://github.com/vimeo/psalm/issues/10669
-    /* @return ConcurrentIterator<list{Http3Frame::HEADERS, QuicSocket, \Generator}|list{Http3Frame::GOAWAY|Http3Frame::MAX_PUSH_ID|Http3Frame::CANCEL_PUSH, int}|list{Http3Frame::PRIORITY_UPDATE_Push|Http3Frame::PRIORITY_UPDATE_Request, int, string}|list{Http3Frame::PUSH_PROMISE, int, callable(): \Generator}|list{int, string, QuicSocket}> */
+    // Omitting it due to https://github.com/vimeo/psalm/issues/10002
+    /* @return ConcurrentIterator<list{(Http3Frame::HEADERS), QuicSocket, \Generator}|list{(Http3Frame::GOAWAY|Http3Frame::MAX_PUSH_ID|Http3Frame::CANCEL_PUSH), int}|list{(Http3Frame::PRIORITY_UPDATE_Push|Http3Frame::PRIORITY_UPDATE_Request), int, string}|list{(Http3Frame::PUSH_PROMISE), int, callable(): \Generator}|list{int, string, QuicSocket}> */
     public function process(): ConcurrentIterator
     {
         EventLoop::queue(function () {
@@ -332,6 +334,11 @@ class Http3Parser
                             // unidirectional stream
                             switch (Http3StreamType::tryFrom($type)) {
                                 case Http3StreamType::Control:
+                                    if ($this->receivedControlStream) {
+                                        throw new Http3ConnectionException("There must be only one control stream", Http3Error::H3_STREAM_CREATION_ERROR);
+                                    }
+                                    $this->receivedControlStream = true;
+
                                     if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x1000)) {
                                         if (!$stream->getConnection()->isClosed()) {
                                             throw new Http3ConnectionException("The control stream was closed", Http3Error::H3_CLOSED_CRITICAL_STREAM);
@@ -345,7 +352,7 @@ class Http3Parser
                                     $this->parseSettings($contents);
 
                                     while (true) {
-                                        if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x100)) {
+                                        if (![$frame, $contents] = $this->readFullFrame($stream, $buf, $off, 0x1000)) {
                                             if (!$stream->getConnection()->isClosed()) {
                                                 throw new Http3ConnectionException("The control stream was closed", Http3Error::H3_CLOSED_CRITICAL_STREAM);
                                             }
@@ -385,14 +392,14 @@ class Http3Parser
                                     // We don't do anything with these streams yet, but we must not close them according to RFC 9204 Section 4.2
                                 case Http3StreamType::QPackEncode:
                                     if ($this->qpackEncodeStream) {
-                                        return;
+                                        throw new Http3ConnectionException("There must be only one QPACK encoding stream", Http3Error::H3_STREAM_CREATION_ERROR);
                                     }
                                     $this->qpackEncodeStream = $stream;
                                     break;
 
                                 case Http3StreamType::QPackDecode:
                                     if ($this->qpackDecodeStream) {
-                                        return;
+                                        throw new Http3ConnectionException("There must be only one QPACK decoding stream", Http3Error::H3_STREAM_CREATION_ERROR);
                                     }
                                     $this->qpackDecodeStream = $stream;
                                     break;
@@ -455,22 +462,25 @@ class Http3Parser
         $this->datagramReceiveEmpty = new DeferredCancellation;
         $cancellation = $this->datagramReceiveEmpty->getCancellation();
         EventLoop::queue(function () use ($cancellation) {
-            while (null !== $buf = $this->connection->receive($cancellation)) {
-                $off = 0;
-                $quarterStreamId = self::decodeVarint($buf, $off);
-                if (isset($this->datagramReceivers[$quarterStreamId])) {
-                    $this->datagramReceivers[$quarterStreamId]->resume(\substr($buf, $off));
-                    unset($this->datagramReceivers[$quarterStreamId]);
+            try {
+                while (null !== $buf = $this->connection->receive($cancellation)) {
+                    $off = 0;
+                    $quarterStreamId = self::decodeVarint($buf, $off);
+                    if (isset($this->datagramReceivers[$quarterStreamId])) {
+                        $this->datagramReceivers[$quarterStreamId]->resume(\substr($buf, $off));
+                        unset($this->datagramReceivers[$quarterStreamId]);
 
-                    if (!$this->datagramReceivers) {
-                        return;
+                        if (!$this->datagramReceivers) {
+                            return;
+                        }
+
+                        // We need to await a tick to allow datagram receivers to request a new datagram to avoid needlessly discarding datagram frames
+                        $suspension = EventLoop::getSuspension();
+                        EventLoop::queue($suspension->resume(...));
+                        $suspension->suspend();
                     }
-
-                    // We need to await a tick to allow datagram receivers to request a new datagram to avoid needlessly discarding datagram frames
-                    $suspension = EventLoop::getSuspension();
-                    EventLoop::queue($suspension->resume(...));
-                    $suspension->suspend();
                 }
+            } catch (CancelledException) {
             }
         });
     }
@@ -489,7 +499,9 @@ class Http3Parser
         if (!isset($this->datagramCloseHandlerInstalled[$quarterStreamId])) {
             $this->datagramCloseHandlerInstalled[$quarterStreamId] = true;
             $stream->onClose(function () use ($quarterStreamId) {
-                $this->datagramReceivers[$quarterStreamId]->resume();
+                if (isset($this->datagramReceivers[$quarterStreamId])) {
+                    $this->datagramReceivers[$quarterStreamId]->resume();
+                }
                 unset($this->datagramReceivers[$quarterStreamId], $this->datagramCloseHandlerInstalled[$quarterStreamId]);
                 if (!$this->datagramReceivers) {
                     $this->datagramReceiveEmpty->cancel();

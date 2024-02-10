@@ -48,6 +48,26 @@ class Http3Writer
         self::sendKnownFrame($stream, Http3Frame::DATA, $payload);
     }
 
+    public function sendPriorityRequest(int $streamId, string $structuredPriorityData): void
+    {
+        self::sendKnownFrame($this->controlStream, Http3Frame::PRIORITY_UPDATE_Request, self::encodeVarint($streamId) . $structuredPriorityData);
+    }
+
+    public function sendPriorityPush(int $streamId, string $structuredPriorityData): void
+    {
+        self::sendKnownFrame($this->controlStream, Http3Frame::PRIORITY_UPDATE_Push, self::encodeVarint($streamId) . $structuredPriorityData);
+    }
+
+    public function sendMaxPushId(int $pushId): void
+    {
+        self::sendKnownFrame($this->controlStream, Http3Frame::MAX_PUSH_ID, self::encodeVarint($pushId));
+    }
+
+    public function sendCancelPush(int $pushId): void
+    {
+        self::sendKnownFrame($this->controlStream, Http3Frame::CANCEL_PUSH, self::encodeVarint($pushId));
+    }
+
     public function sendGoaway(int $highestStreamId): void
     {
         self::sendKnownFrame($this->controlStream, Http3Frame::GOAWAY, self::encodeVarint($highestStreamId));
