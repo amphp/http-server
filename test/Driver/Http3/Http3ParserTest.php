@@ -1,4 +1,4 @@
-<?php
+<?php declare(strict_types=1);
 
 namespace Amp\Http\Server\Test\Driver\Http3;
 
@@ -16,7 +16,8 @@ use Amp\Quic\QuicSocket;
 use PHPUnit\Framework\TestCase;
 use Revolt\EventLoop;
 
-class Http3ParserTest extends TestCase {
+class Http3ParserTest extends TestCase
+{
     private int $paddingIndex = 0;
     private const PADDING_INDICES = [0x21, 0x10000, 0xfffffffe, 0x3ffffffffffffffe];
 
@@ -27,10 +28,10 @@ class Http3ParserTest extends TestCase {
 
     public function insertPaddingFrame(QuicSocket $stream, $size = 1): void
     {
-        Http3Writer::sendFrame($stream, self::PADDING_INDICES[$this->paddingIndex++ % count(self::PADDING_INDICES)], str_repeat("a", $size));
+        Http3Writer::sendFrame($stream, self::PADDING_INDICES[$this->paddingIndex++ % \count(self::PADDING_INDICES)], \str_repeat("a", $size));
     }
 
-    /** @return list{PairConnection, PairConnection, Http3Parser, Http3Writer, ConcurrentIterator, \Generator, QuicSocket, QuicSocket, QPack} */
+    /** @return list{PairConnection, PairConnection, Http3Parser, Http3Writer, ConcurrentIterator, \Generator, QuicSocket, QuicSocket} */
     public function runParsingRequest($endEarly = false, $sendSingleBytes = false): array
     {
         [$server, $client] = PairConnection::createPair();
@@ -48,9 +49,7 @@ class Http3ParserTest extends TestCase {
             $processor = $parser->process();
         }
 
-        $writer = new Http3Writer($client, $sentSettings = [10 => 20, 11 => 30]);
-
-        $qpack = new QPack;
+        $writer = new Http3Writer($client, $sentSettings = [10 => 20, 11 => 30], new QPack);
 
         $req = $client->openStream();
 
@@ -59,7 +58,7 @@ class Http3ParserTest extends TestCase {
             $this->insertPaddingFrame($req);
         }
 
-        $writer->sendHeaderFrame($req, $qpack->encode([[":method", "GET"], ["header1", "a"], ["header1", "b"]]));
+        $writer->sendHeaderFrame($req, [":method" => ["GET"], "header1" => ["a", "b"]]);
 
         if (!$sendSingleBytes) {
             $processor = $parser->process();
@@ -82,7 +81,7 @@ class Http3ParserTest extends TestCase {
             $generator->next();
             $this->assertFalse($generator->valid());
         }
-        return [$server, $client, $parser, $writer, $processor, $generator, $req, $stream, $qpack];
+        return [$server, $client, $parser, $writer, $processor, $generator, $req, $stream];
     }
 
     public function testParsingRequest(): void
@@ -92,14 +91,14 @@ class Http3ParserTest extends TestCase {
 
     public function testRequestWithData(): void
     {
-        [$server, $client, $parser, $writer, $processor, $generator, $req, $stream, $qpack] = $this->runParsingRequest();
+        [$server, $client, $parser, $writer, $processor, $generator, $req, $stream] = $this->runParsingRequest();
 
-        Http3Writer::sendFrame($req, Http3Frame::PUSH_PROMISE->value, Http3Writer::encodeVarint(2) . $qpack->encode([["header", "value"]]));
+        $writer->sendPushPromiseFrame($req, 2, ["header" => ["value"]]);
         $generator->next();
         $this->assertSame(Http3Frame::PUSH_PROMISE, $generator->key());
         $this->assertSame([2, [["header" => ["value"]], []]], $generator->current());
 
-        Http3Writer::sendFrame($req, Http3Frame::PUSH_PROMISE->value, Http3Writer::encodeVarint(3) . $qpack->encode([["header", "other"]]));
+        $writer->sendPushPromiseFrame($req, 3, ["header" => ["other"]]);
         $generator->next();
         $this->assertSame(Http3Frame::PUSH_PROMISE, $generator->key());
         $this->assertSame([3, [["header" => ["other"]], []]], $generator->current());
@@ -109,7 +108,7 @@ class Http3ParserTest extends TestCase {
         $this->assertSame(Http3Frame::DATA, $generator->key());
         $this->assertSame("some", $generator->current());
 
-        Http3Writer::sendFrame($req, Http3Frame::PUSH_PROMISE->value, Http3Writer::encodeVarint(4) . $qpack->encode([[":header", "other"]]));
+        $writer->sendPushPromiseFrame($req, 4, [":header" => ["other"]]);
         $generator->next();
         $this->assertSame(Http3Frame::PUSH_PROMISE, $generator->key());
         $this->assertSame([4, [[], [":header" => "other"]]], $generator->current());
@@ -121,13 +120,13 @@ class Http3ParserTest extends TestCase {
 
     public function testSendingSingleBytes(): void
     {
-        [$server, $client, $parser, $writer, $processor, $generator, $req, $stream, $qpack] = $this->runParsingRequest(sendSingleBytes: true);
+        [$server, $client, $parser, $writer, $processor, $generator, $req, $stream] = $this->runParsingRequest(sendSingleBytes: true);
 
-        $sendFuture = \Amp\async(function () use ($writer, $qpack, $req) {
+        $sendFuture = \Amp\async(function () use ($writer, $req) {
             $this->insertPaddingFrame($req);
             $this->insertPaddingFrame($req);
 
-            $writer->sendHeaderFrame($req, $qpack->encode([["header", "value"]]));
+            $writer->sendHeaderFrame($req, ["header" => ["value"]]);
 
             $this->insertPaddingFrame($req);
             $this->insertPaddingFrame($req);
@@ -170,8 +169,9 @@ class Http3ParserTest extends TestCase {
         $this->assertNull($sendFuture->await());
     }
 
-    function testTrailers() {
-        [$server, $client, $parser, $writer, $processor, $generator, $req, $stream, $qpack] = $this->runParsingRequest();
+    public function testTrailers(): void
+    {
+        [$server, $client, $parser, $writer, $processor, $generator, $req, $stream] = $this->runParsingRequest();
 
         $writer->sendData($req, "abc");
 
@@ -179,18 +179,18 @@ class Http3ParserTest extends TestCase {
         $this->assertSame(Http3Frame::DATA, $generator->key());
         $this->assertSame("abc", $generator->current());
 
-        $writer->sendHeaderFrame($req, $qpack->encode([["header", "value"]]));
+        $writer->sendHeaderFrame($req, ["header" => ["value"]]);
 
         $generator->next();
         $this->assertSame(Http3Frame::HEADERS, $generator->key());
         $this->assertSame([["header" => ["value"]], []], $generator->current());
 
-        Http3Writer::sendFrame($req, Http3Frame::PUSH_PROMISE->value, Http3Writer::encodeVarint(2) . $qpack->encode([["header", "value"]]));
+        $writer->sendPushPromiseFrame($req, 2, ["header" => ["value"]]);
         $generator->next();
         $this->assertSame(Http3Frame::PUSH_PROMISE, $generator->key());
         $this->assertSame([2, [["header" => ["value"]], []]], $generator->current());
 
-        Http3Writer::sendFrame($req, Http3Frame::PUSH_PROMISE->value, Http3Writer::encodeVarint(3) . $qpack->encode([["header", "other"]]));
+        $writer->sendPushPromiseFrame($req, 3, ["header" => ["other"]]);
         $generator->next();
         $this->assertSame(Http3Frame::PUSH_PROMISE, $generator->key());
         $this->assertSame([3, [["header" => ["other"]], []]], $generator->current());
@@ -207,12 +207,33 @@ class Http3ParserTest extends TestCase {
         }
     }
 
-    function testUnidirectionalStreams() {
+    public function testInvalidHeaderParsing(): void
+    { // i.e. testing stream errors in parser
+        [$server, $client] = PairConnection::createPair();
+
+        $parser = new Http3Parser($server, 0x1000, new QPack);
+        $writer = new Http3Writer($client, [], new QPack);
+
+        $req = $client->openStream();
+
+        $writer->sendHeaderFrame($req, [":method" => ["GET"], "header" => ["a"], ":pseudo-after-header" => ["b"]]);
+
+        $processor = $parser->process();
+        $processor->continue();
+
+        EventLoop::queue($processor->continue(...));
+        \Amp\delay(0);
+
+        $this->assertTrue($req->wasReset());
+    }
+
+    public function testUnidirectionalStreams(): void
+    {
         [$server, $client] = PairConnection::createPair();
 
         $parser = new Http3Parser($server, 0x1000, new QPack);
 
-        $writer = new Http3Writer($client, $sentSettings = [10 => 20, 11 => 30]);
+        $writer = new Http3Writer($client, $sentSettings = [10 => 20, 11 => 30], new QPack);
 
         $writer->sendPriorityPush(1, "foo");
 
@@ -272,14 +293,16 @@ class Http3ParserTest extends TestCase {
         }
     }
 
-    public function testParsePriority() {
+    public function testParsePriority(): void
+    {
         $this->assertSame([7, true], Http3Parser::parsePriority("u=7, i"));
         $this->assertSame([3, true], Http3Parser::parsePriority("u=8, i"));
         $this->assertSame([3, false], Http3Parser::parsePriority("u=-1, i=1"));
         $this->assertSame([0, false], Http3Parser::parsePriority("u=0, i=foo"));
     }
 
-    public function testDatagram() {
+    public function testDatagram(): void
+    {
         [$server, $client] = PairConnection::createPair();
 
         $clientStream = $client->openStream();
@@ -291,14 +314,14 @@ class Http3ParserTest extends TestCase {
         $serverStream2 = $server->accept();
 
         $parser = new Http3Parser($server, 0x1000, new QPack);
-        $writer = new Http3Writer($client, []);
+        $writer = new Http3Writer($client, [], new QPack);
 
         $writer->writeDatagram($clientStream, "some data");
         $writer->writeDatagram($clientStream, "more data");
         $this->assertSame("some data", $parser->receiveDatagram($serverStream));
         $this->assertSame("more data", $parser->receiveDatagram($serverStream));
 
-        EventLoop::queue(fn() => $writer->writeDatagram($clientStream2, "second"));
+        EventLoop::queue(fn () => $writer->writeDatagram($clientStream2, "second"));
         $this->assertSame("second", $parser->receiveDatagram($serverStream2));
 
         $cancel = new DeferredCancellation;
@@ -311,7 +334,7 @@ class Http3ParserTest extends TestCase {
             $this->fail("The datagram wasn't cancelled");
         }
 
-        EventLoop::queue(fn() => $clientStream->close());
+        EventLoop::queue(fn () => $clientStream->close());
         $this->assertNull($parser->receiveDatagram($serverStream));
         $this->assertNull($parser->receiveDatagram($serverStream));
     }

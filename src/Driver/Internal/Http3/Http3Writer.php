@@ -5,11 +5,14 @@ namespace Amp\Http\Server\Driver\Internal\Http3;
 use Amp\Quic\QuicConnection;
 use Amp\Quic\QuicSocket;
 
+/**
+ * @psalm-import-type HeaderArray from \Amp\Http\Server\Driver\Internal\Http3\QPack
+ */
 class Http3Writer
 {
     private QuicSocket $controlStream;
 
-    public function __construct(private QuicConnection $connection, private array $settings)
+    public function __construct(private QuicConnection $connection, private array $settings, private QPack $qpack)
     {
         $this->startControlStream();
     }
@@ -38,9 +41,15 @@ class Http3Writer
         self::sendFrame($stream, $type->value, $payload);
     }
 
-    public function sendHeaderFrame(QuicSocket $stream, string $payload): void
+    /** @param HeaderArray $headers */
+    public function sendHeaderFrame(QuicSocket $stream, array $headers): void
     {
-        self::sendKnownFrame($stream, Http3Frame::HEADERS, $payload);
+        self::sendKnownFrame($stream, Http3Frame::HEADERS, $this->qpack->encode($headers));
+    }
+
+    public function sendPushPromiseFrame(QuicSocket $stream, int $pushId, array $headers): void
+    {
+        self::sendKnownFrame($stream, Http3Frame::PUSH_PROMISE, self::encodeVarint($pushId) . $this->qpack->encode($headers));
     }
 
     public function sendData(QuicSocket $stream, string $payload): void

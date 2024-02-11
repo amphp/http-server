@@ -38,6 +38,9 @@ use Revolt\EventLoop;
 use function Amp\async;
 use function Amp\Http\formatDateHeader;
 
+/**
+ * @psalm-import-type HeaderArray from \Amp\Http\Server\Driver\Internal\Http3\QPack
+ */
 class Http3Driver extends ConnectionHttpDriver
 {
     /** @psalm-suppress PropertyNotSetInConstructor */
@@ -50,7 +53,6 @@ class Http3Driver extends ConnectionHttpDriver
     private Http3Parser $parser;
     /** @psalm-suppress PropertyNotSetInConstructor */
     private Http3Writer $writer;
-    private QPack $qpack;
     private int $highestStreamId = 0;
     private bool $stopping = false;
     private DeferredCancellation $closeCancellation;
@@ -69,13 +71,12 @@ class Http3Driver extends ConnectionHttpDriver
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
         PsrLogger $logger,
-        private readonly int $streamTimeout = Http2Driver::DEFAULT_STREAM_TIMEOUT,
-        private readonly int $headerSizeLimit = Http2Driver::DEFAULT_HEADER_SIZE_LIMIT,
-        private readonly int $bodySizeLimit = Http2Driver::DEFAULT_BODY_SIZE_LIMIT,
+        private readonly int $streamTimeout = HttpDriver::DEFAULT_STREAM_TIMEOUT,
+        private readonly int $headerSizeLimit = HttpDriver::DEFAULT_HEADER_SIZE_LIMIT,
+        private readonly int $bodySizeLimit = HttpDriver::DEFAULT_BODY_SIZE_LIMIT,
     ) {
         parent::__construct($requestHandler, $errorHandler, $logger);
 
-        $this->qpack = new QPack;
         /** @var \WeakMap<Request, QuicSocket> See https://github.com/vimeo/psalm/issues/7131 */
         $this->requestStreams = new \WeakMap;
         $this->closeCancellation = new DeferredCancellation;
@@ -101,20 +102,27 @@ class Http3Driver extends ConnectionHttpDriver
         $this->streamHandlers[$type] = $handler;
     }
 
-    // TODO copied from Http2Driver...
-    private function encodeHeaders(array $headers): string
+    /**
+     * @param array<string, scalar|list<scalar>> $headers
+     * @return HeaderArray
+     * @psalm-suppress LessSpecificReturnStatement, MoreSpecificReturnType
+     */
+    private function encodeHeaders(array $headers): array
     {
-        $input = [];
-
         foreach ($headers as $field => $values) {
-            $values = (array) $values;
-
-            foreach ($values as $value) {
-                $input[] = [(string) $field, (string) $value];
+            if (\is_array($values)) {
+                foreach ($values as $k => $value) {
+                    if (!\is_string($value)) {
+                        /** @psalm-suppress PossiblyInvalidArrayAssignment */
+                        $headers[$field][$k] = (string) $value;
+                    }
+                }
+            } else {
+                $headers[$field] = [(string) $values];
             }
         }
 
-        return $this->qpack->encode($input);
+        return $headers;
     }
 
     protected function write(Request $request, Response $response): void
@@ -124,7 +132,7 @@ class Http3Driver extends ConnectionHttpDriver
 
         $status = $response->getStatus();
         $headers = [
-            ':status' => [$status],
+            ':status' => [(string) $status],
             ...$response->getHeaders(),
             'date' => [formatDateHeader()],
         ];
@@ -148,12 +156,10 @@ class Http3Driver extends ConnectionHttpDriver
             return;
         }
 
-        if ($response->isUpgraded()) {
-            if ($request->getMethod() === "CONNECT") {
-                $status = $response->getStatus();
-                if ($status >= 200 && $status <= 299) {
-                    $this->upgrade($stream, $request, $response);
-                }
+        if ($response->isUpgraded() && $request->getMethod() === "CONNECT") {
+            $status = $response->getStatus();
+            if ($status >= 200 && $status <= 299) {
+                $this->upgrade($stream, $request, $response);
             }
         }
 
@@ -236,14 +242,16 @@ class Http3Driver extends ConnectionHttpDriver
         \assert(!isset($this->client), "The driver has already been setup");
         \assert($connection instanceof QuicConnection);
 
+        $qpack = new QPack;
+
         $this->client = $client;
-        $this->writer = new Http3Writer($connection, $this->settings);
+        $this->writer = new Http3Writer($connection, $this->settings, $qpack);
         $largestPushId = (1 << 62) - 1;
         $maxAllowedPushId = 0;
 
         $connection->onClose($this->closeCancellation->cancel(...));
 
-        $this->parser = $parser = new Http3Parser($connection, $this->headerSizeLimit, $this->qpack);
+        $this->parser = $parser = new Http3Parser($connection, $this->headerSizeLimit, $qpack);
         try {
             foreach ($parser->process() as $frame) {
                 $type = $frame[0];
@@ -262,13 +270,12 @@ class Http3Driver extends ConnectionHttpDriver
                             break;
                         }
                         EventLoop::queue(function () use ($parser, $stream, $generator) {
-                            try {
-                                $streamId = $stream->getId();
+                            $streamId = $stream->getId();
 
+                            try {
                                 [$headers, $pseudo] = $generator->current();
                                 if (!isset($pseudo[":method"], $pseudo[":authority"])
                                     || isset($headers["connection"])
-                                    || $pseudo[":path"] === ''
                                     || (isset($headers["te"]) && \implode($headers["te"]) !== "trailers")
                                 ) {
                                     throw new Http3StreamException(
@@ -283,7 +290,7 @@ class Http3Driver extends ConnectionHttpDriver
                                 if ($pseudo[":method"] === "CONNECT" && !isset($pseudo[":protocol"]) && !isset($pseudo[":path"]) && !isset($pseudo[":scheme"])) {
                                     $pseudo[":path"] = "";
                                     $pseudo[":scheme"] = null;
-                                } elseif (!isset($pseudo[":path"], $pseudo[":scheme"])) {
+                                } elseif (!isset($pseudo[":path"], $pseudo[":scheme"]) || $pseudo[":path"] === '') {
                                     throw new Http3StreamException(
                                         "Invalid header values",
                                         $stream,
@@ -301,8 +308,6 @@ class Http3Driver extends ConnectionHttpDriver
                                                     Http3Error::H3_MESSAGE_ERROR
                                                 );
                                             }
-                                            // Stuff it into the headers for applications to read
-                                            $headers[":protocol"] = [$value];
                                         } else {
                                             throw new Http3StreamException(
                                                 "Invalid pseudo header",
@@ -437,7 +442,8 @@ class Http3Driver extends ConnectionHttpDriver
                                     $headers,
                                     $body,
                                     "3",
-                                    $trailers
+                                    $trailers,
+                                    $pseudo[":protocol"] ?? "",
                                 );
                                 $this->requestStreams[$request] = $stream;
 
@@ -447,61 +453,64 @@ class Http3Driver extends ConnectionHttpDriver
 
                                 async($this->handleRequest(...), $request);
 
-                                $generator->next();
+                                self::getTimeoutQueue()->insert($this->client, $streamId, fn () => $stream->close(Http3Error::H3_REQUEST_CANCELLED->value), $this->streamTimeout);
+
                                 $currentBodySize = 0;
-                                if ($generator->valid()) {
-                                    foreach ($generator as $type => $data) {
-                                        if ($type === Http3Frame::DATA) {
-                                            $len = \strlen($data);
-                                            if ($expectedLength !== null) {
-                                                $expectedLength -= $len;
-                                                if ($expectedLength < 0) {
-                                                    throw new Http3StreamException(
-                                                        "Body length does not match content-length header",
-                                                        $stream,
-                                                        Http3Error::H3_MESSAGE_ERROR
-                                                    );
-                                                }
-                                            }
-                                            $currentBodySize += $len;
-                                            $bodyQueue->push($data);
-                                            while ($currentBodySize > $bodySizeLimit) {
-                                                $dataSuspension = EventLoop::getSuspension();
-                                                $dataSuspension->suspend();
-                                            }
-                                        } elseif ($type === Http3Frame::HEADERS) {
-                                            [$headers, $pseudo] = $data;
+                                for ($generator->next(); $generator->valid(); $generator->next()) {
+                                    $type = $generator->key();
+                                    $data = $generator->current();
+                                    if ($type === Http3Frame::DATA) {
+                                        self::getTimeoutQueue()->update($this->client, $streamId, $this->streamTimeout);
 
-                                            // Trailers must not contain pseudo-headers.
-                                            if (!empty($pseudo)) {
+                                        $len = \strlen($data);
+                                        if ($expectedLength !== null) {
+                                            $expectedLength -= $len;
+                                            if ($expectedLength < 0) {
                                                 throw new Http3StreamException(
-                                                    "Trailers must not contain pseudo headers",
+                                                    "Body length does not match content-length header",
                                                     $stream,
                                                     Http3Error::H3_MESSAGE_ERROR
                                                 );
                                             }
-
-                                            // Trailers must not contain any disallowed fields.
-                                            if (\array_intersect_key($headers, Trailers::DISALLOWED_TRAILERS)) {
-                                                throw new Http3StreamException(
-                                                    "Disallowed trailer field name",
-                                                    $stream,
-                                                    Http3Error::H3_MESSAGE_ERROR
-                                                );
-                                            }
-
-                                            $trailerDeferred->complete($headers);
-                                            $trailerDeferred = null;
-                                            break;
-                                        } elseif ($type === Http3Frame::PUSH_PROMISE) {
-                                            throw new Http3ConnectionException("A PUSH_PROMISE may not be sent on the request stream", Http3Error::H3_FRAME_UNEXPECTED);
-                                        } else {
-                                            // Stream reset
-                                            $ex = new ClientException($this->client, "Client aborted the request", Http3Error::H3_REQUEST_REJECTED->value);
-                                            $bodyQueue->error($ex);
-                                            $trailerDeferred->error($ex);
-                                            return;
                                         }
+                                        $currentBodySize += $len;
+                                        $bodyQueue->push($data);
+                                        while ($currentBodySize > $bodySizeLimit) {
+                                            $dataSuspension = EventLoop::getSuspension();
+                                            $dataSuspension->suspend();
+                                        }
+                                    } elseif ($type === Http3Frame::HEADERS) {
+                                        [$headers, $pseudo] = $data;
+
+                                        // Trailers must not contain pseudo-headers.
+                                        if (!empty($pseudo)) {
+                                            throw new Http3StreamException(
+                                                "Trailers must not contain pseudo headers",
+                                                $stream,
+                                                Http3Error::H3_MESSAGE_ERROR
+                                            );
+                                        }
+
+                                        // Trailers must not contain any disallowed fields.
+                                        if (\array_intersect_key($headers, Trailers::DISALLOWED_TRAILERS)) {
+                                            throw new Http3StreamException(
+                                                "Disallowed trailer field name",
+                                                $stream,
+                                                Http3Error::H3_MESSAGE_ERROR
+                                            );
+                                        }
+
+                                        $trailerDeferred->complete($headers);
+                                        $trailerDeferred = null;
+                                        break;
+                                    } elseif ($type === Http3Frame::PUSH_PROMISE) {
+                                        throw new Http3ConnectionException("A PUSH_PROMISE may not be sent on the request stream", Http3Error::H3_FRAME_UNEXPECTED);
+                                    } else {
+                                        // Stream reset
+                                        $ex = new ClientException($this->client, "Client aborted the request", Http3Error::H3_REQUEST_REJECTED->value);
+                                        $bodyQueue->error($ex);
+                                        $trailerDeferred->error($ex);
+                                        return;
                                     }
                                 }
                                 if ($expectedLength) {
@@ -512,7 +521,7 @@ class Http3Driver extends ConnectionHttpDriver
                                     );
                                 }
                                 $bodyQueue->complete();
-                                $trailerDeferred?->complete();
+                                $trailerDeferred?->complete([]);
                             } catch (\Throwable $e) {
                                 if (isset($bodyQueue)) {
                                     $bodyQueue->error($e);
@@ -528,6 +537,8 @@ class Http3Driver extends ConnectionHttpDriver
                                     $stream->resetSending(Http3Error::H3_INTERNAL_ERROR->value);
                                     throw $e; // rethrow it right into the event loop
                                 }
+                            } finally {
+                                self::getTimeoutQueue()->remove($this->client, $streamId);
                             }
                         });
                         break;
@@ -609,6 +620,12 @@ class Http3Driver extends ConnectionHttpDriver
         }
 
         $this->stopping = true;
+
+        /** @psalm-suppress RedundantPropertyInitializationCheck */
+        if (!isset($this->writer)) {
+            return;
+        }
+
         $this->writer->sendGoaway($this->highestStreamId);
 
         /** @psalm-suppress RedundantCondition */
@@ -621,6 +638,7 @@ class Http3Driver extends ConnectionHttpDriver
 
         $outstanding = $this->requestStreams->count();
         if ($outstanding === 0) {
+            \Amp\delay(1); // TODO: arbitrary timeout?
             $this->writer->close();
             return;
         }
@@ -638,6 +656,7 @@ class Http3Driver extends ConnectionHttpDriver
             $deferred->getFuture()->await($this->closeCancellation->getCancellation());
         } catch (CancelledException) {
         } finally {
+            \Amp\delay(1); // TODO: arbitrary timeout? With QUIC a connection close is effectively resetting all streams, so it may also reset a successful response
             $this->writer->close();
         }
     }

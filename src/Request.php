@@ -30,7 +30,7 @@ final class Request extends HttpRequest
      * @param non-empty-string $method HTTP request method.
      * @param PsrUri $uri The full URI being requested, including host, port, and protocol.
      * @param array<non-empty-string, string|string[]> $headers An array of strings or an array of string arrays.
-     * @param string $protocol HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
+     * @param string $protocolVersion HTTP protocol version (e.g. 1.0, 1.1, or 2.0).
      * @param Trailers|null $trailers Trailers if request has trailers, or null otherwise.
      */
     public function __construct(
@@ -39,8 +39,9 @@ final class Request extends HttpRequest
         PsrUri $uri,
         array $headers = [],
         ReadableStream|string $body = '',
-        private string $protocol = "1.1",
-        ?Trailers $trailers = null
+        private string $protocolVersion = "1.1",
+        ?Trailers $trailers = null,
+        private string $protocol = "",
     ) {
         parent::__construct($method, $uri);
 
@@ -87,13 +88,30 @@ final class Request extends HttpRequest
      */
     public function getProtocolVersion(): string
     {
+        return $this->protocolVersion;
+    }
+
+    /**
+     * Sets a new protocol version number for the request.
+     */
+    public function setProtocolVersion(string $protocolVersion): void
+    {
+        $this->protocolVersion = $protocolVersion;
+    }
+
+    /**
+     * This method returns the :protocol pseudo-header;
+     * it has nothing to do with versions nor URI schemes.
+     */
+    public function getProtocol(): string
+    {
         return $this->protocol;
     }
 
     /**
      * Sets a new protocol version number for the request.
      */
-    public function setProtocolVersion(string $protocol): void
+    public function setProtocol(string $protocol): void
     {
         $this->protocol = $protocol;
     }

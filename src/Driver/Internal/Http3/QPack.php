@@ -6,7 +6,7 @@ use Amp\Http\Internal\HPackNative;
 
 /**
  * @internal
- * @psalm-import-type HeaderArray from \Amp\Http\HPack
+ * @psalm-type HeaderArray = array<string, list<string>>
  */
 class QPack
 {
@@ -255,8 +255,10 @@ class QPack
     {
         // @TODO implementation is deliberately primitive... [doesn't use any dynamic table...]
         $encodedHeaders = [];
-        foreach ($headers as [$name, $value]) {
-            $encodedHeaders[] = ("\x20" | self::encodeDynamicField(0x07, $name)) . self::encodeDynamicField(0x7F, $value);
+        foreach ($headers as $name => $values) {
+            foreach ($values as $value) {
+                $encodedHeaders[] = ("\x20" | self::encodeDynamicField(0x07, $name)) . self::encodeDynamicField(0x7F, $value);
+            }
         }
 
         return "\0\0" . \implode($encodedHeaders);

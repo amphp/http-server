@@ -167,11 +167,11 @@ class Http3Parser
         return $this->readHttpMessage($stream, $buf, $off);
     }
 
-    private function parsePushPromise(string $contents): array
+    private function parsePushPromise(QuicSocket $stream, string $contents): array
     {
         $pushOff = 0;
         $pushId = self::decodeVarint($contents, $pushOff);
-        return [$pushId, self::processHeaders($this->qpack->decode($contents, $pushOff))];
+        return [$pushId, self::processHeaders($stream, $this->qpack->decode($contents, $pushOff))];
     }
 
     private function readHttpMessage(QuicSocket $stream, string &$buf, int &$off): \Generator
@@ -182,7 +182,7 @@ class Http3Parser
             }
             if ($frame === Http3Frame::PUSH_PROMISE) {
                 /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
-                yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($contents);
+                yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($stream, $contents);
             } else {
                 break;
             }
@@ -192,7 +192,7 @@ class Http3Parser
         }
         $headerOff = 0;
         /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
-        yield Http3Frame::HEADERS => self::processHeaders($this->qpack->decode($contents, $headerOff));
+        yield Http3Frame::HEADERS => self::processHeaders($stream, $this->qpack->decode($contents, $headerOff));
         $hadData = false;
         while (null !== $type = self::decodeFrameTypeFromStream($stream, $buf, $off)) {
             switch ($type) {
@@ -202,7 +202,7 @@ class Http3Parser
                         return;
                     }
                     $headerOff = 0;
-                    yield Http3Frame::HEADERS => self::processHeaders($this->qpack->decode($headers, $headerOff));
+                    yield Http3Frame::HEADERS => self::processHeaders($stream, $this->qpack->decode($headers, $headerOff));
                     if ($hadData) {
                         break 2;
                     }
@@ -248,7 +248,7 @@ class Http3Parser
                     if (!$headers = self::readFrameWithoutType($stream, $buf, $off, $this->headerSizeLimit)) {
                         return;
                     }
-                    yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($headers);
+                    yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($stream, $headers);
                     break;
 
                 default:
@@ -261,7 +261,7 @@ class Http3Parser
         while ([$frame, $contents] = self::readFullFrame($stream, $buf, $off, $this->headerSizeLimit)) {
             if ($frame === Http3Frame::PUSH_PROMISE) {
                 /** @psalm-suppress PossiblyNullArgument https://github.com/vimeo/psalm/issues/10668 */
-                yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($contents);
+                yield Http3Frame::PUSH_PROMISE => $this->parsePushPromise($stream, $contents);
             } else {
                 /** @psalm-suppress PossiblyNullPropertyFetch https://github.com/vimeo/psalm/issues/10668 */
                 throw new Http3ConnectionException("Expecting only push promises after a message frame, found {$frame->name}", Http3Error::H3_FRAME_UNEXPECTED);
@@ -270,23 +270,23 @@ class Http3Parser
     }
 
     // TODO extracted from Http2Parser::parseHeaderBuffer. Same rules, make common method?
-    private static function processHeaders(array $decoded): ?array
+    private static function processHeaders(QuicSocket $stream, array $decoded): ?array
     {
         $headers = [];
         $pseudo = [];
 
         foreach ($decoded as [$name, $value]) {
             if (!\preg_match('/^[\x21-\x40\x5b-\x7e]+$/'/* Http2Parser::HEADER_NAME_REGEX */, $name)) {
-                return null;
+                throw new Http3StreamException("Invalid header name format", $stream, Http3Error::H3_MESSAGE_ERROR);
             }
 
             if ($name[0] === ':') {
                 if (!empty($headers)) {
-                    return null;
+                    throw new Http3StreamException("Found pseudo-headers after other headers", $stream, Http3Error::H3_MESSAGE_ERROR);
                 }
 
                 if (isset($pseudo[$name])) {
-                    return null;
+                    throw new Http3StreamException("Found duplicate pseudo-header", $stream, Http3Error::H3_MESSAGE_ERROR);
                 }
 
                 $pseudo[$name] = $value;
@@ -412,6 +412,8 @@ class Http3Parser
                         }
                     } catch (Http3ConnectionException $e) {
                         $this->abort($e);
+                    } catch (Http3StreamException $e) {
+                        $e->getStream()->close($e->getCode());
                     }
                 });
             }

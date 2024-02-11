@@ -888,8 +888,6 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
                             Http2Parser::PROTOCOL_ERROR
                         );
                     }
-                    // Stuff it into the headers for applications to read
-                    $headers[":protocol"] = [$value];
                 } else {
                     throw new Http2StreamException(
                         "Invalid pseudo header",
@@ -1063,7 +1061,9 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
                 $uri,
                 $headers,
                 "",
-                "2"
+                "2",
+                null,
+                $pseudo[":protocol"] ?? "",
             );
 
             $this->streamIdMap[\spl_object_hash($request)] = $streamId;
@@ -1139,7 +1139,8 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
             $headers,
             $body,
             "2",
-            $trailers
+            $trailers,
+            $pseudo[":protocol"] ?? "",
         );
 
         $this->streamIdMap[\spl_object_hash($request)] = $streamId;
