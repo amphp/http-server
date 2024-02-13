@@ -75,7 +75,9 @@ final class TimeoutQueue
     public function update(Client $client, int $streamId, int $timeout): void
     {
         $cacheId = $this->makeId($client, $streamId);
-        \assert(isset($this->callbacks[$cacheId]));
+        if (!isset($this->callbacks[$cacheId])) {
+            return; // In case streams are upgraded
+        }
 
         $this->timeoutCache->update($cacheId, $this->now + $timeout);
     }

@@ -142,9 +142,12 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
         $this->readableStream = $readableStream;
         $this->writableStream = $writableStream;
 
-        self::getTimeoutQueue()->insert($this->client, 0, fn () => $this->shutdown(
-            new ClientException($this->client, 'Shutting down connection due to inactivity'),
-        ), $this->streamTimeout);
+        self::getTimeoutQueue()->insert($this->client, 0, function () {
+            if ($this->streams) {
+                return; // This can only happen with live upgraded connections
+            }
+            $this->shutdown(new ClientException($this->client, 'Shutting down connection due to inactivity'));
+        }, $this->streamTimeout);
 
         $this->processClientInput();
     }
@@ -332,7 +335,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
                 if ($request->getMethod() === "CONNECT") {
                     $status = $response->getStatus();
                     if ($status >= 200 && $status <= 299) {
-                        $this->upgrade($request, $response);
+                        $this->upgrade($request, $response, $id);
                     }
                 }
             }
@@ -736,7 +739,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
             // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
             $this->writeFrame(
                 \pack(
-                    "nNnNnNnN",
+                    "nNnNnNnNnN",
                     Http2Parser::INITIAL_WINDOW_SIZE,
                     self::DEFAULT_WINDOW_SIZE,
                     Http2Parser::MAX_CONCURRENT_STREAMS,
@@ -1150,7 +1153,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
     /**
      * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
      */
-    private function upgrade(Request $request, Response $response): void
+    private function upgrade(Request $request, Response $response, int $id): void
     {
         $upgradeHandler = $response->getUpgradeHandler();
         if (!$upgradeHandler) {
@@ -1183,6 +1186,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
 
         $response->removeTrailers();
         $response->setBody($outputPipe->getSource());
+        self::getTimeoutQueue()->remove($client, $id);
     }
 
     public function handleData(int $streamId, string $data): void

@@ -193,7 +193,7 @@ class Http3Driver extends ConnectionHttpDriver
     /**
      * Invokes the upgrade handler of the Response with the socket upgraded from the HTTP server.
      */
-    private function upgrade(QuicSocket $socket, Request $request, Response $response): void
+    private function upgrade(QuicSocket $stream, Request $request, Response $response): void
     {
         $upgradeHandler = $response->getUpgradeHandler();
         if (!$upgradeHandler) {
@@ -210,7 +210,7 @@ class Http3Driver extends ConnectionHttpDriver
         $outputPipe = new Pipe(0);
 
         $settings = $this->parsedSettings->getFuture()->await();
-        $datagramStream = empty($settings[Http3Settings::H3_DATAGRAM->value]) ? null : new Http3DatagramStream($this->parser->receiveDatagram(...), $this->writer->writeDatagram(...), $this->writer->maxDatagramSize(...), $socket);
+        $datagramStream = empty($settings[Http3Settings::H3_DATAGRAM->value]) ? null : new Http3DatagramStream($this->parser->receiveDatagram(...), $this->writer->writeDatagram(...), $this->writer->maxDatagramSize(...), $stream);
 
         $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink(), $datagramStream);
 
@@ -224,11 +224,13 @@ class Http3Driver extends ConnectionHttpDriver
                 ['exception' => $exception]
             );
 
-            $socket->resetSending(Http3Error::H3_INTERNAL_ERROR->value);
+            $stream->resetSending(Http3Error::H3_INTERNAL_ERROR->value);
         }
 
         $response->removeTrailers();
         $response->setBody($outputPipe->getSource());
+
+        self::getTimeoutQueue()->remove($this->client, $stream->getId());
     }
 
     public function getApplicationLayerProtocols(): array
