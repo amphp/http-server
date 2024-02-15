@@ -61,7 +61,9 @@ class Http3Driver extends ConnectionHttpDriver
     /** @var DeferredFuture<array<int, int>> */
     private DeferredFuture $parsedSettings;
     /** @var array<int, \Closure(string $buf, QuicSocket $stream): void> */
-    private array $streamHandlers = [];
+    private array $bidirectionalStreamHandlers = [];
+    /** @var array<int, \Closure(string $buf, QuicSocket $stream): void> */
+    private array $unidirectionalStreamHandlers = [];
 
     /**
      * @param positive-int $headerSizeLimit
@@ -97,9 +99,15 @@ class Http3Driver extends ConnectionHttpDriver
     }
 
     /** @param \Closure(string $buf, QuicSocket $stream): void $handler */
-    public function addStreamHandler(int $type, \Closure $handler): void
+    public function addUnidirectionalStreamHandler(int $type, \Closure $handler): void
     {
-        $this->streamHandlers[$type] = $handler;
+        $this->bidirectionalStreamHandlers[$type] = $handler;
+    }
+
+    /** @param \Closure(string $buf, QuicSocket $stream): void $handler */
+    public function addBidirectionalStreamHandler(int $type, \Closure $handler): void
+    {
+        $this->unidirectionalStreamHandlers[$type] = $handler;
     }
 
     /**
@@ -586,9 +594,10 @@ class Http3Driver extends ConnectionHttpDriver
                         break;
 
                     default:
-                        if (isset($this->streamHandlers[$type])) {
-                            [, $buf, $stream] = $frame;
-                            $this->streamHandlers[$type]($buf, $stream);
+                        [, $buf, $stream] = $frame;
+                        $handlers = ($stream->getId() & 0x2) ? $this->unidirectionalStreamHandlers : $this->bidirectionalStreamHandlers;
+                        if (isset($handlers[$type])) {
+                            $handlers[$type]($buf, $stream);
                             break;
                         }
                         $parser->abort(new Http3ConnectionException("An unexpected stream or frame was received", Http3Error::H3_FRAME_UNEXPECTED));
