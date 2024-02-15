@@ -220,7 +220,7 @@ class Http3Driver extends ConnectionHttpDriver
         $settings = $this->parsedSettings->getFuture()->await();
         $datagramStream = empty($settings[Http3Settings::H3_DATAGRAM->value]) ? null : new Http3DatagramStream($this->parser->receiveDatagram(...), $this->writer->writeDatagram(...), $this->writer->maxDatagramSize(...), $stream);
 
-        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink(), $datagramStream);
+        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink(), $stream->getId(), $datagramStream);
 
         try {
             $upgradeHandler($upgraded, $request, $response);

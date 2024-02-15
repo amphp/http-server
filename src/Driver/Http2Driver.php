@@ -1169,7 +1169,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
         // The output of an upgraded connection is just DATA frames
         $outputPipe = new Pipe(0);
 
-        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink());
+        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink(), $id);
 
         try {
             $upgradeHandler($upgraded, $request, $response);

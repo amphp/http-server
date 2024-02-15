@@ -27,6 +27,7 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
         private readonly Client $client,
         private readonly ReadableStream $readableStream,
         private readonly WritableStream $writableStream,
+        public readonly int $id = 0,
         public readonly ?DatagramStream $datagramClient = null,
     ) {
     }
