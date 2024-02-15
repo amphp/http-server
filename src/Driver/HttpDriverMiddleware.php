@@ -13,9 +13,4 @@ interface HttpDriverMiddleware
         ErrorHandler $errorHandler,
         Client $client,
     ): HttpDriver;
-
-    /**
-     * @return list<string>
-     */
-    public function getApplicationLayerProtocols(HttpDriverMiddleware $next): array;
 }

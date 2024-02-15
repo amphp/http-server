@@ -197,8 +197,8 @@ final class SocketHttpServer implements HttpServer
             $socketAddress = SocketAddress\fromString($socketAddress);
         }
 
-        $name = $socketAddress->toString();
-        if (isset($this->addresses[$name]) && ($bindContext instanceof QuicServerConfig) == ($this->addresses[$name][1] instanceof QuicServerConfig)) {
+        $name = ($bindContext instanceof QuicServerConfig ? "quic-" : "") . $socketAddress->toString();
+        if (isset($this->addresses[$name])) {
             throw new \Error(\sprintf('Already exposing %s on HTTP server', $name));
         }
 
