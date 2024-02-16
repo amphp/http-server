@@ -31,6 +31,8 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Pipeline\Queue;
 use Amp\Socket\InternetAddress;
+use Amp\Socket\SocketAddress;
+use Amp\Socket\TlsInfo;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -1160,7 +1162,23 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
             throw new \Error('Response was not upgraded');
         }
 
-        $client = $request->getClient();
+        $client = new class($request, $id) extends SocketClient {
+            public function __construct(private Request $request, int $id) {
+                parent::__construct($request->getClient(), $id);
+            }
+
+            public function close(int $reason = 0): void {
+                // Nothing to do here, closing the output stream is enough
+            }
+
+            public function isClosed(): bool {
+                return $this->request->getBody()->isClosed();
+            }
+
+            public function onClose(\Closure $onClose): void {
+                $this->request->getBody()->onClose($onClose);
+            }
+        };
 
         // The input RequestBody are parsed raw DATA frames - exactly what we need (see CONNECT)
         $inputStream = new UnbufferedBodyStream($request->getBody());
@@ -1169,7 +1187,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
         // The output of an upgraded connection is just DATA frames
         $outputPipe = new Pipe(0);
 
-        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink(), $id);
+        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink());
 
         try {
             $upgradeHandler($upgraded, $request, $response);

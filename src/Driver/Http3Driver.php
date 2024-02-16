@@ -208,8 +208,6 @@ class Http3Driver extends ConnectionHttpDriver
             throw new \Error('Response was not upgraded');
         }
 
-        $client = $request->getClient();
-
         // The input RequestBody are parsed raw DATA frames - exactly what we need (see CONNECT)
         $inputStream = new UnbufferedBodyStream($request->getBody());
         $request->setBody(""); // hide the body from the upgrade handler, it's available in the UpgradedSocket
@@ -220,7 +218,7 @@ class Http3Driver extends ConnectionHttpDriver
         $settings = $this->parsedSettings->getFuture()->await();
         $datagramStream = empty($settings[Http3Settings::H3_DATAGRAM->value]) ? null : new Http3DatagramStream($this->parser->receiveDatagram(...), $this->writer->writeDatagram(...), $this->writer->maxDatagramSize(...), $stream);
 
-        $upgraded = new UpgradedSocket($client, $inputStream, $outputPipe->getSink(), $stream->getId(), $datagramStream);
+        $upgraded = new UpgradedSocket(new SocketClient($stream, $stream->getId()), $inputStream, $outputPipe->getSink(), $datagramStream);
 
         try {
             $upgradeHandler($upgraded, $request, $response);

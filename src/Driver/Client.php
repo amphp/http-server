@@ -14,6 +14,12 @@ interface Client extends Closable
     public function getId(): int;
 
     /**
+     * @inheritDoc
+     * @param int $close An optional close reason for streams which support a close reason.
+     */
+    public function close(int $reason = 0): void;
+
+    /**
      * @return SocketAddress Remote client address.
      */
     public function getRemoteAddress(): SocketAddress;

@@ -3,18 +3,20 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Quic\QuicConnection;
+use Amp\Quic\QuicSocket;
 use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 
-final class SocketClient implements Client
+class SocketClient implements Client
 {
     private readonly int $id;
 
     public function __construct(
-        private readonly Socket|QuicConnection $socket,
+        private readonly Client|Socket|QuicConnection $socket,
+        int $id = null
     ) {
-        $this->id = createClientId();
+        $this->id = $id ?? createClientId();
     }
 
     public function getId(): int
@@ -37,9 +39,9 @@ final class SocketClient implements Client
         return $this->socket->getTlsInfo();
     }
 
-    public function close(): void
+    public function close(int $reason = 0): void
     {
-        $this->socket->close();
+        $this->socket->close($reason);
     }
 
     public function onClose(\Closure $onClose): void
@@ -54,6 +56,6 @@ final class SocketClient implements Client
 
     public function isQuicClient(): bool
     {
-        return $this->socket instanceof QuicConnection;
+        return $this->socket instanceof QuicConnection || $this->socket instanceof QuicSocket;
     }
 }
