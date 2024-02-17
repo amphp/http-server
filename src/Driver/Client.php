@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Driver;
 
 use Amp\Closable;
+use Amp\Socket\Socket;
 use Amp\Socket\SocketAddress;
 use Amp\Socket\TlsInfo;
 
@@ -38,4 +39,9 @@ interface Client extends Closable
      * @return bool Whether the client uses QUIC.
      */
     public function isQuicClient(): bool;
+
+    /**
+     * @return Socket|null A new stream on the connection.
+     */
+    public function openStream(): ?Socket;
 }

@@ -31,8 +31,7 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
 use Amp\Pipeline\Queue;
 use Amp\Socket\InternetAddress;
-use Amp\Socket\SocketAddress;
-use Amp\Socket\TlsInfo;
+use Amp\Socket\Socket;
 use League\Uri;
 use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
@@ -1163,19 +1162,23 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
         }
 
         $client = new class($request, $id) extends SocketClient {
-            public function __construct(private Request $request, int $id) {
+            public function __construct(private Request $request, int $id)
+            {
                 parent::__construct($request->getClient(), $id);
             }
 
-            public function close(int $reason = 0): void {
+            public function close(int $reason = 0): void
+            {
                 // Nothing to do here, closing the output stream is enough
             }
 
-            public function isClosed(): bool {
+            public function isClosed(): bool
+            {
                 return $this->request->getBody()->isClosed();
             }
 
-            public function onClose(\Closure $onClose): void {
+            public function onClose(\Closure $onClose): void
+            {
                 $this->request->getBody()->onClose($onClose);
             }
         };

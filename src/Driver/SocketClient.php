@@ -58,4 +58,15 @@ class SocketClient implements Client
     {
         return $this->socket instanceof QuicConnection || $this->socket instanceof QuicSocket;
     }
+
+    public function openStream(): ?Socket
+    {
+        if ($this->socket instanceof QuicConnection) {
+            return $this->socket->openStream();
+        }
+        if ($this->socket instanceof QuicSocket) {
+            return $this->socket->getConnection()->openStream();
+        }
+        return null;
+    }
 }
