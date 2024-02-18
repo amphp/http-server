@@ -315,12 +315,14 @@ class Http3Parser
 
                         $type = self::decodeVarintFromStream($stream, $buf, $off);
                         if ($stream->isWritable()) {
-                            // client-initiated bidirectional stream
+                            // bidirectional stream
                             if ($type > 0x0d /* bigger than any default frame */ && $type % 0x1f !== 0x2 /* and not a padding frame */) {
                                 // Unknown frame type. Users may handle it (e.g. WebTransport).
                                 $this->queue->push([$type, \substr($buf, $off), $stream]);
                                 return;
                             }
+
+                            // Note: the parser will also allow for Messages to be sent on new streams. MUST fail connections which do push HEADERS.
                             $off = 0;
                             $messageGenerator = $this->readHttpMessage($stream, $buf, $off);
                             if (!$messageGenerator->valid()) {
