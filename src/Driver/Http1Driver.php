@@ -63,6 +63,9 @@ final class Http1Driver extends StreamHttpDriver
 
     private readonly DeferredCancellation $deferredCancellation;
 
+    /** @var list<callable(Http2Driver): void> */
+    private array $onHttp2Upgrade = [];
+
     public function __construct(
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
@@ -76,6 +79,12 @@ final class Http1Driver extends StreamHttpDriver
 
         $this->pendingResponse = Future::complete();
         $this->deferredCancellation = new DeferredCancellation();
+    }
+
+    /** @param \Closure(Http2Driver): void $closure */
+    public function onHttp2Upgrade(\Closure $closure): void
+    {
+        $this->onHttp2Upgrade[] = $closure;
     }
 
     public function handleClient(
@@ -173,6 +182,10 @@ final class Http1Driver extends StreamHttpDriver
                             bodySizeLimit: $this->bodySizeLimit,
                             pushEnabled: false,
                         );
+
+                        foreach ($this->onHttp2Upgrade as $callback) {
+                            $callback($this->http2driver);
+                        }
 
                         $this->http2driver->handleClient(
                             $this->client,
@@ -380,6 +393,10 @@ final class Http1Driver extends StreamHttpDriver
                         pushEnabled: false,
                         settings: $h2cSettings,
                     );
+
+                    foreach ($this->onHttp2Upgrade as $callback) {
+                        $callback($this->http2driver);
+                    }
 
                     $this->http2driver->initializeWriting($this->client, $this->writableStream);
 

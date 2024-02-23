@@ -109,6 +109,11 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
 
     private int $pinged = 0;
 
+    /** @var array<int, int> */
+    private array $serverSettings;
+    /** @var DeferredFuture<array<int, int>|null> */
+    private DeferredFuture $clientSettings;
+
     private readonly HPack $hpack;
 
     public function __construct(
@@ -129,6 +134,27 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
         $this->allowsPush = $pushEnabled;
 
         $this->hpack = new HPack;
+
+        $this->serverSettings = [
+            Http2Parser::INITIAL_WINDOW_SIZE => self::DEFAULT_WINDOW_SIZE,
+            Http2Parser::MAX_CONCURRENT_STREAMS => $concurrentStreamLimit,
+            Http2Parser::MAX_HEADER_LIST_SIZE => $headerSizeLimit,
+            Http2Parser::MAX_FRAME_SIZE => self::DEFAULT_MAX_FRAME_SIZE,
+            0x8 => 1, // TODO move to Http2Parser::ENABLE_CONNECT_PROTOCOL
+        ];
+
+        $this->clientSettings = new DeferredFuture;
+    }
+
+    /** @return Future<array<int, int>|null> */
+    public function getSettings(): Future
+    {
+        return $this->clientSettings->getFuture();
+    }
+
+    public function addSetting(int $setting, int $value): void
+    {
+        $this->serverSettings[$setting] = $value;
     }
 
     public function handleClient(
@@ -177,21 +203,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
             $this->remainingStreams--;
 
             // Initial settings frame, sent immediately for upgraded connections.
-            $this->writeFrame(
-                \pack(
-                    "nNnNnNnN",
-                    Http2Parser::INITIAL_WINDOW_SIZE,
-                    self::DEFAULT_WINDOW_SIZE,
-                    Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $this->concurrentStreamLimit,
-                    Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $this->headerSizeLimit,
-                    Http2Parser::MAX_FRAME_SIZE,
-                    self::DEFAULT_MAX_FRAME_SIZE
-                ),
-                Http2Parser::SETTINGS,
-                Http2Parser::NO_FLAG
-            );
+            $this->writeInitialSettingsFrame();
         }
     }
 
@@ -486,6 +498,8 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
                 }
             }
 
+            $this->clientSettings->complete();
+
             $this->client->close();
             $this->readableStream->close();
             $this->writableStream->close();
@@ -714,6 +728,15 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
         }
     }
 
+    private function writeInitialSettingsFrame(): void
+    {
+        $frame = "";
+        foreach ($this->serverSettings as $key => $value) {
+            $frame .= \pack("nN", $key, $value);
+        }
+        $this->writeFrame($frame, Http2Parser::SETTINGS, Http2Parser::NO_FLAG);
+    }
+
     private function readPreface(): string
     {
         $buffer = $this->readableStream->read();
@@ -738,23 +761,7 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
 
         if ($this->settings === null) {
             // Initial settings frame, delayed until after the preface is read for non-upgraded connections.
-            $this->writeFrame(
-                \pack(
-                    "nNnNnNnNnN",
-                    Http2Parser::INITIAL_WINDOW_SIZE,
-                    self::DEFAULT_WINDOW_SIZE,
-                    Http2Parser::MAX_CONCURRENT_STREAMS,
-                    $this->concurrentStreamLimit,
-                    Http2Parser::MAX_HEADER_LIST_SIZE,
-                    $this->headerSizeLimit,
-                    Http2Parser::MAX_FRAME_SIZE,
-                    self::DEFAULT_MAX_FRAME_SIZE,
-                    0x8, // TODO move to Http2Parser::ENABLE_CONNECT_PROTOCOL
-                    1
-                ),
-                Http2Parser::SETTINGS,
-                Http2Parser::NO_FLAG
-            );
+            $this->writeInitialSettingsFrame();
         }
 
         return $buffer;
@@ -1405,6 +1412,8 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
 
     public function handleSettings(array $settings): void
     {
+        $this->clientSettings->complete($settings);
+
         foreach ($settings as $key => $value) {
             switch ($key) {
                 case Http2Parser::INITIAL_WINDOW_SIZE:
@@ -1484,6 +1493,4 @@ final class Http2Driver extends StreamHttpDriver implements Http2Processor
     {
         return ['h2'];
     }
-
-    // TODO add necessary functions to implement webtransport over HTTP/2 - have a closer read of the draft RFC... Needs new stream handlers.
 }

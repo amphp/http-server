@@ -7,6 +7,7 @@ use Amp\ByteStream\ReadableIterableStream;
 use Amp\CancelledException;
 use Amp\DeferredCancellation;
 use Amp\DeferredFuture;
+use Amp\Future;
 use Amp\Http\Http2\Http2Parser;
 use Amp\Http\InvalidHeaderException;
 use Amp\Http\Server\ClientException;
@@ -87,10 +88,10 @@ class Http3Driver extends ConnectionHttpDriver
         $this->parsedSettings = new DeferredFuture;
     }
 
-    /** @return array<int, int> */
-    public function getSettings(): \array
+    /** @return Future<array<int, int>|null> */
+    public function getSettings(): Future
     {
-        return $this->parsedSettings->getFuture()->await();
+        return $this->parsedSettings->getFuture();
     }
 
     public function addSetting(Http3Settings|int $setting, int $value): void
@@ -606,6 +607,8 @@ class Http3Driver extends ConnectionHttpDriver
                 'address' => $this->client->getRemoteAddress()->toString(),
                 'message' => $e->getMessage(),
             ]);
+        } finally {
+            $this->parsedSettings->complete();
         }
     }
 
