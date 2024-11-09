@@ -14,6 +14,7 @@ use Amp\Http\Server\Driver\SocketClientFactory;
 use Amp\Http\Server\Middleware\AllowedMethodsMiddleware;
 use Amp\Http\Server\Middleware\CompressionMiddleware;
 use Amp\Http\Server\Middleware\ConcurrencyLimitingMiddleware;
+use Amp\Http\Server\Middleware\ExceptionHandlerMiddleware;
 use Amp\Http\Server\Middleware\ForwardedHeaderType;
 use Amp\Http\Server\Middleware\ForwardedMiddleware;
 use Amp\Socket\BindContext;
@@ -70,6 +71,7 @@ final class SocketHttpServer implements HttpServer
         ?int $concurrencyLimit = self::DEFAULT_CONCURRENCY_LIMIT,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
+        ?ExceptionHandler $exceptionHandler = null,
     ): self {
         $serverSocketFactory = new ConnectionLimitingServerSocketFactory(new LocalSemaphore($connectionLimit));
 
@@ -87,6 +89,10 @@ final class SocketHttpServer implements HttpServer
         ));
 
         $middleware = [];
+
+        if ($exceptionHandler) {
+            $middleware[] = new ExceptionHandlerMiddleware($exceptionHandler);
+        }
 
         if ($concurrencyLimit !== null) {
             $logger->notice(\sprintf("Request concurrency limited to %s simultaneous requests", $concurrencyLimit));
@@ -126,8 +132,13 @@ final class SocketHttpServer implements HttpServer
         ?int $concurrencyLimit = self::DEFAULT_CONCURRENCY_LIMIT,
         ?array $allowedMethods = AllowedMethodsMiddleware::DEFAULT_ALLOWED_METHODS,
         ?HttpDriverFactory $httpDriverFactory = null,
+        ?ExceptionHandler $exceptionHandler = null,
     ): self {
         $middleware = [];
+
+        if ($exceptionHandler) {
+            $middleware[] = new ExceptionHandlerMiddleware($exceptionHandler);
+        }
 
         if ($concurrencyLimit !== null) {
             $middleware[] = new ConcurrencyLimitingMiddleware($concurrencyLimit);
