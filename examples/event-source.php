@@ -51,7 +51,7 @@ $server = SocketHttpServer::createForDirectAccess($logger);
 $server->expose("0.0.0.0:1337");
 $server->expose("[::]:1337");
 
-$server->start(new ClosureRequestHandler(function (Request $request) use ($html): Response {
+$server->start(new ClosureRequestHandler(function (Request $request) use ($html, $logger): Response {
     $path = $request->getUri()->getPath();
 
     if ($path === '/') {
@@ -63,17 +63,28 @@ $server->start(new ClosureRequestHandler(function (Request $request) use ($html)
     }
 
     if ($path === '/events') {
-        // We stream the response here, one event every 500 ms.
-        return new Response(
-            status: HttpStatus::OK,
-            headers: ["content-type" => "text/event-stream; charset=utf-8"],
-            body: new ReadableIterableStream((function () {
+        $body = new ReadableIterableStream((function () use ($logger) {
+            $i = 0;
+            try {
                 for ($i = 0; $i < 30; $i++) {
                     delay(0.5);
                     yield "event: notification\ndata: Event {$i}\n\n";
                 }
-            })()),
+            } finally {
+                $logger->info('Response closed at ' . $i);
+            }
+        })());
+
+        // We stream the response here, one event every 500 ms.
+        $response = new Response(
+            status: HttpStatus::OK,
+            headers: ["content-type" => "text/event-stream; charset=utf-8"],
+            body: $body,
         );
+
+        $response->onDispose(static fn () => $body->close());
+
+        return $response;
     }
 
     return new Response(HttpStatus::NOT_FOUND);

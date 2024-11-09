@@ -2,41 +2,41 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
-use Amp\Http\HttpStatus;
 use Amp\Http\Server\ClientException;
-use Amp\Http\Server\DefaultErrorHandler;
+use Amp\Http\Server\DefaultExceptionHandler;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\ErrorHandler;
+use Amp\Http\Server\ExceptionHandler;
 use Amp\Http\Server\HttpErrorException;
+use Amp\Http\Server\Middleware\ExceptionHandlerMiddleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
 use Amp\Http\Server\Response;
-use Psr\Log\LoggerInterface;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 /** @internal */
 abstract class AbstractHttpDriver implements HttpDriver
 {
     private static ?TimeoutQueue $timeoutQueue = null;
-    private static ?ErrorHandler $defaultErrorHandler = null;
 
     final protected static function getTimeoutQueue(): TimeoutQueue
     {
         return self::$timeoutQueue ??= new TimeoutQueue();
     }
 
-    private static function getDefaultErrorHandler(): ErrorHandler
-    {
-        return self::$defaultErrorHandler ??= new DefaultErrorHandler();
-    }
+    private ?ExceptionHandler $exceptionHandler = null;
 
     private int $pendingRequestHandlerCount = 0;
     private int $pendingResponseCount = 0;
 
+    protected readonly ErrorHandler $errorHandler;
+
     protected function __construct(
         protected readonly RequestHandler $requestHandler,
-        protected readonly ErrorHandler $errorHandler,
-        protected readonly LoggerInterface $logger,
+        ErrorHandler $errorHandler,
+        protected readonly PsrLogger $logger,
     ) {
+        $this->errorHandler = new HttpDriverErrorHandler($errorHandler, $this->logger);
     }
 
     /**
@@ -80,67 +80,26 @@ abstract class AbstractHttpDriver implements HttpDriver
     }
 
     /**
-     * Write the given response to the client using the write callback provided to `setup()`.
+     * Write the given response to the client.
      */
     abstract protected function write(Request $request, Response $response): void;
 
     /**
      * Used if an exception is thrown from a request handler.
+     *
+     * This is not designed to be a general-purpose exception handler, rather a last-resort to write to the logger
+     * if the application has failed to handle an exception thrown from a {@see RequestHandler}. Instead of relying on
+     * this handler, use {@see ExceptionHandlerMiddleware} and {@see ExceptionHandler}.
      */
     private function handleInternalServerError(Request $request, \Throwable $exception): Response
     {
-        $status = HttpStatus::INTERNAL_SERVER_ERROR;
+        $this->exceptionHandler ??= new DefaultExceptionHandler($this->errorHandler, $this->logger);
 
-        $client = $request->getClient();
-        $method = $request->getMethod();
-        $uri = (string) $request->getUri();
-        $protocolVersion = $request->getProtocolVersion();
-        $local = $client->getLocalAddress()->toString();
-        $remote = $client->getRemoteAddress()->toString();
-
-        $this->logger->error(
-            \sprintf(
-                "Unexpected %s with message '%s' thrown from %s:%d when handling request: %s %s HTTP/%s %s on %s",
-                $exception::class,
-                $exception->getMessage(),
-                $exception->getFile(),
-                $exception->getLine(),
-                $method,
-                $uri,
-                $protocolVersion,
-                $remote,
-                $local,
-            ),
-            [
-                'exception' => $exception,
-                'method' => $method,
-                'uri' => $uri,
-                'protocolVersion' => $protocolVersion,
-                'local' => $local,
-                'remote' => $remote,
-            ],
-        );
-
-        return $this->handleError($status, null, $request);
+        return $this->exceptionHandler->handleException($exception, $request);
     }
 
     private function handleError(int $status, ?string $reason, Request $request): Response
     {
-        try {
-            return $this->errorHandler->handleError($status, $reason, $request);
-        } catch (\Throwable $exception) {
-            // If the error handler throws, fallback to returning the default error page.
-            $this->logger->error(
-                \sprintf(
-                    "Unexpected %s thrown from %s::handleError(), falling back to default error handler.",
-                    $exception::class,
-                    $this->errorHandler::class,
-                ),
-                ['exception' => $exception],
-            );
-
-            // The default error handler will never throw, otherwise there's a bug
-            return self::getDefaultErrorHandler()->handleError($status, null, $request);
-        }
+        return $this->errorHandler->handleError($status, $reason, $request);
     }
 }
