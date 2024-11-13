@@ -24,7 +24,7 @@ abstract class AbstractHttpDriver implements HttpDriver
         return self::$timeoutQueue ??= new TimeoutQueue();
     }
 
-    private ?ExceptionHandler $exceptionHandler = null;
+    private readonly DefaultExceptionHandler $exceptionHandler;
 
     private int $pendingRequestHandlerCount = 0;
     private int $pendingResponseCount = 0;
@@ -37,6 +37,7 @@ abstract class AbstractHttpDriver implements HttpDriver
         protected readonly PsrLogger $logger,
     ) {
         $this->errorHandler = new HttpDriverErrorHandler($errorHandler, $this->logger);
+        $this->exceptionHandler = new DefaultExceptionHandler($this->errorHandler, $this->logger);
     }
 
     /**
@@ -55,9 +56,14 @@ abstract class AbstractHttpDriver implements HttpDriver
         } catch (ClientException $exception) {
             throw $exception;
         } catch (HttpErrorException $exception) {
-            $response = $this->handleError($exception->getStatus(), $exception->getReason(), $request);
+            $response = $this->errorHandler->handleError($exception->getStatus(), $exception->getReason(), $request);
         } catch (\Throwable $exception) {
-            $response = $this->handleInternalServerError($request, $exception);
+            /**
+             * This catch is not designed to be a general-purpose exception handler, rather a last-resort to write to
+             * the logger if the application has failed to handle an exception thrown from a {@see RequestHandler}.
+             * Instead of relying on this handler, use {@see ExceptionHandler} and {@see ExceptionHandlerMiddleware}.
+             */
+            $response = $this->exceptionHandler->handleException($request, $exception);
         } finally {
             $this->pendingRequestHandlerCount--;
         }
@@ -83,23 +89,4 @@ abstract class AbstractHttpDriver implements HttpDriver
      * Write the given response to the client.
      */
     abstract protected function write(Request $request, Response $response): void;
-
-    /**
-     * Used if an exception is thrown from a request handler.
-     *
-     * This is not designed to be a general-purpose exception handler, rather a last-resort to write to the logger
-     * if the application has failed to handle an exception thrown from a {@see RequestHandler}. Instead of relying on
-     * this handler, use {@see ExceptionHandlerMiddleware} and {@see ExceptionHandler}.
-     */
-    private function handleInternalServerError(Request $request, \Throwable $exception): Response
-    {
-        $this->exceptionHandler ??= new DefaultExceptionHandler($this->errorHandler, $this->logger);
-
-        return $this->exceptionHandler->handleException($exception, $request);
-    }
-
-    private function handleError(int $status, ?string $reason, Request $request): Response
-    {
-        return $this->errorHandler->handleError($status, $reason, $request);
-    }
 }

@@ -9,5 +9,5 @@ interface ExceptionHandler
     /**
      * Handles an uncaught exception from the {@see RequestHandler} wrapped with {@see ExceptionHandlerMiddleware}.
      */
-    public function handleException(\Throwable $exception, Request $request): Response;
+    public function handleException(Request $request, \Throwable $exception): Response;
 }

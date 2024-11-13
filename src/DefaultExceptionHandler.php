@@ -17,7 +17,7 @@ final class DefaultExceptionHandler implements ExceptionHandler
     ) {
     }
 
-    public function handleException(\Throwable $exception, Request $request): Response
+    public function handleException(Request $request, \Throwable $exception): Response
     {
         $client = $request->getClient();
         $method = $request->getMethod();

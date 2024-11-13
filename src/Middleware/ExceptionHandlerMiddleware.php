@@ -31,7 +31,7 @@ final class ExceptionHandlerMiddleware implements Middleware
             // handler.
             throw $exception;
         } catch (\Throwable $exception) {
-            return $this->exceptionHandler->handleException($exception, $request);
+            return $this->exceptionHandler->handleException($request, $exception);
         }
     }
 }

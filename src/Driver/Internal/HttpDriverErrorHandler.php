@@ -6,12 +6,12 @@ use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
-use Psr\Log\LoggerInterface;
+use Psr\Log\LoggerInterface as PsrLogger;
 
 /** @internal */
 final class HttpDriverErrorHandler implements ErrorHandler
 {
-    private static ?ErrorHandler $defaultErrorHandler = null;
+    private static ?DefaultErrorHandler $defaultErrorHandler = null;
 
     private static function getDefaultErrorHandler(): ErrorHandler
     {
@@ -20,7 +20,7 @@ final class HttpDriverErrorHandler implements ErrorHandler
 
     public function __construct(
         private readonly ErrorHandler $errorHandler,
-        private readonly LoggerInterface $logger,
+        private readonly PsrLogger $logger,
     ) {
     }
 
