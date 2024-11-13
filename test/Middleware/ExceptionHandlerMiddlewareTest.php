@@ -38,7 +38,7 @@ class ExceptionHandlerMiddlewareTest extends AsyncTestCase
         $exceptionHandler = $this->createMock(ExceptionHandler::class);
         $exceptionHandler->expects(self::once())
             ->method('handleException')
-            ->with($exception)
+            ->with(self::isInstanceOf(Request::class), $exception)
             ->willReturn(new Response(HttpStatus::INTERNAL_SERVER_ERROR));
 
         $this->setupAndInvokeMiddleware($exceptionHandler, $exception);
