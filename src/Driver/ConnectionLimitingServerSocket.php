@@ -21,7 +21,7 @@ final class ConnectionLimitingServerSocket implements ServerSocket
     {
         $lock = $this->semaphore->acquire();
 
-        $socket = $this->socketServer->accept();
+        $socket = $this->socketServer->accept($cancellation);
         if (!$socket) {
             $lock->release();
             return null;
