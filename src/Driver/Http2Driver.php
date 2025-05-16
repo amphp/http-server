@@ -286,6 +286,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     {
         $chunk = ""; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
+        $need = $response->getHeader("content-length");
+        $wrote = 0;
+
         try {
             $status = $response->getStatus();
 
@@ -333,6 +336,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             if ($request->getMethod() === "HEAD") {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
                 $this->writeData("", $id);
+                $need = null;
                 return;
             }
 
@@ -344,6 +348,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 if (!isset($this->streams[$id])) {
                     return;
                 }
+                $wrote += strlen($chunk);
 
                 $this->writeData($chunk, $id);
 
@@ -390,7 +395,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 return;
             }
 
-            if ($chunk !== null) {
+            if ($chunk !== null || ($need !== null && $wrote !== $need)) {
                 $error ??= Http2Parser::INTERNAL_ERROR;
                 $this->writeFrame(\pack("N", $error), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException($this->client, "Stream error", $error));
