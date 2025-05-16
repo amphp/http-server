@@ -395,7 +395,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 return;
             }
 
-            if ($chunk !== null || ($need !== null && $wrote !== $need)) {
+            if ($chunk !== null || ($need !== null && $wrote !== (int) $need)) {
                 $error ??= Http2Parser::INTERNAL_ERROR;
                 $this->writeFrame(\pack("N", $error), Http2Parser::RST_STREAM, Http2Parser::NO_FLAG, $id);
                 $this->releaseStream($id, $exception ?? new ClientException($this->client, "Stream error", $error));

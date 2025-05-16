@@ -939,7 +939,7 @@ final class Http1Driver extends AbstractHttpDriver
             return; // Client will be closed in finally.
         } finally {
             /** @psalm-suppress TypeDoesNotContainType */
-            if ($chunk !== null || ($need !== null && $wrote !== $need)) {
+            if ($chunk !== null || ($need !== null && $wrote !== (int) $need)) {
                 $this->client->close();
             }
         }
