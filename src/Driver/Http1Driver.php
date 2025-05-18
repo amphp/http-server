@@ -882,6 +882,8 @@ final class Http1Driver extends AbstractHttpDriver
 
         $chunk = "HTTP/$protocol $status $reason\r\n" . Rfc7230::formatHeaders($headers) . "\r\n";
 
+        $need = $headers["content-length"] ?? null;
+        $wrote = 0;
         try {
             $this->writableStream->write($chunk);
 
@@ -891,6 +893,7 @@ final class Http1Driver extends AbstractHttpDriver
                 if ($shouldClose) {
                     $this->writableStream->end();
                 }
+                $need = null;
 
                 return;
             }
@@ -905,6 +908,7 @@ final class Http1Driver extends AbstractHttpDriver
                 if ($chunk === "") {
                     continue;
                 }
+                $wrote += strlen($chunk);
 
                 if ($chunked) {
                     $chunk = \sprintf("%x\r\n%s\r\n", \strlen($chunk), $chunk);
@@ -935,7 +939,7 @@ final class Http1Driver extends AbstractHttpDriver
             return; // Client will be closed in finally.
         } finally {
             /** @psalm-suppress TypeDoesNotContainType */
-            if ($chunk !== null) {
+            if ($chunk !== null || ($need !== null && $wrote !== (int) $need)) {
                 $this->client->close();
             }
         }
