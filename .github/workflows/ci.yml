@@ -22,6 +22,13 @@ jobs:
             ini-values: 'ffi.enable=false'
 
           - operating-system: 'ubuntu-latest'
+            php-version: '8.4'
+            ini-values: 'ffi.enable=false'
+            static-analysis: none
+            style-fix: none
+            composer-require-checker-version: none
+
+          - operating-system: 'ubuntu-latest'
             php-version: '8.3'
             job-description: 'with FFI'
 
@@ -97,7 +104,7 @@ jobs:
         env:
           PHP_CS_FIXER_IGNORE_ENV: 1
         run: vendor/bin/php-cs-fixer --diff --dry-run -v fix
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.style-fix != 'none'
 
       - name: Run h2spec
         run: sh tools/h2spec.sh
