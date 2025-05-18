@@ -908,7 +908,7 @@ final class Http1Driver extends AbstractHttpDriver
                 if ($chunk === "") {
                     continue;
                 }
-                $wrote += strlen($chunk);
+                $wrote += \strlen($chunk);
 
                 if ($chunked) {
                     $chunk = \sprintf("%x\r\n%s\r\n", \strlen($chunk), $chunk);

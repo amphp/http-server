@@ -348,7 +348,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 if (!isset($this->streams[$id])) {
                     return;
                 }
-                $wrote += strlen($chunk);
+                $wrote += \strlen($chunk);
 
                 $this->writeData($chunk, $id);
 
