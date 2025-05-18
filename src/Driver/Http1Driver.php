@@ -863,7 +863,7 @@ final class Http1Driver extends AbstractHttpDriver
         $status = $response->getStatus();
         $reason = $response->getReason();
 
-        [$headers, $shouldClose] = $this->filter($response, $request, $protocol);
+        [$headers, $need, $shouldClose] = $this->filter($response, $request, $protocol);
 
         $trailers = $response->getTrailers();
 
@@ -882,8 +882,8 @@ final class Http1Driver extends AbstractHttpDriver
 
         $chunk = "HTTP/$protocol $status $reason\r\n" . Rfc7230::formatHeaders($headers) . "\r\n";
 
-        $need = $headers["content-length"] ?? null;
         $wrote = 0;
+
         try {
             $this->writableStream->write($chunk);
 
@@ -939,7 +939,7 @@ final class Http1Driver extends AbstractHttpDriver
             return; // Client will be closed in finally.
         } finally {
             /** @psalm-suppress TypeDoesNotContainType */
-            if ($chunk !== null || ($need !== null && $wrote !== (int) $need)) {
+            if ($chunk !== null || ($need !== null && $wrote !== $need)) {
                 $this->client->close();
             }
         }
@@ -950,8 +950,8 @@ final class Http1Driver extends AbstractHttpDriver
      *
      * @param string $protocol Request protocol.
      *
-     * @return array{array<non-empty-string, list<string>>, bool} Response headers to be written and flag if the
-     *      connection should be closed.
+     * @return array{array<non-empty-string, list<string>>, int|null,  bool} Response headers to be written,
+     *      content length, and if the connection should be closed.
      */
     private function filter(Response $response, ?Request $request, string $protocol = "1.0"): array
     {
@@ -963,7 +963,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         if ($response->getStatus() < HttpStatus::OK) {
             unset($headers['content-length']); // 1xx responses do not have a body.
-            return [$headers, false];
+            return [$headers, null, false];
         }
 
         foreach ($response->getPushes() as $push) {
@@ -974,6 +974,10 @@ final class Http1Driver extends AbstractHttpDriver
         $responseConnectionHeaders = $headers["connection"] ?? [];
 
         $contentLength = $headers["content-length"][0] ?? null;
+        if ($contentLength !== null) {
+            $contentLength = (int) $contentLength;
+        }
+
         $shouldClose = $request === null
             || \array_reduce($requestConnectionHeaders, $closeReduce, false)
             || \array_reduce($responseConnectionHeaders, $closeReduce, false)
@@ -996,7 +1000,7 @@ final class Http1Driver extends AbstractHttpDriver
 
         $headers["date"] = [formatDateHeader()];
 
-        return [$headers, $shouldClose];
+        return [$headers, $contentLength, $shouldClose];
     }
 
     /**
