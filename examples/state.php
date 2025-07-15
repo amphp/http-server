@@ -12,6 +12,7 @@ use Amp\Http\Server\Response;
 use Amp\Http\Server\SocketHttpServer;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
+use Amp\Socket\BindContext;
 use Monolog\Logger;
 use Monolog\Processor\PsrLogMessageProcessor;
 use function Amp\trapSignal;
@@ -24,10 +25,16 @@ $logHandler->setFormatter(new ConsoleFormatter);
 $logger = new Logger('server');
 $logger->pushHandler($logHandler);
 
+// BindContext::withTcpNoDelay() returns a context which disables Nagle's algorithm, decreasing
+// latency when responses are very small (as is the case here). This generally is not necessary
+// for a production server but can negatively affect benchmarks.
+
+$bindContext = (new BindContext())->withTcpNoDelay();
+
 $server = SocketHttpServer::createForDirectAccess($logger);
 
-$server->expose("0.0.0.0:1337");
-$server->expose("[::]:1337");
+$server->expose("0.0.0.0:1337", $bindContext);
+$server->expose("[::]:1337", $bindContext);
 
 $server->start(new ClosureRequestHandler(function (Request $request): Response {
     static $counter = 0;

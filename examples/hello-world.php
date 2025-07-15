@@ -14,6 +14,7 @@ use Amp\Http\Server\SocketHttpServer;
 use Amp\Log\ConsoleFormatter;
 use Amp\Log\StreamHandler;
 use Amp\Socket;
+use Amp\Socket\BindContext;
 use Monolog\Logger;
 use Monolog\Processor\PsrLogMessageProcessor;
 use function Amp\trapSignal;
@@ -22,7 +23,12 @@ use function Amp\trapSignal;
 
 $cert = new Socket\Certificate(__DIR__ . '/../test/server.pem');
 
-$context = (new Socket\BindContext)
+// BindContext::withTcpNoDelay() returns a context which disables Nagle's algorithm, decreasing
+// latency when responses are very small (as is the case here). This generally is not necessary
+// for a production server but can negatively affect benchmarks.
+$plainBindContext = (new BindContext)->withTcpNoDelay();
+
+$tlsBindContext = $plainBindContext
         ->withTlsContext((new Socket\ServerTlsContext)
                 ->withDefaultCertificate($cert));
 
@@ -39,10 +45,10 @@ $server = new SocketHttpServer(
     new SocketClientFactory($logger),
 );
 
-$server->expose("0.0.0.0:1337");
-$server->expose("[::]:1337");
-$server->expose("0.0.0.0:1338", $context);
-$server->expose("[::]:1338", $context);
+$server->expose("0.0.0.0:1337", $plainBindContext);
+$server->expose("[::]:1337", $plainBindContext);
+$server->expose("0.0.0.0:1338", $tlsBindContext);
+$server->expose("[::]:1338", $tlsBindContext);
 
 $server->start(new class implements RequestHandler {
     public function handleRequest(Request $request): Response
