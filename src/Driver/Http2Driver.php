@@ -565,7 +565,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         return $stream->deferred->promise();
     }
 
-    private function releaseStream(int $id, ClientException $exception = null): void
+    private function releaseStream(int $id, ?ClientException $exception = null): void
     {
         \assert(isset($this->streams[$id]), "Tried to release a non-existent stream");
 

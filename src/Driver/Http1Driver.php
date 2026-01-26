@@ -133,7 +133,7 @@ final class Http1Driver implements HttpDriver
      *
      * @return \Generator
      */
-    private function send(Response $response, Request $request = null): \Generator
+    private function send(Response $response, ?Request $request = null): \Generator
     {
         \assert($this->client, "The driver has not been setup; call setup first");
 

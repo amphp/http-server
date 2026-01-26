@@ -562,7 +562,7 @@ final class RemoteClient implements Client
      *
      * @param \Throwable|null $exception
      */
-    private function resume(\Throwable $exception = null): void
+    private function resume(?\Throwable $exception = null): void
     {
         if ($exception) {
             $this->close();

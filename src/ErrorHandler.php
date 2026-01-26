@@ -13,5 +13,5 @@ interface ErrorHandler
      *
      * @return Promise
      */
-    public function handleError(int $statusCode, string $reason = null, Request $request = null): Promise;
+    public function handleError(int $statusCode, ?string $reason = null, ?Request $request = null): Promise;
 }

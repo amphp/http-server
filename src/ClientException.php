@@ -22,7 +22,7 @@ class ClientException extends \Exception
     /** @var Driver\Client */
     private $client;
 
-    public function __construct(Driver\Client $client, string $message, int $code = 0, \Throwable $previous = null)
+    public function __construct(Driver\Client $client, string $message, int $code = 0, ?\Throwable $previous = null)
     {
         parent::__construct($message, $code, $previous);
         $this->client = $client;
