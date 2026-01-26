@@ -12,6 +12,7 @@ use Amp\Http\Message;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Http1Driver;
 use Amp\Http\Server\Driver\Http2Driver;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
@@ -20,7 +21,6 @@ use Amp\Http\Server\Trailers;
 use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Success;
-use League\Uri;
 use Psr\Log\NullLogger;
 
 class Http1DriverTest extends HttpDriverTest
@@ -764,7 +764,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $this->assertSame($results[1], $body);
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"));
+        $request = new Request($this->createClientMock(), "GET", Internal\createUriFromString("/"));
         $driver->write($request, new Response);
         $request = null;
         $body = null;
@@ -790,7 +790,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $this->assertSame($results[0], $body);
 
-        $request = new Request($this->createClientMock(), "POST", Uri\Http::createFromString("/"));
+        $request = new Request($this->createClientMock(), "POST", Internal\createUriFromString("/"));
         $driver->write($request, new Response);
         $request = null;
 
@@ -843,7 +843,7 @@ class Http1DriverTest extends HttpDriverTest
 
         $emitter = new Emitter;
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("http://test.local"));
+        $request = new Request($this->createClientMock(), "GET", Internal\createUriFromString("http://test.local"));
         $response = new Response(Status::OK, $headers, new IteratorStream($emitter->iterate()));
         $response->push("/foo");
 
@@ -899,25 +899,25 @@ class Http1DriverTest extends HttpDriverTest
     {
         return [
             [
-                new Request($this->createClientMock(), "HEAD", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "HEAD", Internal\createUriFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=\d{2}\r\ndate: .* GMT\r\ntransfer-encoding: chunked\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "GET", Internal\createUriFromString("/")),
                 new Response(Status::OK, [], new InMemoryStream, new Trailers(new Success(['test' => 'value']), ['test'])),
                 "HTTP/1.1 200 OK\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\ntrailer: test\r\ntransfer-encoding: chunked\r\n\r\n0\r\ntest: value\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/")),
+                new Request($this->createClientMock(), "GET", Internal\createUriFromString("/")),
                 new Response(Status::OK, ["content-length" => 0], new InMemoryStream),
                 "HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\n\r\n",
                 false,
             ],
             [
-                new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0"),
+                new Request($this->createClientMock(), "GET", Internal\createUriFromString("/"), [], null, "1.0"),
                 new Response(Status::OK, [], new InMemoryStream),
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: .* GMT\r\n\r\n",
                 true,
@@ -954,7 +954,7 @@ class Http1DriverTest extends HttpDriverTest
         );
 
         $emitter = new Emitter;
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "1.0");
+        $request = new Request($this->createClientMock(), "GET", Internal\createUriFromString("/"), [], null, "1.0");
         $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
 
         $emitter->emit("foo");

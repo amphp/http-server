@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Test\RequestHandler;
 
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\MovedResourceHandler;
 use Amp\Http\Status;
@@ -16,7 +17,7 @@ class MovedResourceTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Empty path in provided URI");
 
-        new MovedResourceHandler(Uri\Http::createFromString(""));
+        new MovedResourceHandler(Internal\createUriFromString(""));
     }
 
     public function testBadRedirectCode(): void
@@ -24,13 +25,13 @@ class MovedResourceTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Invalid status code; code in the range 300..399 required");
 
-        new MovedResourceHandler(Uri\Http::createFromString("/new/path"), Status::CREATED);
+        new MovedResourceHandler(Internal\createUriFromString("/new/path"), Status::CREATED);
     }
 
     public function testSuccessfulRedirect(): \Generator
     {
-        $action = new MovedResourceHandler(Uri\Http::createFromString("/new/path"), Status::MOVED_PERMANENTLY);
-        $uri = Uri\Http::createFromString("http://test.local/foo");
+        $action = new MovedResourceHandler(Internal\createUriFromString("/new/path"), Status::MOVED_PERMANENTLY);
+        $uri = Internal\createUriFromString("http://test.local/foo");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
 
         /** @var \Amp\Http\Server\Response $response */
@@ -42,8 +43,8 @@ class MovedResourceTest extends AsyncTestCase
 
     public function testRequestWithQuery(): \Generator
     {
-        $action = new MovedResourceHandler(Uri\Http::createFromString("/new/path"), Status::MOVED_PERMANENTLY);
-        $uri = Uri\Http::createFromString("http://test.local/foo?key=value");
+        $action = new MovedResourceHandler(Internal\createUriFromString("/new/path"), Status::MOVED_PERMANENTLY);
+        $uri = Internal\createUriFromString("http://test.local/foo?key=value");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
 
         /** @var \Amp\Http\Server\Response $response */

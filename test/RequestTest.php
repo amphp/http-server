@@ -5,9 +5,9 @@ namespace Amp\Http\Server\Test;
 use Amp\ByteStream\InMemoryStream;
 use Amp\Http\Cookie\RequestCookie;
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\MissingAttributeError;
 use Amp\Http\Server\Request;
-use League\Uri\Http;
 use PHPUnit\Framework\TestCase;
 
 class RequestTest extends TestCase
@@ -15,14 +15,14 @@ class RequestTest extends TestCase
     public function testGetClient(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'));
         $this->assertSame($client, $request->getClient());
     }
 
     public function testSetMethod(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'));
         $this->assertSame('GET', $request->getMethod());
         $request->setMethod('POST');
         $this->assertSame('POST', $request->getMethod());
@@ -31,16 +31,16 @@ class RequestTest extends TestCase
     public function testSetUri(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'));
         $this->assertSame('/', (string) $request->getUri());
-        $request->setUri(Http::createFromString('/foobar'));
+        $request->setUri(Internal\createUriFromString('/foobar'));
         $this->assertSame('/foobar', (string) $request->getUri());
     }
 
     public function testSetProtocolVersion(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'));
         $this->assertSame('1.1', $request->getProtocolVersion());
         $request->setProtocolVersion('1.0');
         $this->assertSame('1.0', $request->getProtocolVersion());
@@ -49,7 +49,7 @@ class RequestTest extends TestCase
     public function testGetHeader(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'), [
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'), [
             'foo' => 'bar',
         ]);
 
@@ -65,7 +65,7 @@ class RequestTest extends TestCase
     public function testAddHeader(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'), [
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'), [
             'foo' => 'bar',
         ]);
 
@@ -81,7 +81,7 @@ class RequestTest extends TestCase
     public function testSetHeader(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'), [
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'), [
             'foo' => 'bar',
         ]);
 
@@ -101,7 +101,7 @@ class RequestTest extends TestCase
     public function testGetAttribute(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'));
 
         $request->setAttribute('foo', 'bar');
         $this->assertSame('bar', $request->getAttribute('foo'));
@@ -124,7 +124,7 @@ class RequestTest extends TestCase
     public function testSetBody(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'POST', Http::createFromString('/'), [
+        $request = new Request($client, 'POST', Internal\createUriFromString('/'), [
             'content-length' => '0',
         ]);
 
@@ -140,7 +140,7 @@ class RequestTest extends TestCase
         $request->setBody(new InMemoryStream('foo'));
         $this->assertFalse($request->hasHeader('content-length'));
 
-        $request = new Request($client, 'GET', Http::createFromString('/'));
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'));
         $request->setBody('');
         $this->assertFalse($request->hasHeader('content-length'));
     }
@@ -148,7 +148,7 @@ class RequestTest extends TestCase
     public function testSetBodyWithConvertibleType(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'POST', Http::createFromString('/'), [
+        $request = new Request($client, 'POST', Internal\createUriFromString('/'), [
             'content-length' => '0',
         ]);
 
@@ -159,7 +159,7 @@ class RequestTest extends TestCase
     public function testSetBodyWithWrongType(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'POST', Http::createFromString('/'), [
+        $request = new Request($client, 'POST', Internal\createUriFromString('/'), [
             'content-length' => '0',
         ]);
 
@@ -170,7 +170,7 @@ class RequestTest extends TestCase
     public function testCookies(): void
     {
         $client = $this->createMock(Client::class);
-        $request = new Request($client, 'GET', Http::createFromString('/'), [
+        $request = new Request($client, 'GET', Internal\createUriFromString('/'), [
             'cookie' => new RequestCookie('foo', 'bar'),
         ]);
 

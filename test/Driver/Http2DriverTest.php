@@ -11,6 +11,7 @@ use Amp\Http\Message;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\Http2Driver;
 use Amp\Http\Server\Driver\HttpDriver;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\Options;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\Response;
@@ -289,7 +290,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(Http2Parser::PREFACE);
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
+        $request = new Request($this->createClientMock(), "GET", Internal\createUriFromString("/"), [], null, "2");
 
         $body = "foo";
         $trailers = new Trailers(new Success(["expires" => "date"]), ["expires"]);
@@ -353,7 +354,7 @@ class Http2DriverTest extends HttpDriverTest
 
         $parser->send(Http2Parser::PREFACE);
 
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
+        $request = new Request($this->createClientMock(), "GET", Internal\createUriFromString("/"), [], null, "2");
 
         $emitter = new Emitter;
         $coroutine = $driver->write($request, new Response(Status::OK, [], new IteratorStream($emitter->iterate())));
@@ -780,7 +781,7 @@ class Http2DriverTest extends HttpDriverTest
         $this->assertTrue($invoked);
 
         // Note that Request object is not actually used in this test.
-        $request = new Request($this->createClientMock(), "GET", Uri\Http::createFromString("/"), [], null, "2");
+        $request = new Request($this->createClientMock(), "GET", Internal\createUriFromString("/"), [], null, "2");
         $driver->write($request, new Response(Status::OK, [
             "content-length" => "0",
         ]));

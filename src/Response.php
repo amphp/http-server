@@ -6,9 +6,9 @@ use Amp\ByteStream\InMemoryStream;
 use Amp\ByteStream\InputStream;
 use Amp\Http\Cookie\ResponseCookie;
 use Amp\Http\Message;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Status;
 use Amp\Promise;
-use League\Uri;
 use function Amp\call;
 
 final class Response extends Message
@@ -359,7 +359,7 @@ final class Response extends Message
     public function push(string $url, array $headers = []): void
     {
         try {
-            $uri = Uri\Http::createFromString($url);
+            $uri = Internal\createUriFromString($url);
         } catch (\Exception $exception) {
             throw new \Error("Invalid push URI: " . $exception->getMessage(), 0, $exception);
         }

@@ -417,7 +417,7 @@ final class Http1Driver implements HttpDriver
                             $target = \substr($target, 0, $position);
                         }
 
-                        $uri = Uri\Http::createFromComponents([
+                        $uri = Internal\createUriFromComponents([
                             "scheme" => $scheme,
                             "host" => $host,
                             "port" => $port,
@@ -425,13 +425,13 @@ final class Http1Driver implements HttpDriver
                             "query" => $query,
                         ]);
                     } elseif ($target === "*") { // asterisk-form
-                        $uri = Uri\Http::createFromComponents([
+                        $uri = Internal\createUriFromComponents([
                             "scheme" => $scheme,
                             "host" => $host,
                             "port" => $port,
                         ]);
                     } elseif (\preg_match("#^https?://#i", $target)) { // absolute-form
-                        $uri = Uri\Http::createFromString($target);
+                        $uri = Internal\createUriFromString($target);
 
                         if ($uri->getHost() !== $host || $uri->getPort() !== $port) {
                             throw new ClientException(
@@ -465,7 +465,7 @@ final class Http1Driver implements HttpDriver
                             );
                         }
 
-                        $uri = Uri\Http::createFromComponents([
+                        $uri = Internal\createUriFromComponents([
                             "host" => $matches[1],
                             "port" => (int) $matches[2],
                         ]);

@@ -910,7 +910,7 @@ final class Http2Driver implements HttpDriver, Http2Processor
         }
 
         try {
-            $uri = Uri\Http::createFromComponents([
+            $uri = Internal\createUriFromComponents([
                 "scheme" => $scheme,
                 "host" => $host,
                 "port" => $port,

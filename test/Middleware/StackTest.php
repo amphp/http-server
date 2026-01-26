@@ -3,6 +3,7 @@
 namespace Amp\Http\Server\Test\Middleware;
 
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\Middleware;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler;
@@ -11,14 +12,13 @@ use Amp\Http\Server\Response;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
 use Amp\Promise;
-use League\Uri;
 use function Amp\Http\Server\Middleware\stack;
 
 class StackTest extends AsyncTestCase
 {
     public function testStackAppliesMiddlewaresInCorrectOrder(): \Generator
     {
-        $request = new Request($this->createMock(Client::class), "GET", Uri\Http::createFromString("/foobar"));
+        $request = new Request($this->createMock(Client::class), "GET", Internal\createUriFromString("/foobar"));
 
         $stack = stack(new CallableRequestHandler(function (Request $request) {
             $response = new Response(Status::OK, [], "OK");

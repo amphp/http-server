@@ -3,11 +3,11 @@
 namespace Amp\Http\Server\Test\RequestHandler;
 
 use Amp\Http\Server\Driver\Client;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\RedirectHandler;
 use Amp\Http\Status;
 use Amp\PHPUnit\AsyncTestCase;
-use League\Uri;
 use function Amp\Http\Server\redirectTo;
 
 class RedirectTest extends AsyncTestCase
@@ -17,7 +17,7 @@ class RedirectTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Invalid redirect URI; Host redirect must not contain a query or fragment component");
 
-        new RedirectHandler(Uri\Http::createFromString("http://localhost/?foo"));
+        new RedirectHandler(Internal\createUriFromString("http://localhost/?foo"));
     }
 
     public function testBadRedirectCode(): void
@@ -25,13 +25,13 @@ class RedirectTest extends AsyncTestCase
         $this->expectException(\Error::class);
         $this->expectExceptionMessage("Invalid status code; code in the range 300..399 required");
 
-        new RedirectHandler(Uri\Http::createFromString("http://localhost"), Status::CREATED);
+        new RedirectHandler(Internal\createUriFromString("http://localhost"), Status::CREATED);
     }
 
     public function testSuccessfulAbsoluteRedirect(): \Generator
     {
-        $action = new RedirectHandler(Uri\Http::createFromString("https://localhost"), Status::MOVED_PERMANENTLY);
-        $uri = Uri\Http::createFromString("http://test.local/foo");
+        $action = new RedirectHandler(Internal\createUriFromString("https://localhost"), Status::MOVED_PERMANENTLY);
+        $uri = Internal\createUriFromString("http://test.local/foo");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
 
         /** @var \Amp\Http\Server\Response $response */
@@ -43,8 +43,8 @@ class RedirectTest extends AsyncTestCase
 
     public function testSuccessfulRelativeRedirect(): \Generator
     {
-        $action = new RedirectHandler(Uri\Http::createFromString("/test"));
-        $uri = Uri\Http::createFromString("http://test.local/foo");
+        $action = new RedirectHandler(Internal\createUriFromString("/test"));
+        $uri = Internal\createUriFromString("http://test.local/foo");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
 
         /** @var \Amp\Http\Server\Response $response */
@@ -56,8 +56,8 @@ class RedirectTest extends AsyncTestCase
 
     public function testRedirectWithQuery(): \Generator
     {
-        $action = new RedirectHandler(Uri\Http::createFromString("/new/path"), Status::MOVED_PERMANENTLY);
-        $uri = Uri\Http::createFromString("http://test.local/foo?key=value");
+        $action = new RedirectHandler(Internal\createUriFromString("/new/path"), Status::MOVED_PERMANENTLY);
+        $uri = Internal\createUriFromString("http://test.local/foo?key=value");
         $request = new Request($this->createMock(Client::class), "GET", $uri);
 
         /** @var \Amp\Http\Server\Response $response */

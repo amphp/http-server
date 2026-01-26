@@ -17,6 +17,7 @@ use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\Driver\Client;
 use Amp\Http\Server\Driver\HttpDriver;
 use Amp\Http\Server\Driver\HttpDriverFactory;
+use Amp\Http\Server\Driver\Internal;
 use Amp\Http\Server\Driver\RemoteClient;
 use Amp\Http\Server\Driver\TimeoutCache;
 use Amp\Http\Server\ErrorHandler;
@@ -37,7 +38,6 @@ use Amp\Socket\ClientTlsContext;
 use Amp\Socket\ConnectContext;
 use Amp\Socket\ServerTlsContext;
 use Amp\Success;
-use League\Uri;
 use League\Uri\Components\Query;
 use Psr\Log\LoggerInterface as PsrLogger;
 use function Amp\call;
@@ -87,7 +87,7 @@ class RemoteClientTest extends AsyncTestCase
         [$port, $server] = yield from $this->startServer(function (Request $req) {
             $this->assertEquals("GET", $req->getMethod());
             $this->assertEquals("/uri", $req->getUri()->getPath());
-            $query = Query::createFromUri($req->getUri());
+            $query = Query::fromUri($req->getUri());
             $this->assertEquals(
                 [["foo", "bar"], ["baz", "1"], ["baz", "2"]],
                 \iterator_to_array($query->getIterator())
@@ -185,7 +185,7 @@ class RemoteClientTest extends AsyncTestCase
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
-            Uri\Http::createFromString("http://localhost:80/foo"), // URI
+            Internal\createUriFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]] // headers
         );
 
@@ -216,7 +216,7 @@ class RemoteClientTest extends AsyncTestCase
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
-            Uri\Http::createFromString("http://localhost:80/foo"), // URI
+            Internal\createUriFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]], // headers
             new RequestBody(new IteratorStream($emitter->iterate())) // body
         );
@@ -278,7 +278,7 @@ class RemoteClientTest extends AsyncTestCase
 //        $request = new Request(
 //            $this->createMock(Client::class),
 //            "GET", // method
-//            Uri\Http::createFromString("http://localhost:80/foo"), // URI
+//            Internal\createUriFromString("http://localhost:80/foo"), // URI
 //            ["host" => ["localhost"]], // headers
 //            new RequestBody(new IteratorStream($emitter->iterate())) // body
 //        );
@@ -327,7 +327,7 @@ class RemoteClientTest extends AsyncTestCase
                 new Request(
                     $this->createMock(Client::class),
                     "OPTIONS", // method
-                    Uri\Http::createFromString("http://localhost:80"), // URI
+                    Internal\createUriFromString("http://localhost:80"), // URI
                     ["host" => ["localhost"]], // headers
                     null // body
                 ),
@@ -337,7 +337,7 @@ class RemoteClientTest extends AsyncTestCase
                 new Request(
                     $this->createMock(Client::class),
                     "TRACE", // method
-                    Uri\Http::createFromString("http://localhost:80/"), // URI
+                    Internal\createUriFromString("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
                 ),
                 Status::METHOD_NOT_ALLOWED,
@@ -346,7 +346,7 @@ class RemoteClientTest extends AsyncTestCase
                 new Request(
                     $this->createMock(Client::class),
                     "UNKNOWN", // method
-                    Uri\Http::createFromString("http://localhost:80/"), // URI
+                    Internal\createUriFromString("http://localhost:80/"), // URI
                     ["host" => ["localhost"]] // headers
                 ),
                 Status::NOT_IMPLEMENTED,
@@ -359,7 +359,7 @@ class RemoteClientTest extends AsyncTestCase
         $request = new Request(
             $this->createMock(Client::class),
             "OPTIONS", // method
-            Uri\Http::createFromString("http://localhost:80"), // URI
+            Internal\createUriFromString("http://localhost:80"), // URI
             ["host" => ["localhost"]], // headers
             null // body
         );
@@ -378,7 +378,7 @@ class RemoteClientTest extends AsyncTestCase
         $request = new Request(
             $this->createMock(Client::class),
             "GET", // method
-            Uri\Http::createFromString("http://localhost:80/foo"), // URI
+            Internal\createUriFromString("http://localhost:80/foo"), // URI
             ["host" => ["localhost"]] // headers
         );
 
@@ -445,7 +445,7 @@ class RemoteClientTest extends AsyncTestCase
         $client->start($factory);
         $client->stop(0);
 
-        $emit(new Request($client, "GET", Uri\Http::createFromString("/")));
+        $emit(new Request($client, "GET", Internal\createUriFromString("/")));
 
         $this->assertSame(\str_repeat($bodyData, 3), $body);
     }
