@@ -6,6 +6,7 @@ use League\Uri;
 use Psr\Http\Message\UriInterface as PsrUri;
 
 /**
+ * @internal
  * @throws Uri\Contracts\UriException
  */
 function createUriFromString(string $uri): PsrUri
@@ -18,6 +19,7 @@ function createUriFromString(string $uri): PsrUri
 }
 
 /**
+ * @internal
  * @throws Uri\Contracts\UriException
  */
 function createUriFromComponents(array $components): PsrUri
