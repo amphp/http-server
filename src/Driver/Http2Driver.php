@@ -35,7 +35,6 @@ use Psr\Log\LoggerInterface as PsrLogger;
 use Revolt\EventLoop;
 use function Amp\async;
 use function Amp\Http\formatDateHeader;
-use function Amp\now;
 
 final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 {
