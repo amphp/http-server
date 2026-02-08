@@ -907,6 +907,87 @@ class Http2DriverTest extends HttpDriverTest
         $input->complete();
     }
 
+    public function provideResetStreamFrames(): iterable
+    {
+        yield 'rapid-reset' => [
+            'data' => \pack("N", Http2Parser::INTERNAL_ERROR),
+            'type' => Http2Parser::RST_STREAM,
+        ];
+
+        yield 'made-you-reset' => [
+            'data' => \pack("N", 0),
+            'type' => Http2Parser::WINDOW_UPDATE,
+        ];
+    }
+
+    /**
+     * @dataProvider provideResetStreamFrames
+     */
+    public function testResetStreamBehavior(string $data, int $type, int $flags = Http2Parser::NO_FLAG): void
+    {
+        $requestHandler = new ClosureRequestHandler(function (): Response {
+            return new Response(HttpStatus::OK, body: 'Hello World!');
+        });
+
+        $this->driver = new Http2Driver(
+            $requestHandler,
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+            streamTimeout: 1,
+            connectionTimeout: 1,
+        );
+
+        $input = new Queue();
+        $this->givenInput(new ReadableIterableStream($input->iterate()));
+        $frames = $this->whenReceivingFrames();
+
+        $input->push(Http2Parser::PREFACE);
+
+        async(static function () use ($input, $data, $type, $flags): void {
+            $headers = [
+                ":authority" => ["localhost:8888"],
+                ":path" => ["/"],
+                ":scheme" => ["https"],
+                ":method" => ["GET"],
+            ];
+
+            $streamId = -1;
+
+            while (true) {
+                $streamId += 2;
+                $input->push(self::packHeader($headers, stream: $streamId));
+                $input->push(self::packFrame($data, $type, $flags, $streamId));
+            }
+        })->ignore(); // Iterator will be disposed of.
+
+        $resetCount = 0;
+
+        foreach ($frames as $frame) {
+            switch ($frame['type']) {
+                case Http2Parser::SETTINGS:
+                    break;
+
+                case Http2Parser::RST_STREAM:
+                    if (++$resetCount > 10) {
+                        self::fail('Too many resets');
+                    }
+
+                    break;
+
+                case Http2Parser::GOAWAY:
+                    ['last' => $lastId, 'error' => $error] = \unpack("Nlast/Nerror", $frame['buffer']);
+                    self::assertSame(Http2Parser::ENHANCE_YOUR_CALM, $error);
+
+                    break 2;
+
+                default:
+                    self::fail('Unexpected frame: ' . $frame['type']);
+            }
+        }
+
+        $input->complete();
+    }
+
     protected function givenPush(string $uri): void
     {
         $this->pushes[] = $uri;
@@ -917,6 +998,15 @@ class Http2DriverTest extends HttpDriverTest
         $this->responses->push($response);
     }
 
+    /**
+     * @return ConcurrentIterator<array{
+     *     length: int,
+     *     type: string,
+     *     flags: int,
+     *     id: int,
+     *     buffer: string,
+     * }>
+     */
     private function whenReceivingFrames(): ConcurrentIterator
     {
         async(fn () => $this->driver->handleClient(
