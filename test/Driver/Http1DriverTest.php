@@ -24,6 +24,7 @@ use Amp\Http\Server\Request;
 use Amp\Http\Server\RequestHandler\ClosureRequestHandler;
 use Amp\Http\Server\Response;
 use Amp\Http\Server\Trailers;
+use Amp\NullCancellation;
 use Amp\Pipeline\Queue;
 use League\Uri;
 use Psr\Log\NullLogger;
@@ -777,9 +778,11 @@ class Http1DriverTest extends HttpDriverTest
         $parser = new Http1Parser(
             $request,
             $stream,
-            static function (string $chunk) use (&$actualBody) {
+            static function (string $chunk) use (&$actualBody): Future {
                 $actualBody .= $chunk;
+                return Future::complete();
             },
+            new NullCancellation(),
             $this->createCallback(0),
         );
 
