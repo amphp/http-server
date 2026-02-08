@@ -728,7 +728,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->remainingStreams++;
 
         $now = \time();
-        $filterCallback = fn(int $releasedAt) => $releasedAt > $now - self::STREAM_BEHAVIOR_WINDOW;
+        $filterCallback = fn (int $releasedAt) => $releasedAt > $now - self::STREAM_BEHAVIOR_WINDOW;
         $this->releasedStreams = \array_filter($this->releasedStreams, $filterCallback);
         $this->releasedStreams[$id] = $now;
 
