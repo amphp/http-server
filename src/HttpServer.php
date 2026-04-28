@@ -91,7 +91,7 @@ final class HttpServer
         array $servers,
         RequestHandler $requestHandler,
         PsrLogger $logger,
-        Options $options = null
+        ?Options $options = null
     ) {
         foreach ($servers as $server) {
             if (!$server instanceof SocketServer) {

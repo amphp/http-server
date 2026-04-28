@@ -215,7 +215,7 @@ final class Response extends Message
      * @param int         $code 100 - 599
      * @param string|null $reason
      */
-    public function setStatus(int $code, string $reason = null): void
+    public function setStatus(int $code, ?string $reason = null): void
     {
         $this->status = $this->validateStatusCode($code);
         $this->reason = $reason ?? Status::getReason($this->status);

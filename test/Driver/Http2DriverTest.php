@@ -210,7 +210,7 @@ class Http2DriverTest extends HttpDriverTest
         return $return;
     }
 
-    public function setupDriver(callable $onMessage = null, Options $options = null): array
+    public function setupDriver(?callable $onMessage = null, ?Options $options = null): array
     {
         $driver = new class($options ?? new Options) implements HttpDriver {
             public $frames = [];
