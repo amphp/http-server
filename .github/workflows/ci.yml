@@ -12,6 +12,7 @@ jobs:
           - operating-system: 'ubuntu-latest'
             php-version: '8.1'
             ini-values: 'ffi.enable=false'
+            psalm: 'skip'
 
           - operating-system: 'ubuntu-latest'
             php-version: '8.2'
@@ -24,21 +25,30 @@ jobs:
           - operating-system: 'ubuntu-latest'
             php-version: '8.4'
             ini-values: 'ffi.enable=false'
-            static-analysis: none
-            style-fix: none
-            composer-require-checker-version: none
+
+          - operating-system: 'ubuntu-latest'
+            php-version: '8.5'
+            ini-values: 'ffi.enable=false'
 
           - operating-system: 'ubuntu-latest'
             php-version: '8.3'
             job-description: 'with FFI'
 
+          - operating-system: 'ubuntu-latest'
+            php-version: '8.4'
+            job-description: 'with FFI'
+
+          - operating-system: 'ubuntu-latest'
+            php-version: '8.5'
+            job-description: 'with FFI'
+
           - operating-system: 'windows-latest'
-            php-version: '8.3'
+            php-version: '8.5'
             job-description: 'on Windows'
             ini-values: 'ffi.enable=false'
 
           - operating-system: 'macos-latest'
-            php-version: '8.3'
+            php-version: '8.5'
             job-description: 'on macOS'
             ini-values: 'ffi.enable=false'
 
@@ -53,7 +63,7 @@ jobs:
           git config --global core.eol lf
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -65,7 +75,7 @@ jobs:
         run: echo "::set-output name=dir::$(composer config cache-dir)"
 
       - name: Cache dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v5
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
           key: composer-${{ runner.os }}-${{ matrix.php-version }}-${{ hashFiles('**/composer.*') }}-${{ matrix.composer-flags }}
@@ -74,6 +84,10 @@ jobs:
             composer-${{ runner.os }}-${{ matrix.php-version }}-
             composer-${{ runner.os }}-
             composer-
+
+      - name: Remove psalm/phar
+        run: composer remove --no-update --dev psalm/phar
+        if: matrix.psalm == 'skip'
 
       - name: Install dependencies
         uses: nick-invision/retry@v2
@@ -90,7 +104,7 @@ jobs:
 
       - name: Run static analysis
         run: vendor/bin/psalm.phar
-        if: matrix.static-analysis != 'none'
+        if: matrix.psalm != 'skip'
 
       - name: Install composer-require-checker
         run: php -r 'file_put_contents("composer-require-checker.phar", file_get_contents("https://github.com/maglnet/ComposerRequireChecker/releases/download/4.2.0/composer-require-checker.phar"));'
