@@ -28,6 +28,7 @@ final class ConcurrencyLimitingMiddleware implements Middleware
         $this->queue = new \SplQueue();
     }
 
+    #[\Override]
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
         if (++$this->pendingRequests > $this->concurrencyLimit) {

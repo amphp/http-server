@@ -37,6 +37,7 @@ final class ForwardedMiddleware implements Middleware
         $this->trustedIps = new LocalCache($cacheSize);
     }
 
+    #[\Override]
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
         $clientAddress = $request->getClient()->getRemoteAddress();

@@ -24,6 +24,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
     ) {
     }
 
+    #[\Override]
     public function createHttpDriver(
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
@@ -53,6 +54,7 @@ final class DefaultHttpDriverFactory implements HttpDriverFactory
         );
     }
 
+    #[\Override]
     public function getApplicationLayerProtocols(): array
     {
         if ($this->http2Enabled) {

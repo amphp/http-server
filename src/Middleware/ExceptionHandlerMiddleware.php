@@ -21,6 +21,7 @@ final class ExceptionHandlerMiddleware implements Middleware
     {
     }
 
+    #[\Override]
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
         try {

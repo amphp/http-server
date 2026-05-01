@@ -38,6 +38,7 @@ final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringab
     /**
      * @throws ClientException
      */
+    #[\Override]
     public function read(?Cancellation $cancellation = null): ?string
     {
         return $this->stream->read($cancellation);
@@ -52,6 +53,7 @@ final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringab
         return $this->stream->buffer($cancellation, $limit);
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return $this->stream->isReadable();
@@ -60,16 +62,19 @@ final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringab
     /**
      * Indicates the remainder of the request body is no longer needed and will be discarded.
      */
+    #[\Override]
     public function close(): void
     {
         $this->stream->close();
     }
 
+    #[\Override]
     public function isClosed(): bool
     {
         return $this->stream->isClosed();
     }
 
+    #[\Override]
     public function onClose(\Closure $onClose): void
     {
         $this->stream->onClose($onClose);
@@ -93,6 +98,7 @@ final class RequestBody implements ReadableStream, \IteratorAggregate, \Stringab
      *
      * @throws ClientException|BufferException
      */
+    #[\Override]
     public function __toString(): string
     {
         return $this->buffer();

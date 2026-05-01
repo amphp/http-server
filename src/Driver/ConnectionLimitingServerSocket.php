@@ -17,6 +17,7 @@ final class ConnectionLimitingServerSocket implements ServerSocket
     ) {
     }
 
+    #[\Override]
     public function accept(?Cancellation $cancellation = null): ?Socket
     {
         $lock = $this->semaphore->acquire();
@@ -32,26 +33,31 @@ final class ConnectionLimitingServerSocket implements ServerSocket
         return $socket;
     }
 
+    #[\Override]
     public function close(): void
     {
         $this->socketServer->close();
     }
 
+    #[\Override]
     public function isClosed(): bool
     {
         return $this->socketServer->isClosed();
     }
 
+    #[\Override]
     public function onClose(\Closure $onClose): void
     {
         $this->socketServer->onClose($onClose);
     }
 
+    #[\Override]
     public function getAddress(): SocketAddress
     {
         return $this->socketServer->getAddress();
     }
 
+    #[\Override]
     public function getBindContext(): BindContext
     {
         return $this->socketServer->getBindContext();

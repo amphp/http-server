@@ -92,6 +92,7 @@ final class Response extends HttpResponse
      *
      * @param HeaderParamArrayType $headers
      */
+    #[\Override]
     public function setHeaders(array $headers): void
     {
         $cookies = $this->cookies;
@@ -111,6 +112,7 @@ final class Response extends HttpResponse
      *
      * @param HeaderParamArrayType $headers
      */
+    #[\Override]
     public function replaceHeaders(array $headers): void
     {
         $cookies = $this->cookies;
@@ -132,6 +134,7 @@ final class Response extends HttpResponse
      *
      * @throws \Error If the header name or value is invalid.
      */
+    #[\Override]
     public function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
@@ -153,6 +156,7 @@ final class Response extends HttpResponse
      *
      * @throws \Error If the header name or value is invalid.
      */
+    #[\Override]
     public function addHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
@@ -169,6 +173,7 @@ final class Response extends HttpResponse
     /**
      * Removes the given header if it exists.
      */
+    #[\Override]
     public function removeHeader(string $name): void
     {
         parent::removeHeader($name);
@@ -184,6 +189,7 @@ final class Response extends HttpResponse
      *
      * @param int $status 100 - 599
      */
+    #[\Override]
     public function setStatus(int $status, ?string $reason = null): void
     {
         parent::setStatus($this->validateStatusCode($status), $reason);

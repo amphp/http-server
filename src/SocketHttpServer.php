@@ -224,21 +224,25 @@ final class SocketHttpServer implements HttpServer
         return $this->servers;
     }
 
+    #[\Override]
     public function getStatus(): HttpServerStatus
     {
         return $this->status;
     }
 
+    #[\Override]
     public function onStart(\Closure $onStart): void
     {
         $this->onStart[] = $onStart;
     }
 
+    #[\Override]
     public function onStop(\Closure $onStop): void
     {
         $this->onStop[] = $onStop;
     }
 
+    #[\Override]
     public function start(RequestHandler $requestHandler, ErrorHandler $errorHandler): void
     {
         if (empty($this->addresses)) {
@@ -377,6 +381,7 @@ final class SocketHttpServer implements HttpServer
         }
     }
 
+    #[\Override]
     public function stop(): void
     {
         if ($this->status === HttpServerStatus::Stopped) {

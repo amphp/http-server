@@ -17,6 +17,7 @@ final class ConnectionLimitingServerSocketFactory implements ServerSocketFactory
     ) {
     }
 
+    #[\Override]
     public function listen(SocketAddress|string $address, ?BindContext $bindContext = null): ServerSocket
     {
         return new ConnectionLimitingServerSocket(

@@ -13,6 +13,7 @@ final class LoggingSocketClientFactory implements ClientFactory
     ) {
     }
 
+    #[\Override]
     public function createClient(Socket $socket): ?Client
     {
         $local = $socket->getLocalAddress()->toString();

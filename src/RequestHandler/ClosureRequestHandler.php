@@ -16,6 +16,7 @@ final class ClosureRequestHandler implements RequestHandler
     {
     }
 
+    #[\Override]
     public function handleRequest(Request $request): Response
     {
         return ($this->closure)($request);

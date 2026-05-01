@@ -41,6 +41,7 @@ final class AllowedMethodsMiddleware implements Middleware
     ) {
     }
 
+    #[\Override]
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
         $method = $request->getMethod();

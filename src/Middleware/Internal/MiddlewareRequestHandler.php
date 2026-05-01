@@ -21,6 +21,7 @@ final class MiddlewareRequestHandler implements RequestHandler
     ) {
     }
 
+    #[\Override]
     public function handleRequest(Request $request): Response
     {
         return $this->middleware->handleRequest($request, $this->requestHandler);

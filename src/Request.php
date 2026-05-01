@@ -68,6 +68,7 @@ final class Request extends HttpRequest
     /**
      * Sets the request HTTP method.
      */
+    #[\Override]
     public function setMethod(string $method): void
     {
         parent::setMethod($method);
@@ -76,6 +77,7 @@ final class Request extends HttpRequest
     /**
      * Sets a new URI for the request.
      */
+    #[\Override]
     public function setUri(PsrUri $uri): void
     {
         parent::setUri($uri);
@@ -104,6 +106,7 @@ final class Request extends HttpRequest
      *
      * @param HeaderParamArrayType $headers
      */
+    #[\Override]
     public function setHeaders(array $headers): void
     {
         $cookies = $this->cookies;
@@ -123,6 +126,7 @@ final class Request extends HttpRequest
      *
      * @param HeaderParamArrayType $headers
      */
+    #[\Override]
     public function replaceHeaders(array $headers): void
     {
         $cookies = $this->cookies;
@@ -144,6 +148,7 @@ final class Request extends HttpRequest
      *
      * @throws \Error If the header name or value is invalid.
      */
+    #[\Override]
     public function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
@@ -165,6 +170,7 @@ final class Request extends HttpRequest
      *
      * @throws \Error If the header name or value is invalid.
      */
+    #[\Override]
     public function addHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":") {
@@ -181,6 +187,7 @@ final class Request extends HttpRequest
     /**
      * Removes the given header if it exists.
      */
+    #[\Override]
     public function removeHeader(string $name): void
     {
         parent::removeHeader($name);
@@ -190,31 +197,37 @@ final class Request extends HttpRequest
         }
     }
 
+    #[\Override]
     public function setQueryParameter(string $key, array|string|null $value): void
     {
         parent::setQueryParameter($key, $value);
     }
 
+    #[\Override]
     public function addQueryParameter(string $key, array|string|null $value): void
     {
         parent::addQueryParameter($key, $value);
     }
 
+    #[\Override]
     public function setQueryParameters(array $parameters): void
     {
         parent::setQueryParameters($parameters);
     }
 
+    #[\Override]
     public function replaceQueryParameters(array $parameters): void
     {
         parent::replaceQueryParameters($parameters);
     }
 
+    #[\Override]
     public function removeQueryParameter(string $key): void
     {
         parent::removeQueryParameter($key);
     }
 
+    #[\Override]
     public function removeQuery(): void
     {
         parent::removeQuery();

@@ -51,6 +51,7 @@ final class CompressionMiddleware implements Middleware
         $this->contentTypeCache = new LocalCache(self::MAX_CACHE_SIZE);
     }
 
+    #[\Override]
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
         $response = $requestHandler->handleRequest($request);

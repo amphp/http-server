@@ -34,6 +34,7 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
         return $this->client;
     }
 
+    #[\Override]
     public function read(?Cancellation $cancellation = null, ?int $limit = null): ?string
     {
         if ($this->readBuffer !== '') {
@@ -61,6 +62,7 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
         return $buffer;
     }
 
+    #[\Override]
     public function close(): void
     {
         $this->readableStream->close();
@@ -73,16 +75,19 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
         $this->close();
     }
 
+    #[\Override]
     public function write(string $bytes): void
     {
         $this->writableStream->write($bytes);
     }
 
+    #[\Override]
     public function end(): void
     {
         $this->writableStream->end();
     }
 
+    #[\Override]
     public function reference(): void
     {
         if ($this->writableStream instanceof ResourceStream) {
@@ -90,6 +95,7 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
         }
     }
 
+    #[\Override]
     public function unreference(): void
     {
         if ($this->writableStream instanceof ResourceStream) {
@@ -97,36 +103,43 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
         }
     }
 
+    #[\Override]
     public function getLocalAddress(): SocketAddress
     {
         return $this->client->getLocalAddress();
     }
 
+    #[\Override]
     public function getRemoteAddress(): SocketAddress
     {
         return $this->client->getRemoteAddress();
     }
 
+    #[\Override]
     public function isClosed(): bool
     {
         return !$this->isReadable() && !$this->isWritable();
     }
 
+    #[\Override]
     public function onClose(\Closure $onClose): void
     {
         $this->readableStream->onClose($onClose);
     }
 
+    #[\Override]
     public function isReadable(): bool
     {
         return $this->readBuffer !== '' || $this->readableStream->isReadable();
     }
 
+    #[\Override]
     public function isWritable(): bool
     {
         return $this->writableStream->isWritable();
     }
 
+    #[\Override]
     public function getResource()
     {
         return $this->writableStream instanceof ResourceStream
@@ -134,16 +147,19 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
             : null;
     }
 
+    #[\Override]
     public function setupTls(?Cancellation $cancellation = null): never
     {
         throw new TlsException('Not implemented on upgraded sockets; TLS should already be enabled if available');
     }
 
+    #[\Override]
     public function shutdownTls(?Cancellation $cancellation = null): never
     {
         throw new TlsException('Not implemented on upgraded sockets');
     }
 
+    #[\Override]
     public function isTlsConfigurationAvailable(): bool
     {
         return $this->writableStream instanceof Socket
@@ -151,6 +167,7 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
             : false;
     }
 
+    #[\Override]
     public function getTlsState(): TlsState
     {
         return $this->writableStream instanceof Socket
@@ -158,6 +175,7 @@ final class UpgradedSocket implements Socket, ResourceStream, \IteratorAggregate
             : TlsState::Disabled;
     }
 
+    #[\Override]
     public function getTlsInfo(): ?TlsInfo
     {
         return $this->writableStream instanceof Socket

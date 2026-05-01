@@ -24,6 +24,7 @@ final class HttpDriverErrorHandler implements ErrorHandler
     ) {
     }
 
+    #[\Override]
     public function handleError(int $status, ?string $reason = null, ?Request $request = null): Response
     {
         try {

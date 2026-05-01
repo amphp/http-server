@@ -14,6 +14,7 @@ final class DefaultErrorHandler implements ErrorHandler
     /** @var array<int, string> */
     private static array $cache = [];
 
+    #[\Override]
     public function handleError(int $status, ?string $reason = null, ?Request $request = null): Response
     {
         self::$errorHtml ??= \file_get_contents(\dirname(__DIR__) . "/resources/error.html");

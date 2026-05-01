@@ -17,6 +17,7 @@ final class AccessLoggerMiddleware implements Middleware
     ) {
     }
 
+    #[\Override]
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
         $client = $request->getClient();

@@ -51,6 +51,7 @@ $server->expose("0.0.0.0:1338", $tlsBindContext);
 $server->expose("[::]:1338", $tlsBindContext);
 
 $server->start(new class implements RequestHandler {
+    #[\Override]
     public function handleRequest(Request $request): Response
     {
         return new Response(

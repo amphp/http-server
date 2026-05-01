@@ -19,6 +19,7 @@ final class Push extends HttpMessage
         $this->setHeaders($headers);
     }
 
+    #[\Override]
     protected function setHeader(string $name, array|string $value): void
     {
         if (($name[0] ?? ":") === ":" || !\strncasecmp("host", $name, 4)) {

@@ -147,6 +147,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->streamIdMap = new \WeakMap();
     }
 
+    #[\Override]
     public function handleClient(
         Client $client,
         ReadableStream $readableStream,
@@ -261,6 +262,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
+    #[\Override]
     protected function write(Request $request, Response $response): void
     {
         /** @psalm-suppress RedundantPropertyInitializationCheck */
@@ -288,11 +290,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
+    #[\Override]
     public function stop(): void
     {
         $this->shutdown();
     }
 
+    #[\Override]
     public function getPendingRequestCount(): int
     {
         return \count($this->bodyQueues);
@@ -827,11 +831,13 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         return $this->hpack->encode($input);
     }
 
+    #[\Override]
     public function handlePong(string $data): void
     {
         // Ignored
     }
 
+    #[\Override]
     public function handlePing(string $data): void
     {
         if (!$this->pinged) {
@@ -850,6 +856,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
+    #[\Override]
     public function handleShutdown(int $lastId, int $error, string $message): void
     {
         $message = \sprintf(
@@ -871,6 +878,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         ));
     }
 
+    #[\Override]
     public function handleStreamWindowIncrement(int $streamId, int $windowSize): void
     {
         if ($streamId > $this->remoteStreamId) {
@@ -899,6 +907,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         EventLoop::defer($this->sendBufferedData(...));
     }
 
+    #[\Override]
     public function handleConnectionWindowIncrement(int $windowSize): void
     {
         if ($this->clientWindow + $windowSize > 2147483647) {
@@ -913,6 +922,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         EventLoop::defer($this->sendBufferedData(...));
     }
 
+    #[\Override]
     public function handleHeaders(int $streamId, array $pseudo, array $headers, bool $streamEnded): void
     {
         foreach ($pseudo as $name => $value) {
@@ -1167,6 +1177,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $stream->pendingResponse = async($this->handleRequest(...), $request);
     }
 
+    #[\Override]
     public function handleData(int $streamId, string $data): void
     {
         $this->pinged = 0;
@@ -1271,6 +1282,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
+    #[\Override]
     public function handleStreamEnd(int $streamId): void
     {
         if (!isset($this->streams[$streamId])) {
@@ -1313,6 +1325,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
+    #[\Override]
     public function handlePushPromise(int $streamId, int $pushId, array $pseudo, array $headers): void
     {
         throw new Http2ConnectionException(
@@ -1321,6 +1334,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         );
     }
 
+    #[\Override]
     public function handlePriority(int $streamId, int $parentId, int $weight): void
     {
         if (!isset($this->streams[$streamId])) {
@@ -1346,6 +1360,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $stream->weight = $weight;
     }
 
+    #[\Override]
     public function handleStreamReset(int $streamId, int $errorCode): void
     {
         if ($streamId > $this->remoteStreamId) {
@@ -1365,6 +1380,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
+    #[\Override]
     public function handleSettings(array $settings): void
     {
         foreach ($settings as $key => $value) {
@@ -1418,6 +1434,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $this->writeFrame("", Http2Parser::SETTINGS, Http2Parser::ACK);
     }
 
+    #[\Override]
     public function handleStreamException(Http2StreamException $exception): void
     {
         $streamId = $exception->getStreamId();
@@ -1430,6 +1447,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
     }
 
+    #[\Override]
     public function handleConnectionException(Http2ConnectionException $exception): void
     {
         $this->logger->notice("HTTP/2 connection error for client {address}: {message}", [
@@ -1442,6 +1460,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         );
     }
 
+    #[\Override]
     public function getApplicationLayerProtocols(): array
     {
         return ['h2'];

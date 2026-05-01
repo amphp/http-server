@@ -36,6 +36,7 @@ $server = SocketHttpServer::createForBehindProxy(
 $server->expose("0.0.0.0:8080");
 
 $server->start(new class implements RequestHandler {
+    #[\Override]
     public function handleRequest(Request $request): Response
     {
         /** @var Forwarded|null $forwarded */

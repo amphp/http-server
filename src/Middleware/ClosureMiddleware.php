@@ -17,6 +17,7 @@ final class ClosureMiddleware implements Middleware
     {
     }
 
+    #[\Override]
     public function handleRequest(Request $request, RequestHandler $requestHandler): Response
     {
         return ($this->closure)($request, $requestHandler);

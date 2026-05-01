@@ -19,6 +19,7 @@ final class ConnectionLimitingClientFactory implements ClientFactory
     ) {
     }
 
+    #[\Override]
     public function createClient(Socket $socket): ?Client
     {
         $address = $socket->getRemoteAddress();

@@ -78,6 +78,7 @@ final class Http1Driver extends AbstractHttpDriver
         $this->deferredCancellation = new DeferredCancellation();
     }
 
+    #[\Override]
     public function handleClient(
         Client $client,
         ReadableStream $readableStream,
@@ -823,6 +824,7 @@ final class Http1Driver extends AbstractHttpDriver
     /**
      * Selects HTTP/2 or HTTP/1.x writer depending on connection status.
      */
+    #[\Override]
     protected function write(Request $request, Response $response): void
     {
         if ($this->http2driver) {
@@ -1072,6 +1074,7 @@ final class Http1Driver extends AbstractHttpDriver
         return $this->lastWrite = async($this->send(...), $this->lastWrite, $response);
     }
 
+    #[\Override]
     public function getPendingRequestCount(): int
     {
         if ($this->bodyQueue) {
@@ -1085,6 +1088,7 @@ final class Http1Driver extends AbstractHttpDriver
         return 0;
     }
 
+    #[\Override]
     public function stop(): void
     {
         $this->stopping = true;
@@ -1094,6 +1098,7 @@ final class Http1Driver extends AbstractHttpDriver
         $this->deferredCancellation->cancel();
     }
 
+    #[\Override]
     public function getApplicationLayerProtocols(): array
     {
         return ['http/1.1'];
