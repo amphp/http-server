@@ -270,15 +270,19 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         $streamId = $this->streamIdMap[$request] ?? 1; // Default ID of 1 for upgrade requests.
 
+        /** @psalm-suppress RedundantCondition */
+        \assert((bool) $streamId); // For Psalm.
+
         if (!isset($this->streams[$streamId])) {
             return; // Client closed the stream or connection.
         }
+
+        $stream = $this->streams[$streamId];
 
         if ($streamId & 1) {
             $this->timeoutTracker->update($streamId);
         }
 
-        $stream = $this->streams[$streamId]; // $this->streams[$streamId] may be unset in send().
         $deferred = new DeferredFuture;
         $stream->pendingWrite = $deferred->getFuture();
         $cancellation = $stream->deferredCancellation->getCancellation();
@@ -356,7 +360,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             if ($request->getMethod() === "HEAD") {
                 $this->streams[$id]->state |= Http2Stream::LOCAL_CLOSED;
                 $this->writeData("", $id);
-                $need = null;
+
                 return;
             }
 
@@ -501,7 +505,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         } finally {
             if (!empty($this->streams)) {
                 $reason ??= new ClientException($this->client, "Connection closed unexpectedly", Http2Parser::CANCEL);
-                foreach ($this->streams as $id => $stream) {
+                foreach ($this->streams as $id => $_stream) {
                     $this->releaseStream($id, $reason);
                 }
             }
@@ -925,7 +929,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     #[\Override]
     public function handleHeaders(int $streamId, array $pseudo, array $headers, bool $streamEnded): void
     {
-        foreach ($pseudo as $name => $value) {
+        foreach ($pseudo as $name => $_value) {
             if (!isset(Http2Parser::KNOWN_REQUEST_PSEUDO_HEADERS[$name])) {
                 throw new Http2StreamException(
                     "Invalid pseudo header",
@@ -1242,7 +1246,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         $future->ignore();
 
         if ($stream->serverWindow <= self::MINIMUM_WINDOW) {
-            EventLoop::queue(function () use ($future, $stream, $streamId): void {
+            EventLoop::queue(function () use ($future, $streamId): void {
                 try {
                     $future->await();
                 } catch (\Throwable) {

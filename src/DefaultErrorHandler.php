@@ -19,6 +19,7 @@ final class DefaultErrorHandler implements ErrorHandler
     {
         self::$errorHtml ??= \file_get_contents(\dirname(__DIR__) . "/resources/error.html");
 
+        /** @psalm-suppress PossiblyFalseArgument */
         $body = self::$cache[$status] ??= \str_replace(
             ["{code}", "{reason}"],
             // Using standard reason in HTML for caching purposes.

@@ -293,10 +293,6 @@ final class SocketHttpServer implements HttpServer
                 throw new CompositeException($exceptions);
             }
 
-            /**
-             * @var SocketAddress $address
-             * @var BindContext|null $bindContext
-             */
             foreach ($this->addresses as [$address, $bindContext]) {
                 $tlsContext = $bindContext?->getTlsContext()?->withApplicationLayerProtocols(
                     $this->httpDriverFactory->getApplicationLayerProtocols(),

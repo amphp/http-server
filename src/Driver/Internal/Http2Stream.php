@@ -10,6 +10,7 @@ use Amp\Future;
  * Used in Http2Driver.
  *
  * @internal
+ * @psalm-suppress PossiblyUnusedProperty False-positive.
  */
 final class Http2Stream
 {

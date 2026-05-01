@@ -41,7 +41,7 @@ $server->expose(new Socket\InternetAddress("[::]", 1338), $context);
 $server->start(new ClosureRequestHandler(static function (Request $request) {
     try {
         // Buffer entire body, but timeout after 100ms.
-        $body = $request->getBody()->buffer(new TimeoutCancellation(0.1));
+        $request->getBody()->buffer(new TimeoutCancellation(0.1));
     } catch (ClientException) {
         // Ignore failure to read body due to RST_STREAM frames.
     } catch (CancelledException) {

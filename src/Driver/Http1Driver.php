@@ -78,6 +78,9 @@ final class Http1Driver extends AbstractHttpDriver
         $this->deferredCancellation = new DeferredCancellation();
     }
 
+    /**
+     * @psalm-suppress UnusedVariable
+     */
     #[\Override]
     public function handleClient(
         Client $client,
@@ -156,7 +159,10 @@ final class Http1Driver extends AbstractHttpDriver
                     throw new ClientException($this->client, "Bad Request: invalid request line", HttpStatus::BAD_REQUEST);
                 }
 
-                /** @var non-empty-list<non-empty-string> $matches */
+                /**
+                 * @psalm-suppress UnnecessaryVarAnnotation
+                 * @var non-empty-list<non-empty-string> $matches
+                 */
                 [$startLine, $method, $target, $protocol] = $matches;
                 $rawHeaders = \substr($rawHeaders, \strlen($startLine));
 
@@ -784,13 +790,12 @@ final class Http1Driver extends AbstractHttpDriver
             ));
             $this->bodyQueue = null;
 
-            /** @psalm-suppress TypeDoesNotContainType, RedundantCondition */
-            ($trailerDeferred ?? null)?->error($exception ??= new ClientException(
+            /** @psalm-suppress TypeDoesNotContainNull, RedundantCondition */
+            ($trailerDeferred ?? null)?->error($exception ?? new ClientException(
                 $this->client,
                 "Client disconnected",
                 HttpStatus::REQUEST_TIMEOUT
             ));
-            $trailerDeferred = null;
 
             $this->deferredCancellation->cancel();
         }
@@ -852,6 +857,8 @@ final class Http1Driver extends AbstractHttpDriver
 
     /**
      * HTTP/1.x response writer.
+     *
+     * @psalm-suppress UnusedVariable $chunk is used, and line-level suppression was not sufficient.
      */
     private function send(?Future $lastWrite, Response $response, ?Request $request = null): void
     {
@@ -895,7 +902,6 @@ final class Http1Driver extends AbstractHttpDriver
                 if ($shouldClose) {
                     $this->writableStream->end();
                 }
-                $need = null;
 
                 return;
             }

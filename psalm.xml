@@ -23,6 +23,12 @@
             </errorLevel>
         </MissingClosureReturnType>
 
+        <PossiblyUnusedMethod>
+            <errorLevel type="suppress">
+                <directory name="src"/>
+            </errorLevel>
+        </PossiblyUnusedMethod>
+
         <PropertyNotSetInConstructor>
             <errorLevel type="suppress">
                 <file name="src/Driver/Http1Driver.php"/>
@@ -35,5 +41,17 @@
                 <directory name="src" />
             </errorLevel>
         </RiskyTruthyFalsyComparison>
+
+        <UnusedClass>
+            <errorLevel type="suppress">
+                <directory name="src"/>
+            </errorLevel>
+        </UnusedClass>
+
+        <UnusedClosureParam>
+            <errorLevel type="suppress">
+                <directory name="examples"/>
+            </errorLevel>
+        </UnusedClosureParam>
     </issueHandlers>
 </psalm>

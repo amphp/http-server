@@ -14,6 +14,7 @@ final class StreamTimeoutTracker
     /** @var array<int, \Closure(int): void> */
     private array $callbacks = [];
 
+    /** @psalm-suppress UnusedProperty False-positive. */
     private int $pingTimeout = 0;
 
     /**
