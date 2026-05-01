@@ -1169,6 +1169,8 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     public function handleData(int $streamId, string $data): void
     {
+        $this->pinged = 0;
+
         $length = \strlen($data);
 
         if ($streamId & 1) {

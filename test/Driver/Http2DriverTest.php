@@ -778,6 +778,40 @@ class Http2DriverTest extends HttpDriverTest
         );
     }
 
+    public function testIncomingDataResetsPingFloodProtection(): void
+    {
+        $buffer = Http2Parser::PREFACE;
+        $buffer .= self::packHeader([
+            ':authority' => 'localhost',
+            ':path' => '/',
+            ':scheme' => 'http',
+            ':method' => 'POST',
+        ], true);
+
+        $ping = "aaaaaaaa";
+        for ($i = 0; $i < 10; ++$i) {
+            $buffer .= self::packFrame($ping++, Http2Parser::PING, Http2Parser::NO_FLAG);
+            $buffer .= self::packFrame('a', Http2Parser::DATA, Http2Parser::NO_FLAG, 1);
+        }
+
+        $buffer .= self::packFrame('', Http2Parser::DATA, Http2Parser::END_STREAM, 1);
+
+        $this->givenInput(new ReadableBuffer($buffer));
+
+        $this->whenClientIsHandled();
+
+        $output = \bin2hex(buffer($this->output->getSource()));
+
+        self::assertStringNotContainsString(
+            \bin2hex(\pack("NN", 0, Http2Parser::ENHANCE_YOUR_CALM) . 'Too many pings'),
+            $output
+        );
+        self::assertStringContainsString(
+            \bin2hex(self::packFrame('aaaaaaaa', Http2Parser::PING, Http2Parser::ACK)),
+            $output
+        );
+    }
+
     public function testSendingResponseBeforeRequestCompletes(): void
     {
         $headers = [
