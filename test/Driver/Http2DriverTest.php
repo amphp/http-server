@@ -381,6 +381,142 @@ class Http2DriverTest extends HttpDriverTest
         $request->await();
     }
 
+    public function testStreamBufferIsClearedBeforeSuspendingDataWriteFrame(): void
+    {
+        /** @noinspection PhpInternalEntityUsedInspection */
+        if (HPackNghttp2::isSupported()) {
+            self::markTestSkipped('Not supported with nghttp2, disable ffi for this test.');
+        }
+
+        // The bug: writeBufferedData() used to call writeFrame() (which
+        // suspends on the underlying socket write) *before* clearing the
+        // stream's buffer. While suspended, an incoming WINDOW_UPDATE
+        // schedules EventLoop::defer($this->sendBufferedData(...)), which
+        // re-enters writeBufferedData() and -- finding the buffer still
+        // populated -- re-emits the same DATA frame.
+        //
+        // Rather than racing the fix through real timing, this test
+        // observes the invariant directly: when writeFrame() invokes
+        // writableStream->write() for a DATA frame, the corresponding
+        // stream's buffer must already be empty. The sink below records
+        // each write synchronously and snapshots $stream->buffer at that
+        // instant; pre-fix, the snapshot still contains the body.
+        $sink = new class() implements \Amp\ByteStream\WritableStream {
+            public ?\Closure $beforeWrite = null;
+
+            /** @var list<string> */
+            public array $writes = [];
+
+            private \Amp\DeferredFuture $onClose;
+
+            private bool $closed = false;
+
+            public function __construct()
+            {
+                $this->onClose = new \Amp\DeferredFuture();
+            }
+
+            public function write(string $bytes): void
+            {
+                if ($this->beforeWrite !== null) {
+                    ($this->beforeWrite)($bytes);
+                }
+                $this->writes[] = $bytes;
+            }
+
+            public function end(): void
+            {
+                $this->close();
+            }
+
+            public function close(): void
+            {
+                $this->closed = true;
+                if (!$this->onClose->isComplete()) {
+                    $this->onClose->complete();
+                }
+            }
+
+            public function isClosed(): bool
+            {
+                return $this->closed;
+            }
+
+            public function isWritable(): bool
+            {
+                return !$this->closed;
+            }
+
+            public function onClose(\Closure $onClose): void
+            {
+                $this->onClose->getFuture()->finally($onClose);
+            }
+        };
+
+        $driver = $this->driver;
+        /** @var list<array{stream:int,buffer:string}> $bufferAtDataWrite */
+        $bufferAtDataWrite = [];
+
+        $sink->beforeWrite = static function (string $bytes) use ($driver, &$bufferAtDataWrite): void {
+            if (\strlen($bytes) < 9 || \ord($bytes[3]) !== Http2Parser::DATA) {
+                return;
+            }
+            $streamId = \unpack('N', \substr($bytes, 5, 4))[1] & 0x7fffffff;
+            $streams = (fn () => $this->streams)->call($driver);
+            if (!isset($streams[$streamId])) {
+                return;
+            }
+            $bufferAtDataWrite[] = [
+                'stream' => $streamId,
+                'buffer' => $streams[$streamId]->buffer,
+            ];
+        };
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "GET",
+        ];
+
+        $input = Http2Parser::PREFACE
+            . self::packFrame("", Http2Parser::SETTINGS, Http2Parser::NO_FLAG)
+            . self::packHeader($headers);
+
+        $body = \str_repeat("X", 9000);
+        $this->givenNextResponse(new Response(
+            HttpStatus::OK,
+            ["content-type" => "text/plain"],
+            new ReadableBuffer($body),
+        ));
+
+        $this->driver->handleClient(
+            $this->createClientMock(),
+            new ReadableBuffer($input),
+            $sink,
+        );
+
+        $dataObservations = \array_values(\array_filter(
+            $bufferAtDataWrite,
+            static fn (array $obs): bool => $obs['stream'] === 1 && $obs['buffer'] !== '',
+        ));
+
+        self::assertNotEmpty(
+            \array_filter(
+                $bufferAtDataWrite,
+                static fn (array $obs): bool => $obs['stream'] === 1,
+            ),
+            'Driver did not emit a DATA frame for the response body on stream 1',
+        );
+
+        self::assertSame(
+            [],
+            $dataObservations,
+            'Stream buffer was still populated when writeFrame() was about to suspend; '
+            . 'a concurrent WINDOW_UPDATE-triggered sendBufferedData() would re-emit the same DATA frame.',
+        );
+    }
+
     public function testWriterAbortAfterHeaders(): void
     {
         $headers = [
