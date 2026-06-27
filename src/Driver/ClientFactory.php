@@ -2,8 +2,8 @@
 
 namespace Amp\Http\Server\Driver;
 
-use Amp\Http\Client\SocketException;
 use Amp\Socket\Socket;
+use Amp\Socket\SocketException;
 
 interface ClientFactory
 {
