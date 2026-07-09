@@ -608,23 +608,30 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
         if ($delta >= $length) {
             $this->clientWindow -= $length;
+            $stream->clientWindow -= $length;
+
+            // Clear the buffer BEFORE the suspending writeFrame() call.
+            // sendBufferedData() can be invoked via EventLoop::defer while
+            // we are suspended on the socket write (any incoming
+            // WINDOW_UPDATE schedules it). If the buffer is still
+            // populated at that point, the deferred callback re-enters
+            // writeBufferedData() and emits the same DATA frame again.
+            $bufferToWrite = $stream->buffer;
+            $stream->buffer = "";
 
             if ($length > $this->maxFrameSize) {
-                $split = \str_split($stream->buffer, $this->maxFrameSize);
-                $stream->buffer = \array_pop($split);
+                $split = \str_split($bufferToWrite, $this->maxFrameSize);
+                $bufferToWrite = \array_pop($split);
                 foreach ($split as $part) {
                     $this->writeFrame($part, Http2Parser::DATA, Http2Parser::NO_FLAG, $streamId);
                 }
             }
 
             if ($stream->state & Http2Stream::LOCAL_CLOSED) {
-                $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::END_STREAM, $streamId);
+                $this->writeFrame($bufferToWrite, Http2Parser::DATA, Http2Parser::END_STREAM, $streamId);
             } else {
-                $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::NO_FLAG, $streamId);
+                $this->writeFrame($bufferToWrite, Http2Parser::DATA, Http2Parser::NO_FLAG, $streamId);
             }
-
-            $stream->clientWindow -= $length;
-            $stream->buffer = "";
 
             if ($stream->deferredFuture) {
                 $stream->deferredFuture->complete();
