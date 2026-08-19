@@ -365,6 +365,7 @@ final class SocketHttpServer implements HttpServer
             try {
                 $driver->handleClient($client, $socket, $socket);
             } finally {
+                $client->close();
                 unset($this->drivers[$id]);
             }
         } catch (\Throwable $exception) {
