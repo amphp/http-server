@@ -934,11 +934,61 @@ class Http1DriverTest extends HttpDriverTest
                 "HTTP/1.0 200 OK\r\nconnection: close\r\ndate: .* GMT\r\n\r\n",
                 true,
             ],
+            [
+                "GET / HTTP/1.1",
+                new Response(HttpStatus::NO_CONTENT, ["x-custom" => "1"], new ReadableBuffer),
+                "^HTTP/1.1 204 No Content\r\nx-custom: 1\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\n\r\n$",
+                false,
+            ],
+            [
+                "GET / HTTP/1.1",
+                new Response(HttpStatus::NOT_MODIFIED, ["etag" => "\"abc\""], new ReadableBuffer("ignored")),
+                "^HTTP/1.1 304 Not Modified\r\netag: \"abc\"\r\nconnection: keep-alive\r\nkeep-alive: timeout=60\r\ndate: .* GMT\r\n\r\n$",
+                false,
+            ],
         ];
 
         delay(0.1); // Tick event loop to complete the Trailers future.
 
         return $data;
+    }
+
+    public function testBodylessResponseDoesNotDesyncConnection(): void
+    {
+        $driver = new Http1Driver(
+            new ClosureRequestHandler(function (Request $request): Response {
+                if ($request->getUri()->getPath() === "/first") {
+                    return new Response(HttpStatus::NO_CONTENT, ["x-custom" => "1"]);
+                }
+
+                return new Response(HttpStatus::OK, [], "second");
+            }),
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+            connectionTimeout: 60,
+        );
+
+        $output = new WritableBuffer;
+
+        async(fn () => $driver->handleClient(
+            $this->createClientMock(),
+            new ReadableBuffer(
+                "GET /first HTTP/1.1\r\nHost: test.local\r\n\r\n" .
+                "GET /second HTTP/1.1\r\nHost: test.local\r\n\r\n"
+            ),
+            $output,
+        ));
+
+        delay(0.1);
+
+        $output->close();
+
+        // The next response must start right after the header section of the bodyless one;
+        // a stray chunk terminator in between desyncs clients which stop reading at the headers.
+        self::assertMatchesRegularExpression(
+            "#^HTTP/1.1 204 No Content\r\n(?:[^\r]+\r\n)+\r\nHTTP/1.1 200 OK\r\n#",
+            $output->buffer(),
+        );
     }
 
     public function testWriteAbortAfterHeaders(): void
