@@ -10,6 +10,7 @@ use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\ReadableStreamChain;
 use Amp\CancelledException;
+use Amp\DeferredCancellation;
 use Amp\Future;
 use Amp\Http\HPack;
 use Amp\Http\Http2\Http2Parser;
@@ -715,6 +716,90 @@ class Http2DriverTest extends HttpDriverTest
             'stream' => 3,
             'buffer' => "",
         ], $frames->getValue());
+    }
+
+    public function testRequestStreamWindowIsReplenishedWhenClientAdvertisesLargerInitialWindow(): void
+    {
+        $request = async(fn () => $this->whenRequestIsReceived());
+
+        $input = new Queue;
+        $this->givenInput(new ReadableIterableStream($input->pipe()));
+        $frames = $this->whenReceivingFrames();
+
+        $input->push(Http2Parser::PREFACE);
+
+        self::assertTrue($frames->continue());
+        self::assertSame(Http2Parser::SETTINGS, $frames->getValue()['type']);
+
+        // The client lets the server send far more than the server lets the client send,
+        // as Envoy does with its default 256 MiB stream window.
+        $settings = \pack("nN", Http2Parser::INITIAL_WINDOW_SIZE, 1 << 28);
+        $settingsFrame = self::packFrame($settings, Http2Parser::SETTINGS, Http2Parser::NO_FLAG);
+        $input->push($settingsFrame);
+
+        self::assertTrue($frames->continue());
+        self::assertSame(Http2Parser::ACK, $frames->getValue()['flags']);
+
+        // Keep the response open so the stream stays alive while the request body is uploaded.
+        $responseBody = new Queue;
+        $responseStream = new ReadableIterableStream($responseBody->pipe());
+        $response = new Response(HttpStatus::OK, [], $responseStream);
+        $this->givenNextResponse($response);
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "POST",
+        ];
+        $headersFrame = self::packHeader($headers, continue: true);
+        $input->push($headersFrame);
+
+        /** @var Request $request */
+        $request = $request->await();
+
+        // The client spends exactly the stream window the server advertised in its own SETTINGS.
+        $unsent = Http2Driver::DEFAULT_WINDOW_SIZE;
+        while ($unsent > 0) {
+            $length = \min($unsent, Http2Driver::DEFAULT_MAX_FRAME_SIZE);
+            $data = \str_repeat("_", $length);
+            $dataFrame = self::packFrame($data, Http2Parser::DATA, Http2Parser::NO_FLAG, 1);
+            $input->push($dataFrame);
+            $unsent -= $length;
+        }
+
+        $body = $request->getBody();
+        $received = 0;
+        while ($received < Http2Driver::DEFAULT_WINDOW_SIZE) {
+            $chunk = $body->read();
+            self::assertNotNull($chunk);
+            $received += \strlen($chunk);
+        }
+
+        // With the bug the server never answers. A referenced timer bounds the wait: TimeoutCancellation
+        // is unreferenced, so the event loop would stop first and turn the failure into an error.
+        $deadline = new DeferredCancellation;
+        $expire = static fn () => $deadline->cancel();
+        $deadlineWatcher = EventLoop::delay(1, $expire);
+
+        $streamWindowUpdate = null;
+        try {
+            while ($frames->continue($deadline->getCancellation())) {
+                $frame = $frames->getValue();
+                if ($frame['type'] === Http2Parser::WINDOW_UPDATE && $frame['stream'] === 1) {
+                    $streamWindowUpdate = $frame;
+                    break;
+                }
+            }
+        } catch (CancelledException) {
+            // The server went silent: the client is left with an exhausted stream window.
+        }
+        EventLoop::cancel($deadlineWatcher);
+
+        self::assertNotNull(
+            $streamWindowUpdate,
+            "The server did not replenish the stream window the client has used up",
+        );
     }
 
     public function testPush(): void
