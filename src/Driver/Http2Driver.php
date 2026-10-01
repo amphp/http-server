@@ -606,25 +606,19 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->timeoutTracker->update($streamId);
         }
 
+        // Stream state must be updated before writing, since a write may suspend and let another
+        // fiber send the same buffered data.
         if ($delta >= $length) {
+            $data = $stream->buffer;
+            $stream->buffer = "";
+            $stream->clientWindow -= $length;
             $this->clientWindow -= $length;
 
-            if ($length > $this->maxFrameSize) {
-                $split = \str_split($stream->buffer, $this->maxFrameSize);
-                $stream->buffer = \array_pop($split);
-                foreach ($split as $part) {
-                    $this->writeFrame($part, Http2Parser::DATA, Http2Parser::NO_FLAG, $streamId);
-                }
-            }
-
-            if ($stream->state & Http2Stream::LOCAL_CLOSED) {
-                $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::END_STREAM, $streamId);
-            } else {
-                $this->writeFrame($stream->buffer, Http2Parser::DATA, Http2Parser::NO_FLAG, $streamId);
-            }
-
-            $stream->clientWindow -= $length;
-            $stream->buffer = "";
+            $this->writeDataFrames(
+                $data,
+                $stream->state & Http2Stream::LOCAL_CLOSED ? Http2Parser::END_STREAM : Http2Parser::NO_FLAG,
+                $streamId,
+            );
 
             if ($stream->deferredFuture) {
                 $stream->deferredFuture->complete();
@@ -635,28 +629,38 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
 
         if ($delta > 0) {
-            $data = $stream->buffer;
-            $end = $delta - $this->maxFrameSize;
-
+            $data = \substr($stream->buffer, 0, $delta);
+            $stream->buffer = \substr($stream->buffer, $delta);
             $stream->clientWindow -= $delta;
             $this->clientWindow -= $delta;
 
-            for ($off = 0; $off < $end; $off += $this->maxFrameSize) {
-                $this->writeFrame(
-                    \substr($data, $off, $this->maxFrameSize),
-                    Http2Parser::DATA,
-                    Http2Parser::NO_FLAG,
-                    $streamId
-                );
-            }
-
-            $this->writeFrame(\substr($data, $off, $delta - $off), Http2Parser::DATA, Http2Parser::NO_FLAG, $streamId);
-
-            $stream->buffer = \substr($data, $delta);
+            $this->writeDataFrames($data, Http2Parser::NO_FLAG, $streamId);
         }
 
         $stream->deferredFuture ??= new DeferredFuture;
         $stream->deferredFuture->getFuture()->await();
+    }
+
+    /**
+     * Writes all frames at once, so frames of concurrent writers cannot interleave.
+     */
+    private function writeDataFrames(string $data, int $flags, int $streamId): void
+    {
+        $frames = "";
+        $length = \strlen($data);
+
+        for ($off = 0; $length - $off > $this->maxFrameSize; $off += $this->maxFrameSize) {
+            $frames .= Http2Parser::compileFrame(
+                \substr($data, $off, $this->maxFrameSize),
+                Http2Parser::DATA,
+                Http2Parser::NO_FLAG,
+                $streamId
+            );
+        }
+
+        $frames .= Http2Parser::compileFrame(\substr($data, $off), Http2Parser::DATA, $flags, $streamId);
+
+        $this->writableStream->write($frames);
     }
 
     private function writeHeaders(string $headers, int $type, int $flags, int $id): void
