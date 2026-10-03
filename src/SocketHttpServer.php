@@ -314,8 +314,7 @@ final class SocketHttpServer implements HttpServer
 
                 $this->logger->info("Listening on {$scheme}://{$serverName}/");
 
-                // Using short-closure to avoid Psalm bug when using a first-class callable here.
-                EventLoop::queue(fn () => $this->accept($server, $requestHandler, $errorHandler));
+                EventLoop::queue($this->accept(...), $server, $requestHandler, $errorHandler);
             }
         } catch (\Throwable $exception) {
             try {

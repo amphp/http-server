@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\ForbidCloning;
+use Amp\ForbidSerialization;
 use Amp\Http\Server\Driver\Client;
 use Amp\Sync\PriorityQueue;
 use Revolt\EventLoop;
@@ -11,6 +13,9 @@ use function Amp\weakClosure;
 /** @internal */
 final class TimeoutQueue
 {
+    use ForbidCloning;
+    use ForbidSerialization;
+
     private readonly PriorityQueue $priorityQueue;
 
     private readonly \WeakMap $streamNames;

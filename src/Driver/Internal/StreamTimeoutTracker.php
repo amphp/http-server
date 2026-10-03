@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\ForbidCloning;
+use Amp\ForbidSerialization;
 use Amp\Http\Server\Driver\Client;
 use function Amp\async;
 use function Amp\weakClosure;
@@ -9,6 +11,9 @@ use function Amp\weakClosure;
 /** @internal */
 final class StreamTimeoutTracker
 {
+    use ForbidCloning;
+    use ForbidSerialization;
+
     private readonly \Closure $onStreamTimeout;
 
     /** @var array<int, \Closure(int): void> */
