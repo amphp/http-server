@@ -4,6 +4,8 @@ namespace Amp\Http\Server\Driver\Internal;
 
 use Amp\DeferredCancellation;
 use Amp\DeferredFuture;
+use Amp\ForbidCloning;
+use Amp\ForbidSerialization;
 use Amp\Future;
 
 /**
@@ -14,6 +16,9 @@ use Amp\Future;
  */
 final class Http2Stream
 {
+    use ForbidCloning;
+    use ForbidSerialization;
+
     public const OPEN = 0;
     public const RESERVED = 0b0001;
     public const REMOTE_CLOSED = 0b0010;

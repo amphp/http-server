@@ -2,6 +2,8 @@
 
 namespace Amp\Http\Server\Driver\Internal;
 
+use Amp\ForbidCloning;
+use Amp\ForbidSerialization;
 use Amp\Http\Server\DefaultErrorHandler;
 use Amp\Http\Server\ErrorHandler;
 use Amp\Http\Server\Request;
@@ -11,6 +13,9 @@ use Psr\Log\LoggerInterface as PsrLogger;
 /** @internal */
 final class HttpDriverErrorHandler implements ErrorHandler
 {
+    use ForbidCloning;
+    use ForbidSerialization;
+
     private static ?DefaultErrorHandler $defaultErrorHandler = null;
 
     private static function getDefaultErrorHandler(): ErrorHandler
