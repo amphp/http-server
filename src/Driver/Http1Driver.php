@@ -880,15 +880,16 @@ final class Http1Driver extends AbstractHttpDriver
             $headers["trailer"] = [\implode(", ", $fields)];
         }
 
-        // 204 and 304 responses are terminated by the end of the header section and have no
+        // 1xx, 204, and 304 responses are terminated by the end of the header section and have no
         // body, so they must not use chunked encoding (RFC 9112 sections 6.1 and 6.3).
-        $bodyless = $status === HttpStatus::NO_CONTENT || $status === HttpStatus::NOT_MODIFIED;
+        $skipBody =  $status < HttpStatus::OK
+            || $status === HttpStatus::NO_CONTENT
+            || $status === HttpStatus::NOT_MODIFIED;
 
         $chunked = !$shouldClose
-            && !$bodyless
+            && !$skipBody
             && (!isset($headers["content-length"]) || $trailers !== null)
-            && $protocol === "1.1"
-            && $status >= HttpStatus::OK;
+            && $protocol === "1.1";
 
         if ($chunked) {
             $headers["transfer-encoding"] = ["chunked"];
@@ -903,7 +904,7 @@ final class Http1Driver extends AbstractHttpDriver
 
             $chunk = null; // Required for the finally, not directly overwritten, even if your IDE says otherwise.
 
-            if ($bodyless || $request?->getMethod() === "HEAD") {
+            if ($skipBody || $request?->getMethod() === "HEAD") {
                 $need = null; // No body is written, so nothing is owed to the client.
 
                 if ($shouldClose) {
