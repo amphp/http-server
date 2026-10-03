@@ -1,5 +1,4 @@
 <?php declare(strict_types=1);
-/** @noinspection PhpPropertyOnlyWrittenInspection */
 
 namespace Amp\Http\Server\Test\Driver;
 
@@ -81,6 +80,11 @@ class Http2DriverTest extends HttpDriverTest
         $flags = ($continue ? $flag : Http2Parser::END_STREAM | $flag) | Http2Parser::END_HEADERS;
 
         return $data . self::packFrame($end, $type, $flags, $stream);
+    }
+
+    private static function incrementPing(string $ping): string
+    {
+        return \PHP_VERSION_ID >= 80300 ? \str_increment($ping) : ++$ping;
     }
 
     private Http2Driver $driver;
@@ -845,7 +849,8 @@ class Http2DriverTest extends HttpDriverTest
         $buffer = Http2Parser::PREFACE;
         $ping = "aaaaaaaa";
         for ($i = 0; $i < 1024; ++$i) {
-            $buffer .= self::packFrame($ping++, Http2Parser::PING, Http2Parser::NO_FLAG);
+            $buffer .= self::packFrame($ping, Http2Parser::PING, Http2Parser::NO_FLAG);
+            $ping = self::incrementPing($ping);
         }
 
         $this->givenInput(new ReadableBuffer($buffer));
@@ -875,8 +880,9 @@ class Http2DriverTest extends HttpDriverTest
 
         $ping = "aaaaaaaa";
         for ($i = 0; $i < 10; ++$i) {
-            $buffer .= self::packFrame($ping++, Http2Parser::PING, Http2Parser::NO_FLAG);
+            $buffer .= self::packFrame($ping, Http2Parser::PING, Http2Parser::NO_FLAG);
             $buffer .= self::packFrame('a', Http2Parser::DATA, Http2Parser::NO_FLAG, 1);
+            $ping = self::incrementPing($ping);
         }
 
         $buffer .= self::packFrame('', Http2Parser::DATA, Http2Parser::END_STREAM, 1);
