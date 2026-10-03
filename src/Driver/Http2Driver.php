@@ -696,9 +696,11 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             );
         }
 
+        // The receive window starts at what this server advertised in its SETTINGS frame;
+        // the client's SETTINGS_INITIAL_WINDOW_SIZE only governs how much the server may send.
         return $this->streams[$id] = new Http2Stream(
             $bodySizeLimit,
-            $this->initialWindowSize,
+            self::DEFAULT_WINDOW_SIZE,
             $this->initialWindowSize,
             $flags,
         );
