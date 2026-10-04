@@ -8,6 +8,7 @@ use Amp\ByteStream\ReadableBuffer;
 use Amp\ByteStream\ReadableIterableStream;
 use Amp\ByteStream\ReadableStream;
 use Amp\ByteStream\ReadableStreamChain;
+use Amp\ByteStream\WritableStream;
 use Amp\CancelledException;
 use Amp\DeferredCancellation;
 use Amp\Future;
@@ -806,6 +807,100 @@ class Http2DriverTest extends HttpDriverTest
         );
     }
 
+    public function testConcurrentWindowUpdatesWithSuspendedWrites(): void
+    {
+        $body = \random_bytes(100_000);
+
+        $this->givenNextResponse(new Response(
+            HttpStatus::OK,
+            body: new ReadableBuffer($body),
+            trailers: new Trailers(Future::complete(['x-trailer' => 'done']), ['x-trailer']),
+        ));
+
+        // Every write suspends, as a socket write does when the kernel buffer is full.
+        $output = new class($this->output->getSink()) implements WritableStream {
+            public function __construct(private readonly WritableStream $sink)
+            {
+            }
+
+            public function write(string $bytes): void
+            {
+                $this->sink->write($bytes);
+                delay(0);
+            }
+
+            public function end(): void
+            {
+                $this->sink->end();
+            }
+
+            public function isWritable(): bool
+            {
+                return $this->sink->isWritable();
+            }
+
+            public function close(): void
+            {
+                $this->sink->close();
+            }
+
+            public function isClosed(): bool
+            {
+                return $this->sink->isClosed();
+            }
+
+            public function onClose(\Closure $onClose): void
+            {
+                $this->sink->onClose($onClose);
+            }
+        };
+
+        $input = new Queue;
+        $this->givenInput(new ReadableIterableStream($input->pipe()));
+        $frames = $this->whenReceivingFrames($output);
+
+        $input->push(Http2Parser::PREFACE);
+
+        self::assertTrue($frames->continue());
+        self::assertSame(Http2Parser::SETTINGS, $frames->getValue()['type']);
+
+        $input->push(self::packHeader([
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "GET",
+        ]));
+
+        self::assertTrue($frames->continue());
+        self::assertSame(Http2Parser::HEADERS, $frames->getValue()['type']);
+
+        $recv = "";
+        while (\strlen($recv) < Http2Driver::DEFAULT_WINDOW_SIZE) {
+            self::assertTrue($frames->continue());
+            self::assertSame(Http2Parser::DATA, $frames->getValue()['type']);
+            $recv .= $frames->getValue()['buffer'];
+        }
+
+        // Both updates are handled at once, so the deferred sends of buffered data run concurrently.
+        $input->push(
+            self::packFrame(\pack("N", Http2Driver::DEFAULT_WINDOW_SIZE), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG)
+            . self::packFrame(\pack("N", Http2Driver::DEFAULT_WINDOW_SIZE), Http2Parser::WINDOW_UPDATE, Http2Parser::NO_FLAG, 1)
+        );
+
+        do {
+            self::assertTrue($frames->continue(new TimeoutCancellation(1)));
+            $frame = $frames->getValue();
+
+            if ($frame['type'] === Http2Parser::DATA) {
+                $recv .= $frame['buffer'];
+            }
+        } while (!($frame['flags'] & Http2Parser::END_STREAM));
+
+        self::assertSame(Http2Parser::HEADERS, $frame['type']);
+        self::assertSame(\strlen($body), \strlen($recv));
+        self::assertSame($body, $recv);
+    }
+
     public function testPush(): void
     {
         /** @noinspection PhpInternalEntityUsedInspection */
@@ -1132,12 +1227,12 @@ class Http2DriverTest extends HttpDriverTest
      *     buffer: string,
      * }>
      */
-    private function whenReceivingFrames(): ConcurrentIterator
+    private function whenReceivingFrames(?WritableStream $output = null): ConcurrentIterator
     {
         async(fn () => $this->driver->handleClient(
             $this->createClientMock(),
             $this->input,
-            $this->output->getSink(),
+            $output ?? $this->output->getSink(),
         ))->ignore();
 
         return Pipeline::fromIterable($this->receiveFrames())->getIterator();
