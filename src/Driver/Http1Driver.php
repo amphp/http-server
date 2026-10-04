@@ -61,6 +61,8 @@ final class Http1Driver extends AbstractHttpDriver
 
     private bool $continue = true;
 
+    private bool $upgraded = false;
+
     private readonly DeferredCancellation $deferredCancellation;
 
     public function __construct(
@@ -775,6 +777,10 @@ final class Http1Driver extends AbstractHttpDriver
             $this->pendingResponse->finally(function (): void {
                 $this->removeTimeout();
 
+                if (!$this->upgraded) {
+                    $this->client->close();
+                }
+
                 /** @psalm-suppress RedundantCondition */
                 \assert($this->logger->debug(\sprintf(
                     "Stopping HTTP/1.x parser @ %s #%d",
@@ -1040,6 +1046,7 @@ final class Http1Driver extends AbstractHttpDriver
             : new ReadableStreamChain(new ReadableBuffer($this->currentBuffer), $this->readableStream);
 
         $socket = new UpgradedSocket($client, $stream, $this->writableStream);
+        $this->upgraded = true;
 
         try {
             $upgradeHandler($socket, $request, $response);

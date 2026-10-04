@@ -1232,10 +1232,74 @@ class Http1DriverTest extends HttpDriverTest
         self::assertStringStartsWith("HTTP/1.1 101 Switching Protocols\r\n", $output->buffer());
     }
 
-    public function testTimeoutSuspendedDuringRequestHandler(): void
+    public function testClientClosedWhenConnectionEnds(): void
+    {
+        $driver = new Http1Driver(
+            new ClosureRequestHandler(fn () => new Response(HttpStatus::OK, body: 'Hello World!')),
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+        );
+
+        $client = $this->createClientMock();
+        $client->expects(self::once())
+            ->method('close');
+
+        $output = new WritableBuffer();
+
+        $driver->handleClient(
+            $client,
+            new ReadableBuffer("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"),
+            $output,
+        );
+
+        delay(0.1); // Allow the driver to clean up after the connection ends.
+
+        $output->close();
+
+        self::assertStringStartsWith("HTTP/1.1 200 OK\r\n", $output->buffer());
+    }
+
+    public function testUpgradedClientNotClosed(): void
     {
         $requestHandler = new ClosureRequestHandler(function (): Response {
+            $response = new Response(HttpStatus::SWITCHING_PROTOCOLS);
+            $response->upgrade($this->createCallback(1));
+            return $response;
+        });
+
+        $driver = new Http1Driver(
+            $requestHandler,
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+        );
+
+        $client = $this->createClientMock();
+        $client->expects(self::never())
+            ->method('close');
+
+        $message = "GET / HTTP/1.1\r\n" .
+            "Host: localhost\r\n" .
+            "Connection: upgrade\r\n" .
+            "Upgrade: test\r\n" .
+            "\r\n";
+
+        $output = new WritableBuffer();
+
+        $driver->handleClient($client, new ReadableBuffer($message), $output);
+
+        delay(0.1); // Allow the driver to clean up after handing the socket to the upgrade handler.
+
+        $output->close();
+
+        self::assertStringStartsWith("HTTP/1.1 101 Switching Protocols\r\n", $output->buffer());
+    }
+
+    public function testTimeoutSuspendedDuringRequestHandler(): void
+    {
+        $handled = false;
+        $requestHandler = new ClosureRequestHandler(function () use (&$handled): Response {
             delay(2);
+            $handled = true;
             return new Response(HttpStatus::ACCEPTED, body: 'Hello World!');
         });
 
@@ -1247,8 +1311,11 @@ class Http1DriverTest extends HttpDriverTest
         );
 
         $client = $this->createClientMock();
-        $client->expects(self::never())
-            ->method('close');
+        $client->expects(self::once())
+            ->method('close')
+            ->willReturnCallback(function () use (&$handled): void {
+                self::assertTrue($handled, 'Client closed while the request handler was running');
+            });
 
         $output = new WritableBuffer();
 
@@ -1257,6 +1324,8 @@ class Http1DriverTest extends HttpDriverTest
             new ReadableBuffer("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"),
             $output,
         );
+
+        delay(0.1); // Allow the driver to clean up after the connection ends.
 
         $output->close();
 
