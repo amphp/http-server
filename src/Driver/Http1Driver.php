@@ -59,7 +59,7 @@ final class Http1Driver extends AbstractHttpDriver
 
     private string $currentBuffer = "";
 
-    private bool $continue = true;
+    private bool $upgraded = false;
 
     private readonly DeferredCancellation $deferredCancellation;
 
@@ -757,7 +757,7 @@ final class Http1Driver extends AbstractHttpDriver
 
                 $this->pendingResponse->await(); // Wait for response to be generated.
                 $this->pendingResponseCount--;
-            } while ($this->continue);
+            } while (!$this->upgraded);
         } catch (ClientException $exception) {
             if ($this->bodyQueue === null || !$this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
@@ -774,6 +774,10 @@ final class Http1Driver extends AbstractHttpDriver
         } finally {
             $this->pendingResponse->finally(function (): void {
                 $this->removeTimeout();
+
+                if (!$this->upgraded && !$this->http2driver) {
+                    $this->client->close();
+                }
 
                 /** @psalm-suppress RedundantCondition */
                 \assert($this->logger->debug(\sprintf(
@@ -1029,7 +1033,7 @@ final class Http1Driver extends AbstractHttpDriver
             throw new \Error('Response was not upgraded');
         }
 
-        $this->continue = false;
+        $this->upgraded = true;
 
         $client = $request->getClient();
 
