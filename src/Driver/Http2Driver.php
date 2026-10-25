@@ -124,6 +124,9 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
 
     private readonly HPack $hpack;
 
+    /**
+     * @param positive-int $headerSizeLimit
+     */
     public function __construct(
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,
