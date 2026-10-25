@@ -240,7 +240,7 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             $this->client->getId(),
         )) || true);
 
-        $parser = new Http2Parser($this, $this->hpack, $this->settings);
+        $parser = new Http2Parser($this, $this->hpack, $this->settings, $this->headerSizeLimit);
 
         try {
             $parser->push($chunk ?? $this->readPreface());
