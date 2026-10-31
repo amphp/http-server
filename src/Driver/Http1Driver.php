@@ -63,6 +63,9 @@ final class Http1Driver extends AbstractHttpDriver
 
     private readonly DeferredCancellation $deferredCancellation;
 
+    /**
+     * @param positive-int $headerSizeLimit
+     */
     public function __construct(
         RequestHandler $requestHandler,
         ErrorHandler $errorHandler,

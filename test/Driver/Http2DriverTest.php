@@ -1087,6 +1087,107 @@ class Http2DriverTest extends HttpDriverTest
         self::assertSame($value, $request->getHeader($header));
     }
 
+    public function testAcceptsHeadersUpToTheDefaultHeaderSizeLimit(): void
+    {
+        $header = 'x-long-header';
+        $value = self::incompressibleString(20000);
+
+        $headers = [
+            ":authority" => ["localhost:8888"],
+            ":path" => ["/foo"],
+            ":scheme" => ["http"],
+            ":method" => ["GET"],
+            $header => $value,
+        ];
+
+        $input = Http2Parser::PREFACE;
+        $input .= self::packHeader($headers);
+
+        $this->givenInput(new ReadableBuffer($input));
+
+        $request = $this->whenRequestIsReceived();
+
+        self::assertSame($value, $request->getHeader($header));
+    }
+
+    public function testEnforcesTheConfiguredHeaderSizeLimit(): void
+    {
+        $this->initDriver(['headerSizeLimit' => 4096]);
+
+        $headers = [
+            ":authority" => ["localhost:8888"],
+            ":path" => ["/foo"],
+            ":scheme" => ["http"],
+            ":method" => ["GET"],
+            'x-long-header' => self::incompressibleString(8000),
+        ];
+
+        $input = Http2Parser::PREFACE;
+        $input .= self::packHeader($headers);
+
+        $this->givenInput(new ReadableBuffer($input));
+
+        $this->whenClientIsHandled();
+
+        $frames = self::unpackFrames(buffer($this->output->getSource()));
+
+        $settings = \array_values(\array_filter(
+            $frames,
+            fn (array $frame) => $frame['type'] === Http2Parser::SETTINGS && !($frame['flags'] & Http2Parser::ACK),
+        ));
+        self::assertNotEmpty($settings);
+
+        $advertised = null;
+        foreach (\str_split($settings[0]['payload'], 6) as $entry) {
+            ['id' => $id, 'value' => $value] = \unpack('nid/Nvalue', $entry);
+            if ($id === Http2Parser::MAX_HEADER_LIST_SIZE) {
+                $advertised = $value;
+            }
+        }
+        self::assertSame(4096, $advertised);
+
+        $goAway = \array_values(\array_filter(
+            $frames,
+            fn (array $frame) => $frame['type'] === Http2Parser::GOAWAY,
+        ));
+        self::assertCount(1, $goAway);
+        self::assertSame(Http2Parser::COMPRESSION_ERROR, \unpack('N', $goAway[0]['payload'], 4)[1]);
+        self::assertSame([], $this->requests);
+    }
+
+    private static function incompressibleString(int $length): string
+    {
+        $string = '';
+        for ($i = 0; \strlen($string) < $length; ++$i) {
+            $string .= \hash('sha512', (string) $i);
+        }
+
+        return \substr($string, 0, $length);
+    }
+
+    /**
+     * @return list<array{type: int, flags: int, stream: int, payload: string}>
+     */
+    private static function unpackFrames(string $buffer): array
+    {
+        $frames = [];
+        $offset = 0;
+
+        while (\strlen($buffer) - $offset >= 9) {
+            ['length' => $length, 'type' => $type, 'flags' => $flags, 'stream' => $stream]
+                = \unpack('Nlength/Ctype/Cflags/Nstream', "\0" . \substr($buffer, $offset, 9));
+            $frames[] = [
+                'type' => $type,
+                'flags' => $flags,
+                'stream' => $stream & 0x7fffffff,
+                'payload' => \substr($buffer, $offset + 9, $length),
+            ];
+            $offset += 9 + $length;
+        }
+
+        return $frames;
+    }
+
     public function testTimeoutSuspendedDuringRequestHandler(): void
     {
         $requestHandler = new ClosureRequestHandler(function (): Response {
