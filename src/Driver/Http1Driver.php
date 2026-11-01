@@ -730,6 +730,14 @@ final class Http1Driver implements HttpDriver
                             $this->updateTimeout();
 
                             if ($bufferLength >= $chunkLengthRemaining + 2) {
+                                if (\substr($buffer, $chunkLengthRemaining, 2) !== "\r\n") {
+                                    throw new ClientException(
+                                        $this->client,
+                                        "Bad Request: invalid chunk delimiter",
+                                        Status::BAD_REQUEST,
+                                    );
+                                }
+
                                 yield $emitter->emit(\substr($buffer, 0, $chunkLengthRemaining));
                                 $buffer = \substr($buffer, $chunkLengthRemaining + 2);
 

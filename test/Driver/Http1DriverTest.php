@@ -22,6 +22,7 @@ use Amp\Http\Status;
 use Amp\Promise;
 use Amp\Success;
 use Psr\Log\NullLogger;
+use function Amp\delay;
 
 class Http1DriverTest extends HttpDriverTest
 {
@@ -923,6 +924,45 @@ class Http1DriverTest extends HttpDriverTest
                 true,
             ],
         ];
+    }
+
+    public function testMalformedChunk(): void
+    {
+        $payload = "POST /first HTTP/1.1\r\n" .
+            "Host: 127.0.0.1\r\n" .
+            "Connection: keep-alive\r\n" .
+            "Transfer-Encoding: chunked\r\n" .
+            "\r\n" .
+            "3\r\n" .   // chunk size = 3
+            "abc" .     // 3 bytes of chunk data
+            "AB" .      // malformed delimiter (0x41 0x42) instead of CRLF (0x0D 0x0A)
+            "0\r\n" .   // terminal chunk
+            "\r\n" .
+            "GET /admin HTTP/1.1\r\n" .
+            "Host: 127.0.0.1\r\n" .
+            "Connection: close\r\n" .
+            "\r\n";
+
+        $driver = new Http1Driver(
+            new Options,
+            $this->createMock(ErrorHandler::class),
+            new NullLogger
+        );
+
+        $parser = $driver->setup(
+            $this->createClientMock(),
+            function (Request $request) {
+                $this->assertSame("127.0.0.1", $request->getUri()->getHost());
+                $this->assertSame("/first", $request->getUri()->getPath());
+                $this->assertSame("1.1", $request->getProtocolVersion());
+            },
+            function (string $data) {
+                $this->assertSame("HTTP/1.0 400 Bad Request\r\n", $data);
+                return new Success;
+            }
+        );
+
+        $parser->send($payload);
     }
 
     public function testWriteAbortAfterHeaders(): void
