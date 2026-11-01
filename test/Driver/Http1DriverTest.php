@@ -991,6 +991,47 @@ class Http1DriverTest extends HttpDriverTest
         );
     }
 
+    public function testMalformedChunk(): void
+    {
+        $driver = new Http1Driver(
+            new ClosureRequestHandler(function (Request $request) use (&$exception): Response {
+                $body = $request->getBody()->buffer();
+                return new Response(body: $body);
+            }),
+            $this->createMock(ErrorHandler::class),
+            new NullLogger,
+        );
+
+        $output = new WritableBuffer;
+
+        async(fn () => $driver->handleClient(
+            $this->createClientMock(),
+            new ReadableBuffer(
+                "POST /first HTTP/1.1\r\n" .
+                "Host: 127.0.0.1\r\n" .
+                "Connection: keep-alive\r\n" .
+                "Transfer-Encoding: chunked\r\n" .
+                "\r\n" .
+                "3\r\n" .   // chunk size = 3
+                "abc" .     // 3 bytes of chunk data
+                "AB" .      // malformed delimiter (0x41 0x42) instead of CRLF (0x0D 0x0A)
+                "0\r\n" .   // terminal chunk
+                "\r\n" .
+                "GET /admin HTTP/1.1\r\n" .
+                "Host: 127.0.0.1\r\n" .
+                "Connection: close\r\n" .
+                "\r\n"
+            ),
+            $output,
+        ));
+
+        delay(0.1);
+
+        $output->close();
+
+        self::assertStringStartsWith("HTTP/1.0 400 Bad Request\r\n", $output->buffer());
+    }
+
     public function testWriteAbortAfterHeaders(): void
     {
         $driver = new Http1Driver(

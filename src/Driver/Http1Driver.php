@@ -671,6 +671,14 @@ final class Http1Driver extends AbstractHttpDriver
                             $this->updateTimeout();
 
                             if ($bufferLength >= $chunkLengthRemaining + 2) {
+                                if (\substr($buffer, $chunkLengthRemaining, 2) !== "\r\n") {
+                                    throw new ClientException(
+                                        $this->client,
+                                        "Bad Request: invalid chunk delimiter",
+                                        HttpStatus::BAD_REQUEST,
+                                    );
+                                }
+
                                 try {
                                     $queue->push(\substr($buffer, 0, $chunkLengthRemaining));
                                 } catch (DisposedException) {
@@ -762,7 +770,7 @@ final class Http1Driver extends AbstractHttpDriver
                 $this->pendingResponseCount--;
             } while (!$this->upgraded);
         } catch (ClientException $exception) {
-            if ($this->bodyQueue === null || !$this->pendingResponseCount) {
+            if ($this->bodyQueue === null || $this->pendingResponseCount) {
                 // Send an error response only if another response has not already been sent to the request.
                 $this->sendErrorResponse($exception, $request ?? null)->await();
             }
