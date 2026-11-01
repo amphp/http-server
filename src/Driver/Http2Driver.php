@@ -1110,6 +1110,23 @@ final class Http2Driver implements HttpDriver, Http2Processor
         $stream->serverWindow -= $length;
         $stream->received += $length;
 
+        // RFC 9113, Section 6.9.1: a sender must not send a flow-controlled frame with a length that exceeds
+        // the space available in either the connection or the stream flow-control window.
+        if ($this->serverWindow < 0) {
+            throw new Http2ConnectionException(
+                "Connection flow control window exceeded",
+                Http2Parser::FLOW_CONTROL_ERROR
+            );
+        }
+
+        if ($stream->serverWindow < 0) {
+            throw new Http2StreamException(
+                "Stream flow control window exceeded",
+                $streamId,
+                Http2Parser::FLOW_CONTROL_ERROR
+            );
+        }
+
         if ($stream->received > $stream->maxBodySize) {
             throw new Http2StreamException(
                 "Max body size exceeded",

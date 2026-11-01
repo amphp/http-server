@@ -744,6 +744,78 @@ class Http2DriverTest extends HttpDriverTest
         );
     }
 
+    public function testStreamIsResetWhenClientExceedsStreamWindow(): void
+    {
+        $options = new Options;
+        $driver = new Http2Driver($options, new NullLogger);
+
+        // The initial stream window advertised by the server is equal to the body size limit.
+        $windowSize = $options->getBodySizeLimit();
+
+        $frames = [];
+
+        $parser = $driver->setup(
+            $this->createClientMock(),
+            function (Request $received) use (&$request, $windowSize) {
+                // Hold a reference to the request, as destroying the request body consumes it.
+                $request = $received;
+
+                // Raise the body size limit so only the flow-control window can reject the excess data.
+                $request->getBody()->increaseSizeLimit($windowSize * 2);
+                return new Success;
+            },
+            function (string $data) use (&$frames) {
+                $frames[] = [
+                    'type' => \ord($data[3]),
+                    'stream' => \unpack("N", \substr($data, 5, 4))[1],
+                    'buffer' => \substr($data, 9),
+                ];
+                return new Success;
+            }
+        );
+
+        $parser->send(Http2Parser::PREFACE);
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "POST",
+        ];
+        $parser->send(self::packHeader($headers, true, 1));
+
+        $this->assertInstanceOf(Request::class, $request);
+
+        // The request body is never read, so the server never replenishes the stream window. Filling the window
+        // and then sending one more byte exceeds the window, yet stays below the increased body size limit.
+        $this->assertSame(0, $windowSize % Http2Driver::DEFAULT_MAX_FRAME_SIZE);
+
+        $data = \str_repeat("_", Http2Driver::DEFAULT_MAX_FRAME_SIZE);
+        for ($i = 0; $i < $windowSize / Http2Driver::DEFAULT_MAX_FRAME_SIZE; $i++) {
+            $parser->send(self::packFrame($data, Http2Parser::DATA, Http2Parser::NO_FLAG, 1));
+        }
+
+        $this->assertSame([], \array_filter($frames, function (array $frame): bool {
+            return $frame['type'] === Http2Parser::RST_STREAM;
+        }), "The server reset the stream before the flow-control window was exceeded");
+
+        $parser->send(self::packFrame("_", Http2Parser::DATA, Http2Parser::NO_FLAG, 1));
+
+        $resetCode = null;
+        foreach ($frames as $frame) {
+            if ($frame['type'] === Http2Parser::RST_STREAM && $frame['stream'] === 1) {
+                $resetCode = \unpack("N", $frame['buffer'])[1];
+                break;
+            }
+        }
+
+        $this->assertSame(
+            Http2Parser::FLOW_CONTROL_ERROR,
+            $resetCode,
+            "The server did not reset a stream that exceeded its flow-control window"
+        );
+    }
+
     public function testSendingResponseBeforeRequestCompletes(): \Generator
     {
         $driver = new Http2Driver(new Options, new NullLogger);
