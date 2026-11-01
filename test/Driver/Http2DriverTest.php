@@ -807,6 +807,73 @@ class Http2DriverTest extends HttpDriverTest
         );
     }
 
+    public function testStreamIsResetWhenClientExceedsStreamWindow(): void
+    {
+        $request = async(fn () => $this->whenRequestIsReceived());
+
+        $input = new Queue;
+        $this->givenInput(new ReadableIterableStream($input->pipe()));
+        $frames = $this->whenReceivingFrames();
+
+        $input->push(Http2Parser::PREFACE);
+
+        self::assertTrue($frames->continue());
+        self::assertSame(Http2Parser::SETTINGS, $frames->getValue()['type']);
+
+        // Keep the response open so the stream stays alive while the request body is uploaded.
+        $responseBody = new Queue;
+        $responseStream = new ReadableIterableStream($responseBody->pipe());
+        $this->givenNextResponse(new Response(HttpStatus::OK, [], $responseStream));
+
+        $headers = [
+            ":authority" => "localhost",
+            ":path" => "/",
+            ":scheme" => "http",
+            ":method" => "POST",
+        ];
+        $input->push(self::packHeader($headers, continue: true));
+
+        $request->await();
+
+        // The request body is never read, so the server never replenishes the stream window. Four full frames are
+        // one byte more than the advertised window, yet still well below the default body size limit.
+        $data = \str_repeat("_", Http2Driver::DEFAULT_MAX_FRAME_SIZE);
+        for ($i = 0; $i < 4; $i++) {
+            $input->push(self::packFrame($data, Http2Parser::DATA, Http2Parser::NO_FLAG, 1));
+        }
+
+        self::assertGreaterThan(Http2Driver::DEFAULT_WINDOW_SIZE, 4 * Http2Driver::DEFAULT_MAX_FRAME_SIZE);
+        self::assertLessThan(HttpDriver::DEFAULT_BODY_SIZE_LIMIT, 4 * Http2Driver::DEFAULT_MAX_FRAME_SIZE);
+
+        // A referenced timer bounds the wait, as TimeoutCancellation would let the event loop stop first.
+        $deadline = new DeferredCancellation;
+        $expire = static fn () => $deadline->cancel();
+        $deadlineWatcher = EventLoop::delay(1, $expire);
+
+        $resetCode = null;
+        try {
+            while ($frames->continue($deadline->getCancellation())) {
+                $frame = $frames->getValue();
+                if ($frame['type'] === Http2Parser::RST_STREAM && $frame['stream'] === 1) {
+                    $resetCode = \unpack("N", $frame['buffer'])[1];
+                    break;
+                }
+            }
+        } catch (CancelledException) {
+            // The server accepted the excess data without complaint.
+        }
+        EventLoop::cancel($deadlineWatcher);
+
+        self::assertSame(
+            Http2Parser::FLOW_CONTROL_ERROR,
+            $resetCode,
+            "The server did not reset a stream that exceeded its flow-control window",
+        );
+
+        $responseBody->complete();
+        $input->complete();
+    }
+
     public function testConcurrentWindowUpdatesWithSuspendedWrites(): void
     {
         $body = \random_bytes(100_000);
