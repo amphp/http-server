@@ -1193,14 +1193,6 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
     #[\Override]
     public function handleData(int $streamId, string $data): void
     {
-        $this->pinged = 0;
-
-        $length = \strlen($data);
-
-        if ($streamId & 1) {
-            $this->timeoutTracker->update($streamId);
-        }
-
         if (!isset($this->streams[$streamId], $this->bodyQueues[$streamId], $this->trailerDeferreds[$streamId])) {
             if ($streamId > 0 && $streamId <= $this->remoteStreamId) {
                 throw new Http2StreamException(
@@ -1226,9 +1218,12 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
             );
         }
 
+        $length = \strlen($data);
         if (!$length) {
             return;
         }
+
+        $this->pinged = 0; // Reset ping count when non-empty data is received on a valid stream.
 
         $this->serverWindow -= $length;
         $stream->serverWindow -= $length;
@@ -1257,6 +1252,10 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
                 $streamId,
                 Http2Parser::CANCEL
             );
+        }
+
+        if ($streamId & 1) {
+            $this->timeoutTracker->update($streamId);
         }
 
         if ($this->serverWindow <= self::MINIMUM_WINDOW) {

@@ -109,6 +109,11 @@ class Http2DriverTest extends HttpDriverTest
         $this->responses = new \SplQueue;
     }
 
+    /**
+     * @param array<non-empty-string, mixed> $options Map of {@see Http2Driver} constructor parameters.
+     *
+     * @return void
+     */
     private function initDriver(array $options = []): void
     {
         $this->driver = new Http2Driver(
@@ -1293,6 +1298,88 @@ class Http2DriverTest extends HttpDriverTest
         self::assertSame(1, $frame['stream']);
 
         $input->complete();
+    }
+
+    /**
+     * DATA frame on a stream that was never opened must result in a connection error.
+     */
+    public function testDataOnUnopenedStreamIsConnectionError(): void
+    {
+        $this->initDriver(['streamTimeout' => 1]);
+
+        $client = $this->createClientMock();
+        $client->expects(self::atLeastOnce())
+            ->method('close');
+
+        $buffer = Http2Parser::PREFACE;
+        $buffer .= self::packFrame('', Http2Parser::DATA, Http2Parser::NO_FLAG, 1);
+
+        $this->givenInput(new ReadableBuffer($buffer));
+
+        $this->whenClientIsHandled($client);
+
+        self::assertStringEndsWith(
+            \bin2hex(self::packFrame(
+                \pack("NN", 0, Http2Parser::PROTOCOL_ERROR) . 'Invalid stream ID',
+                Http2Parser::GOAWAY,
+                Http2Parser::NO_FLAG
+            )),
+            \bin2hex(buffer($this->output->getSource()))
+        );
+
+        delay(2.5); // Allow the stream timeout to elapse and the timeout queue to tick.
+    }
+
+    /**
+     * DATA frame on a stream that has already been released must result in a stream error.
+     */
+    public function testDataOnReleasedStreamIsStreamError(): void
+    {
+        $this->initDriver(['streamTimeout' => 1]);
+
+        $headers = [
+            ":authority" => ["localhost:8888"],
+            ":path" => ["/"],
+            ":scheme" => ["https"],
+            ":method" => ["GET"],
+        ];
+
+        $input = new Queue();
+        $this->givenInput(new ReadableIterableStream($input->iterate()));
+
+        $future = async(fn () => $this->driver->handleClient(
+            $this->createClientMock(),
+            $this->input,
+            $this->output->getSink(),
+        ));
+
+        $frames = Pipeline::fromIterable($this->receiveFrames())->getIterator();
+
+        $input->push(Http2Parser::PREFACE);
+        $input->push(self::packHeader($headers));
+
+        // Read frames until the response on stream 1 has ended.
+        while ($frames->continue()) {
+            $frame = $frames->getValue();
+            if ($frame['stream'] === 1 && $frame['flags'] & Http2Parser::END_STREAM) {
+                break;
+            }
+        }
+
+        delay(0.1); // Allow the stream to be released.
+
+        $input->push(self::packFrame('', Http2Parser::DATA, Http2Parser::NO_FLAG, 1));
+
+        self::assertTrue($frames->continue());
+        $frame = $frames->getValue();
+        self::assertSame(Http2Parser::RST_STREAM, $frame['type']);
+        self::assertSame(1, $frame['stream']);
+        self::assertSame(\pack("N", Http2Parser::STREAM_CLOSED), $frame['buffer']);
+
+        delay(2.5); // Allow the stream timeout to elapse and the timeout queue to tick.
+
+        $input->complete();
+        $future->await();
     }
 
     public function provideResetStreamFrames(): iterable
