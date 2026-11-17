@@ -111,8 +111,6 @@ class Http2DriverTest extends HttpDriverTest
 
     /**
      * @param array<non-empty-string, mixed> $options Map of {@see Http2Driver} constructor parameters.
-     *
-     * @return void
      */
     private function initDriver(array $options = []): void
     {
