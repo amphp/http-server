@@ -1268,47 +1268,44 @@ final class Http2Driver extends AbstractHttpDriver implements Http2Processor
         }
 
         $future = $this->bodyQueues[$streamId]->pushAsync($data);
-        $future->ignore();
 
         if ($stream->serverWindow <= self::MINIMUM_WINDOW) {
-            EventLoop::queue(function () use ($future, $streamId): void {
-                try {
-                    $future->await();
-                } catch (\Throwable) {
-                    return;
-                }
-
-                if (!isset($this->streams[$streamId])) {
-                    return;
-                }
-
-                $stream = $this->streams[$streamId];
-
-                if ($stream->state & Http2Stream::REMOTE_CLOSED
-                    || $stream->serverWindow > self::MINIMUM_WINDOW
-                ) {
-                    return;
-                }
-
-                $increment = \min(
-                    $stream->bodySizeLimit + 1 - $stream->receivedByteCount - $stream->serverWindow,
-                    self::MAX_INCREMENT
-                );
-
-                if ($increment <= 0) {
-                    return;
-                }
-
-                $stream->serverWindow += $increment;
-
-                $this->writeFrame(
-                    \pack("N", $increment),
-                    Http2Parser::WINDOW_UPDATE,
-                    Http2Parser::NO_FLAG,
-                    $streamId
-                );
-            });
+            // Delay updating stream window until the body data has been consumed.
+            $future = $future->map(fn () => $this->incrementStreamServerWindow($streamId));
         }
+
+        $future->ignore();
+    }
+
+    private function incrementStreamServerWindow(int $streamId): void
+    {
+        if (!isset($this->streams[$streamId])) {
+            return;
+        }
+
+        $stream = $this->streams[$streamId];
+
+        if ($stream->state & Http2Stream::REMOTE_CLOSED || $stream->serverWindow > self::MINIMUM_WINDOW) {
+            return;
+        }
+
+        $increment = \min(
+            $stream->bodySizeLimit + 1 - $stream->receivedByteCount - $stream->serverWindow,
+            self::MAX_INCREMENT,
+        );
+
+        if ($increment <= 0) {
+            return;
+        }
+
+        $stream->serverWindow += $increment;
+
+        $this->writeFrame(
+            \pack("N", $increment),
+            Http2Parser::WINDOW_UPDATE,
+            Http2Parser::NO_FLAG,
+            $streamId,
+        );
     }
 
     #[\Override]
