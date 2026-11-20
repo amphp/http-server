@@ -31,6 +31,12 @@ jobs:
             ini-values: 'ffi.enable=false'
 
           - operating-system: 'ubuntu-latest'
+            php-version: '8.6'
+            ini-values: 'ffi.enable=false'
+            # psalm.phar requires PHP <= 8.5 (run by the 8.5 jobs)
+            psalm: 'skip'
+
+          - operating-system: 'ubuntu-latest'
             php-version: '8.3'
             job-description: 'with FFI'
 
@@ -41,6 +47,12 @@ jobs:
           - operating-system: 'ubuntu-latest'
             php-version: '8.5'
             job-description: 'with FFI'
+
+          - operating-system: 'ubuntu-latest'
+            php-version: '8.6'
+            job-description: 'with FFI'
+            # psalm.phar requires PHP <= 8.5 (run by the 8.5 jobs)
+            psalm: 'skip'
 
           - operating-system: 'windows-latest'
             php-version: '8.5'
